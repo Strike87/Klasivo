@@ -1,0 +1,96 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be checked into version control
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# iOS/macOS
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*.xcconfig
+**/ios/**/*.xcworkspace/contents.xcworkspacedata
+**/ios/**/.generated/
+**/ios/**/.symlinks/
+**/ios/**/.vscode/
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Web
+lib/generated_plugin_registrant.dart
+
+# Windows
+windows/flutter/generated_plugins.cmake
+windows/flutter/generated_plugin_count.txt
+windows/flutter/generated_plugins.ps1
+
+# Linux
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugin_registrant.h
+linux/flutter/generated_plugins.cmake
+
+# macOS
+macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Android
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+
+# iOS/macOS
+**/ios/**/.symlinks/
+**/ios/**/.generated.xcconfig
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# Generated files
+.dart_tool/
+pubspec.lock
