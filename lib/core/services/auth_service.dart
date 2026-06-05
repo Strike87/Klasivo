@@ -109,6 +109,7 @@ class AuthService {
         'fullName': student['fullName'] ?? 'Student',
         'studentCode': student['studentCode'],
         'className': student['className'],
+        'classId': student['classId'],
         'teacherId': student['teacherId'],
       };
     } catch (e) {

@@ -1,0 +1,334 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../../providers/exam_provider.dart';
+import '../../../providers/submission_provider.dart';
+import '../../../providers/student_provider.dart';
+import '../../../core/config/app_constants.dart';
+import '../../../core/services/submission_service.dart';
+import '../../../widgets/common_widgets.dart';
+
+class ExamResultsScreen extends ConsumerWidget {
+  final String examId;
+
+  const ExamResultsScreen({
+    Key? key,
+    required this.examId,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final examsAsync = ref.watch(examsStreamProvider);
+    final submissions = ref.watch(examSubmissionsProvider(examId));
+    final theme = Theme.of(context);
+
+    return examsAsync.when(
+      loading: () => Scaffold(
+        appBar: AppBar(title: const Text('Results')),
+        body: const LoadingIndicator(),
+      ),
+      error: (error, _) => Scaffold(
+        appBar: AppBar(title: const Text('Results')),
+        body: ErrorWidgetCustom(
+          message: 'Failed to load: $error',
+          onRetry: () => ref.invalidate(examsStreamProvider),
+        ),
+      ),
+      data: (snapshot) {
+        final examDoc = snapshot.docs.where((d) => d.id == examId).firstOrNull;
+        if (examDoc == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Results')),
+            body: const EmptyState(
+              icon: Icons.error_outline,
+              title: 'Exam Not Found',
+              subtitle: 'This exam may have been deleted',
+            ),
+          );
+        }
+
+        final exam = ExamData.fromFirestore(examDoc);
+        final submittedSubs = submissions
+            .where((s) =>
+                s.status == AppConstants.submissionStatusSubmitted ||
+                s.status == AppConstants.submissionStatusFlagged)
+            .toList();
+
+        // Calculate stats
+        int totalSubs = submittedSubs.length;
+        int flagged =
+            submittedSubs.where((s) => s.isFlagged).length;
+        int totalScore = submittedSubs.fold(0, (sum, s) => sum + s.score);
+        int avgScore = totalSubs > 0 ? (totalScore / totalSubs).round() : 0;
+        int highScore = submittedSubs.isEmpty
+            ? 0
+            : submittedSubs
+                .map((s) => s.score)
+                .reduce((a, b) => a > b ? a : b);
+        int lowScore = submittedSubs.isEmpty
+            ? 0
+            : submittedSubs
+                .map((s) => s.score)
+                .reduce((a, b) => a < b ? a : b);
+
+        // Get class students count for "absent"
+        final students = ref.watch(studentsByClassListProvider(exam.classId));
+        final absentCount = students.length - totalSubs;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('${exam.title} - Results'),
+            centerTitle: true,
+          ),
+          body: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(examSubmissionsStreamProvider(examId));
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Stats Grid ──
+                  Row(
+                    children: [
+                      _StatCard(
+                        label: 'Total',
+                        value: '${students.length}',
+                        icon: Icons.people_outline,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'Submitted',
+                        value: '$totalSubs',
+                        icon: Icons.check_circle_outline,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'Absent',
+                        value: '${absentCount < 0 ? 0 : absentCount}',
+                        icon: Icons.person_off_outlined,
+                        color: Colors.orange,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'Flagged',
+                        value: '$flagged',
+                        icon: Icons.flag_outlined,
+                        color: Colors.red,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _StatCard(
+                        label: 'Avg Score',
+                        value: '$avgScore',
+                        icon: Icons.bar_chart_outlined,
+                        color: Colors.purple,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'High Score',
+                        value: '$highScore',
+                        icon: Icons.arrow_upward,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'Low Score',
+                        value: '$lowScore',
+                        icon: Icons.arrow_downward,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatCard(
+                        label: 'Total Marks',
+                        value: '${exam.totalMarks}',
+                        icon: Icons.stars_outlined,
+                        color: Colors.orange,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Submissions List ──
+                  Text(
+                    'Student Results',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (submittedSubs.isEmpty)
+                    const EmptyState(
+                      icon: Icons.inbox_outlined,
+                      title: 'No Submissions Yet',
+                      subtitle:
+                          'Students who submit their exams will appear here',
+                    )
+                  else
+                    ...submittedSubs.map((sub) => _StudentResultCard(
+                          submission: sub,
+                          totalMarks: exam.totalMarks,
+                          passingScore: exam.passingScore,
+                        )),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 10,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentResultCard extends ConsumerWidget {
+  final SubmissionData submission;
+  final int totalMarks;
+  final int passingScore;
+
+  const _StudentResultCard({
+    required this.submission,
+    required this.totalMarks,
+    required this.passingScore,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final passed = submission.percentage >= passingScore;
+    final timeMin = submission.timeSpent ~/ 60;
+    final timeSec = submission.timeSpent % 60;
+
+    // Get student name
+    final students = ref.watch(allStudentsProvider);
+    final student = students
+        .where((s) => s.id == submission.studentId)
+        .firstOrNull;
+    final studentName = student?.fullName ?? 'Unknown Student';
+    final studentCode = student?.studentCode ?? '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor:
+              (passed ? Colors.green : Colors.red).withOpacity(0.1),
+          child: Text(
+            '${submission.percentage}%',
+            style: TextStyle(
+              color: passed ? Colors.green : Colors.red,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                studentName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (submission.isFlagged)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'FLAGGED',
+                  style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$studentCode · ${submission.score}/$totalMarks marks · ${timeMin}m ${timeSec}s',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+            if (submission.submittedAt != null)
+              Text(
+                'Submitted: ${DateFormat('MMM dd, hh:mm a').format(submission.submittedAt!)}',
+                style: TextStyle(color: Colors.grey[500], fontSize: 11),
+              ),
+          ],
+        ),
+        trailing: Icon(
+          passed ? Icons.check_circle : Icons.cancel,
+          color: passed ? Colors.green : Colors.red,
+        ),
+      ),
+    );
+  }
+}

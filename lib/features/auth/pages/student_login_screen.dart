@@ -47,12 +47,18 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
         role: userData['role'] as String,
         name: userData['fullName'] as String,
         userId: userData['id'] as String,
+        classId: userData['classId'] as String?,
+        teacherId: userData['teacherId'] as String?,
+        studentCode: userData['studentCode'] as String?,
       );
 
       // Update providers
       ref.read(userRoleProvider.notifier).state = userData['role'] as String;
       ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
       ref.read(userIdProvider.notifier).state = userData['id'] as String;
+      ref.read(studentClassIdProvider.notifier).state = userData['classId'] as String?;
+      ref.read(studentTeacherIdProvider.notifier).state = userData['teacherId'] as String?;
+      ref.read(studentCodeProvider.notifier).state = userData['studentCode'] as String?;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -22,11 +22,16 @@ import 'features/exams/pages/exam_list_screen.dart';
 import 'features/exams/pages/exam_form_screen.dart';
 import 'features/exams/pages/question_builder_screen.dart';
 import 'features/exams/pages/exam_detail_screen.dart';
+import 'features/student_exams/pages/student_exam_list_screen.dart';
+import 'features/student_exams/pages/exam_taking_screen.dart';
+import 'features/student_results/pages/student_results_screen.dart';
+import 'features/teacher_results/pages/exam_results_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
 import 'providers/question_provider.dart';
+import 'providers/submission_provider.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -241,6 +246,14 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return QuestionBuilderScreen(examId: examId);
                     },
                   ),
+                  // ── Exam Results (Teacher View) ──
+                  GoRoute(
+                    path: 'results',
+                    builder: (context, state) {
+                      final examId = state.pathParameters['examId']!;
+                      return ExamResultsScreen(examId: examId);
+                    },
+                  ),
                 ],
               ),
             ],
@@ -252,6 +265,41 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/student',
         builder: (context, state) => const StudentDashboard(),
+        routes: [
+          // ── Student Exams ──
+          GoRoute(
+            path: 'exams',
+            builder: (context, state) => const StudentExamListScreen(),
+            routes: [
+              // ── Take Exam ──
+              GoRoute(
+                path: ':examId/take',
+                builder: (context, state) {
+                  final examId = state.pathParameters['examId']!;
+                  return ExamTakingScreen(examId: examId);
+                },
+              ),
+            ],
+          ),
+
+          // ── Student Results ──
+          GoRoute(
+            path: 'results',
+            builder: (context, state) => const StudentResultsScreen(),
+            routes: [
+              GoRoute(
+                path: ':submissionId',
+                builder: (context, state) {
+                  final submissionId =
+                      state.pathParameters['submissionId']!;
+                  return StudentResultDetailScreen(
+                    submissionId: submissionId,
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     ],
   );

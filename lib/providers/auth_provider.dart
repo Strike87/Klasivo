@@ -37,6 +37,27 @@ final userIdProvider = StateProvider<String?>((ref) {
   return box.get('userId') as String?;
 });
 
+// ─── Student Class ID Provider (persisted with Hive) ─────────────────────────
+
+final studentClassIdProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('studentClassId') as String?;
+});
+
+// ─── Student Teacher ID Provider (persisted with Hive) ───────────────────────
+
+final studentTeacherIdProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('studentTeacherId') as String?;
+});
+
+// ─── Student Code Provider (persisted with Hive) ─────────────────────────────
+
+final studentCodeProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('studentCode') as String?;
+});
+
 // ─── Auth Loading Provider ───────────────────────────────────────────────────
 
 final authLoadingProvider = StateProvider<bool>((ref) => false);
@@ -51,11 +72,17 @@ Future<void> saveAuthData({
   required String role,
   required String name,
   required String userId,
+  String? classId,
+  String? teacherId,
+  String? studentCode,
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('userRole', role);
   await box.put('userName', name);
   await box.put('userId', userId);
+  if (classId != null) await box.put('studentClassId', classId);
+  if (teacherId != null) await box.put('studentTeacherId', teacherId);
+  if (studentCode != null) await box.put('studentCode', studentCode);
 }
 
 // ─── Helper: Clear auth data ─────────────────────────────────────────────────
@@ -65,4 +92,7 @@ Future<void> clearAuthData() async {
   await box.delete('userRole');
   await box.delete('userName');
   await box.delete('userId');
+  await box.delete('studentClassId');
+  await box.delete('studentTeacherId');
+  await box.delete('studentCode');
 }

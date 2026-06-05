@@ -374,6 +374,34 @@ class ExamDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+
+                // ── View Results Button (for published/completed exams) ──
+                if (!isDraft)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: () => context.go(
+                          '/teacher/exams/$examId/results',
+                        ),
+                        icon: const Icon(Icons.assessment_outlined),
+                        label: const Text(
+                          'View Results',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
