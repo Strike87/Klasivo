@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../../providers/auth_provider.dart';
-import 'teacher_registration_screen.dart';
+import '../../../core/config/app_constants.dart';
 
 class TeacherLoginScreen extends ConsumerStatefulWidget {
   const TeacherLoginScreen({Key? key}) : super(key: key);
@@ -32,13 +34,26 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
     }
 
     setState(() => _isLoading = true);
+    ref.read(authErrorProvider.notifier).state = null;
 
     try {
       final authService = ref.read(authServiceProvider);
-      await authService.loginTeacher(
+      final userData = await authService.loginTeacher(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      // Save auth data locally for role-based navigation
+      await saveAuthData(
+        role: userData['role'] as String,
+        name: userData['fullName'] as String,
+        userId: userData['id'] as String,
+      );
+
+      // Update providers
+      ref.read(userRoleProvider.notifier).state = userData['role'] as String;
+      ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
+      ref.read(userIdProvider.notifier).state = userData['id'] as String;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -47,16 +62,23 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Navigate to teacher dashboard
+        context.go('/teacher');
       }
     } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      if (e.code == 'user-not-found') {
+        message = 'No account found with this email';
+      } else if (e.code == 'wrong-password') {
+        message = 'Incorrect password';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Please try again later';
+      } else if (e.code == 'invalid-credential') {
+        message = 'Invalid email or password';
+      }
+      ref.read(authErrorProvider.notifier).state = message;
       if (mounted) {
-        String message = 'Login failed';
-        if (e.code == 'user-not-found') {
-          message = 'User not found';
-        } else if (e.code == 'wrong-password') {
-          message = 'Wrong password';
-        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -65,10 +87,11 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
         );
       }
     } catch (e) {
+      ref.read(authErrorProvider.notifier).state = e.toString();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(e.toString().replaceAll('Exception: ', '')),
             backgroundColor: Colors.red,
           ),
         );
@@ -100,10 +123,16 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Teacher Login'),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/auth'),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -159,6 +188,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                       keyboardType: TextInputType.emailAddress,
                       validator: _validateEmail,
                       enabled: !_isLoading,
+                      autofillHints: const [AutofillHints.email],
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -185,6 +215,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                       obscureText: _obscurePassword,
                       validator: _validatePassword,
                       enabled: !_isLoading,
+                      autofillHints: const [AutofillHints.password],
                     ),
                     const SizedBox(height: 32),
                     SizedBox(
@@ -225,12 +256,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                         TextButton(
                           onPressed: _isLoading
                               ? null
-                              : () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const TeacherRegistrationScreen(),
-                                    ),
-                                  ),
+                              : () => context.go('/auth/teacher-register'),
                           child: const Text('Register'),
                         ),
                       ],

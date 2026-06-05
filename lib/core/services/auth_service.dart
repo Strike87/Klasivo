@@ -7,8 +7,9 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Teacher registration
-  Future<void> registerTeacher({
+  // ─── Teacher Registration ────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> registerTeacher({
     required String email,
     required String password,
     required String fullName,
@@ -23,27 +24,63 @@ class AuthService {
         'role': AppConstants.roleTeacher,
         'fullName': fullName,
         'email': email,
-        'createdAt': DateTime.now(),
+        'createdAt': FieldValue.serverTimestamp(),
       });
+
+      return {
+        'id': user.uid,
+        'role': AppConstants.roleTeacher,
+        'fullName': fullName,
+        'email': email,
+      };
     } catch (e) {
       rethrow;
     }
   }
 
-  // Teacher login
-  Future<void> loginTeacher({
+  // ─── Teacher Login ───────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> loginTeacher({
     required String email,
     required String password,
   }) async {
     try {
-      await FirebaseService.loginWithEmail(email, password);
+      final userCredential =
+          await FirebaseService.loginWithEmail(email, password);
+      final user = userCredential.user!;
+
+      // Fetch user data from Firestore to get role and name
+      final userDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        throw Exception('User data not found. Please register again.');
+      }
+
+      final userData = userDoc.data()!;
+      final role = userData['role'] as String?;
+
+      if (role != AppConstants.roleTeacher) {
+        await _auth.signOut();
+        throw Exception('This account is not a teacher account.');
+      }
+
+      return {
+        'id': user.uid,
+        'role': role ?? AppConstants.roleTeacher,
+        'fullName': userData['fullName'] ?? 'Teacher',
+        'email': userData['email'] ?? email,
+      };
     } catch (e) {
       rethrow;
     }
   }
 
-  // Student login
-  Future<void> loginStudent({
+  // ─── Student Login ───────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> loginStudent({
     required String studentCode,
     required String password,
   }) async {
@@ -56,21 +93,31 @@ class AuthService {
           .get();
 
       if (snapshot.docs.isEmpty) {
-        throw Exception('Student not found');
+        throw Exception('Student not found. Please check your student code.');
       }
 
-      final student = snapshot.docs.first.data();
+      final studentDoc = snapshot.docs.first;
+      final student = studentDoc.data();
+
       if (student['password'] != password) {
-        throw Exception('Invalid password');
+        throw Exception('Invalid password. Please try again.');
       }
 
-      // Store student info locally or in session
+      return {
+        'id': studentDoc.id,
+        'role': AppConstants.roleStudent,
+        'fullName': student['fullName'] ?? 'Student',
+        'studentCode': student['studentCode'],
+        'className': student['className'],
+        'teacherId': student['teacherId'],
+      };
     } catch (e) {
       rethrow;
     }
   }
 
-  // Logout
+  // ─── Logout ──────────────────────────────────────────────────────────────
+
   Future<void> logout() async {
     try {
       await FirebaseService.logout();
@@ -79,6 +126,11 @@ class AuthService {
     }
   }
 
-  // Get current user
+  // ─── Get Current User ────────────────────────────────────────────────────
+
   User? get currentUser => FirebaseService.currentUser;
+
+  // ─── Check if user is logged in ──────────────────────────────────────────
+
+  bool get isLoggedIn => _auth.currentUser != null;
 }

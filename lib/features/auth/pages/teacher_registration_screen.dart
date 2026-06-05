@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../../providers/auth_provider.dart';
+import '../../../core/config/app_constants.dart';
 
 class TeacherRegistrationScreen extends ConsumerStatefulWidget {
   const TeacherRegistrationScreen({Key? key}) : super(key: key);
@@ -37,14 +40,27 @@ class _TeacherRegistrationScreenState
     }
 
     setState(() => _isLoading = true);
+    ref.read(authErrorProvider.notifier).state = null;
 
     try {
       final authService = ref.read(authServiceProvider);
-      await authService.registerTeacher(
+      final userData = await authService.registerTeacher(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         fullName: _fullNameController.text.trim(),
       );
+
+      // Save auth data locally for role-based navigation
+      await saveAuthData(
+        role: userData['role'] as String,
+        name: userData['fullName'] as String,
+        userId: userData['id'] as String,
+      );
+
+      // Update providers
+      ref.read(userRoleProvider.notifier).state = userData['role'] as String;
+      ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
+      ref.read(userIdProvider.notifier).state = userData['id'] as String;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -53,22 +69,34 @@ class _TeacherRegistrationScreenState
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pop();
+        context.go('/teacher');
       }
     } on FirebaseAuthException catch (e) {
+      String message = 'Registration failed';
+      if (e.code == 'email-already-in-use') {
+        message = 'This email is already registered';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address';
+      } else {
+        message = e.message ?? 'Registration failed';
+      }
+      ref.read(authErrorProvider.notifier).state = message;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.message ?? 'Registration failed'),
+            content: Text(message),
             backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
+      ref.read(authErrorProvider.notifier).state = e.toString();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(e.toString().replaceAll('Exception: ', '')),
             backgroundColor: Colors.red,
           ),
         );
@@ -127,6 +155,10 @@ class _TeacherRegistrationScreenState
       appBar: AppBar(
         title: const Text('Teacher Registration'),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/auth/teacher-login'),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -181,6 +213,7 @@ class _TeacherRegistrationScreenState
                       ),
                       validator: _validateFullName,
                       enabled: !_isLoading,
+                      textCapitalization: TextCapitalization.words,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -196,6 +229,7 @@ class _TeacherRegistrationScreenState
                       keyboardType: TextInputType.emailAddress,
                       validator: _validateEmail,
                       enabled: !_isLoading,
+                      autofillHints: const [AutofillHints.email],
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -222,6 +256,7 @@ class _TeacherRegistrationScreenState
                       obscureText: _obscurePassword,
                       validator: _validatePassword,
                       enabled: !_isLoading,
+                      autofillHints: const [AutofillHints.newPassword],
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -288,7 +323,7 @@ class _TeacherRegistrationScreenState
                         TextButton(
                           onPressed: _isLoading
                               ? null
-                              : () => Navigator.of(context).pop(),
+                              : () => context.go('/auth/teacher-login'),
                           child: const Text('Login'),
                         ),
                       ],

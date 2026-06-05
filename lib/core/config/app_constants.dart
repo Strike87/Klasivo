@@ -1,4 +1,7 @@
 class AppConstants {
+  // Local Storage
+  static const String authBox = 'auth_box';
+
   // Firebase Collections
   static const String usersCollection = 'users';
   static const String studentsCollection = 'students';
