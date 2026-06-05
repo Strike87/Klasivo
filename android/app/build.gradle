@@ -65,10 +65,16 @@ flutter {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+
+    // Import the Firebase BoM
+    implementation platform('com.google.firebase:firebase-bom:34.14.0')
+
+    // Firebase SDKs (versions managed by BoM — no version numbers needed)
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-storage'
+
+    // MultiDex support
     implementation 'androidx.multidex:multidex:2.0.1'
 }
