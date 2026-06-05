@@ -13,7 +13,14 @@ import 'features/auth/pages/teacher_registration_screen.dart';
 import 'features/auth/pages/student_login_screen.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
+import 'features/classes/pages/class_list_screen.dart';
+import 'features/classes/pages/class_form_screen.dart';
+import 'features/students/pages/student_list_screen.dart';
+import 'features/students/pages/student_form_screen.dart';
+import 'features/students/pages/all_students_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/class_provider.dart';
+import 'providers/student_provider.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -64,14 +71,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ── Splash screen logic ──
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          // Already logged in, go to the appropriate dashboard
-          if (userRole == AppConstants.roleTeacher) {
-            return '/teacher';
-          } else if (userRole == AppConstants.roleStudent) {
-            return '/student';
-          }
+          if (userRole == AppConstants.roleTeacher) return '/teacher';
+          if (userRole == AppConstants.roleStudent) return '/student';
         }
-        // Not logged in, proceed to splash then role selection
         return null;
       }
 
@@ -133,6 +135,69 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/teacher',
         builder: (context, state) => const TeacherDashboard(),
+        routes: [
+          // ── Classes ──
+          GoRoute(
+            path: 'classes',
+            builder: (context, state) => const ClassListScreen(),
+            routes: [
+              GoRoute(
+                path: 'create',
+                builder: (context, state) => const ClassFormScreen(
+                  isEditing: false,
+                ),
+              ),
+              GoRoute(
+                path: 'edit/:classId',
+                builder: (context, state) {
+                  final classData = state.extra as ClassData?;
+                  return ClassFormScreen(
+                    isEditing: true,
+                    classData: classData,
+                  );
+                },
+              ),
+              // ── Students in Class ──
+              GoRoute(
+                path: ':classId/students',
+                builder: (context, state) {
+                  final classId = state.pathParameters['classId']!;
+                  return StudentListScreen(classId: classId);
+                },
+                routes: [
+                  GoRoute(
+                    path: 'create',
+                    builder: (context, state) {
+                      final classId = state.pathParameters['classId']!;
+                      return StudentFormScreen(
+                        classId: classId,
+                        isEditing: false,
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'edit/:studentId',
+                    builder: (context, state) {
+                      final classId = state.pathParameters['classId']!;
+                      final studentData = state.extra as StudentData?;
+                      return StudentFormScreen(
+                        classId: classId,
+                        isEditing: true,
+                        studentData: studentData,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // ── All Students ──
+          GoRoute(
+            path: 'students',
+            builder: (context, state) => const AllStudentsScreen(),
+          ),
+        ],
       ),
 
       // ── Student Routes ──

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../providers/auth_provider.dart';
+import '../../providers/class_provider.dart';
+import '../../providers/student_provider.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../widgets/common_widgets.dart';
 
 class TeacherDashboard extends ConsumerWidget {
   const TeacherDashboard({Key? key}) : super(key: key);
@@ -11,6 +15,8 @@ class TeacherDashboard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authStateProvider);
     final userName = ref.watch(userNameProvider);
+    final totalClasses = ref.watch(totalClassesProvider);
+    final totalStudents = ref.watch(totalStudentsProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -26,30 +32,16 @@ class TeacherDashboard extends ConsumerWidget {
           PopupMenuButton<String>(
             onSelected: (value) async {
               if (value == 'logout') {
-                final confirmed = await showDialog<bool>(
+                final confirmed = await showConfirmationDialog(
                   context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text(
-                      'Are you sure you want to logout?',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        child: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
+                  title: 'Logout',
+                  message: 'Are you sure you want to logout?',
+                  confirmLabel: 'Logout',
+                  isDangerous: true,
                 );
                 if (confirmed == true && context.mounted) {
-                  await ref.read(authServiceProvider.notifier).logout();
+                  await clearAuthData();
+                  await ref.read(authServiceProvider).logout();
                   if (context.mounted) {
                     context.go('/auth');
                   }
@@ -57,16 +49,6 @@ class TeacherDashboard extends ConsumerWidget {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline),
-                    SizedBox(width: 8),
-                    Text('Profile'),
-                  ],
-                ),
-              ),
               const PopupMenuItem(
                 value: 'logout',
                 child: Row(
@@ -82,25 +64,15 @@ class TeacherDashboard extends ConsumerWidget {
         ],
       ),
       body: authState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 16),
-              Text('Error: $error'),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => context.go('/auth'),
-                child: const Text('Go to Login'),
-              ),
-            ],
-          ),
+        loading: () => const LoadingIndicator(),
+        error: (error, stack) => ErrorWidgetCustom(
+          message: 'Error: $error',
+          onRetry: () => ref.invalidate(authStateProvider),
         ),
         data: (user) => RefreshIndicator(
           onRefresh: () async {
-            // TODO: Refresh dashboard data
+            ref.invalidate(classesStreamProvider);
+            ref.invalidate(allStudentsStreamProvider);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -163,22 +135,18 @@ class TeacherDashboard extends ConsumerWidget {
                   children: [
                     _StatCard(
                       title: 'Total Classes',
-                      value: '0',
+                      value: '$totalClasses',
                       icon: Icons.class_outlined,
                       color: Colors.blue,
-                      onTap: () {
-                        // TODO: Navigate to classes
-                      },
+                      onTap: () => context.go('/teacher/classes'),
                     ),
                     const SizedBox(width: 12),
                     _StatCard(
                       title: 'Total Students',
-                      value: '0',
+                      value: '$totalStudents',
                       icon: Icons.people_outlined,
                       color: Colors.green,
-                      onTap: () {
-                        // TODO: Navigate to students
-                      },
+                      onTap: () => context.go('/teacher/students'),
                     ),
                   ],
                 ),
@@ -231,78 +199,219 @@ class TeacherDashboard extends ConsumerWidget {
                       icon: Icons.class_outlined,
                       label: 'Add Class',
                       color: Colors.green,
-                      onTap: () {
-                        // TODO: Navigate to create class
-                      },
+                      onTap: () => context.go('/teacher/classes/create'),
                     ),
                     const SizedBox(width: 12),
                     _QuickAction(
                       icon: Icons.person_add_outlined,
                       label: 'Add Student',
                       color: Colors.orange,
-                      onTap: () {
-                        // TODO: Navigate to add student
-                      },
+                      onTap: () => context.go('/teacher/classes'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
 
-                // ── Recent Exams ──
-                Text(
-                  'Recent Exams',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.quiz_outlined,
-                            size: 48,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No exams yet',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Create your first exam to get started',
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                // ── Recent Classes ──
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'My Classes',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: () => context.go('/teacher/classes'),
+                      child: const Text('View All'),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 12),
+                _RecentClassesList(),
+                const SizedBox(height: 24),
+
+                // ── Recent Students ──
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Students',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.go('/teacher/students'),
+                      child: const Text('View All'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _RecentStudentsList(),
               ],
             ),
           ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Navigate to create exam
-        },
+        onPressed: () => context.go('/teacher/classes/create'),
         icon: const Icon(Icons.add),
-        label: const Text('New Exam'),
+        label: const Text('New Class'),
       ),
     );
   }
 }
+
+// ─── Recent Classes Widget ───────────────────────────────────────────────────
+
+class _RecentClassesList extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final classes = ref.watch(classesProvider);
+    final theme = Theme.of(context);
+
+    if (classes.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.class_outlined, size: 40, color: Colors.grey[400]),
+                const SizedBox(height: 8),
+                Text(
+                  'No classes yet',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Create your first class to get started',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Show top 3 classes
+    final recentClasses = classes.take(3).toList();
+
+    return Column(
+      children: recentClasses.map((classData) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          elevation: 0.5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.class_outlined,
+                  color: Colors.blue, size: 24),
+            ),
+            title: Text(
+              classData.name,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${classData.studentCount} students${classData.grade != null ? ' · ${classData.grade}' : ''}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: () => context
+                .go('/teacher/classes/${classData.id}/students'),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ─── Recent Students Widget ──────────────────────────────────────────────────
+
+class _RecentStudentsList extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final students = ref.watch(allStudentsProvider);
+    final theme = Theme.of(context);
+
+    if (students.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.people_outline, size: 40, color: Colors.grey[400]),
+                const SizedBox(height: 8),
+                Text(
+                  'No students yet',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add students to your classes',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Show top 5 students
+    final recentStudents = students.take(5).toList();
+
+    return Column(
+      children: recentStudents.map((student) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 6),
+          elevation: 0.5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: ListTile(
+            dense: true,
+            leading: CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.green.withOpacity(0.1),
+              child: Text(
+                student.fullName.isNotEmpty
+                    ? student.fullName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            title: Text(
+              student.fullName,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            subtitle: Text(
+              '${student.studentCode} · ${student.className}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ─── Stat Card ───────────────────────────────────────────────────────────────
 
 class _StatCard extends StatelessWidget {
   final String title;
@@ -365,6 +474,8 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+
+// ─── Quick Action ────────────────────────────────────────────────────────────
 
 class _QuickAction extends StatelessWidget {
   final IconData icon;
