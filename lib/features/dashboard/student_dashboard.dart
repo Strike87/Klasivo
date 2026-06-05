@@ -6,9 +6,8 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/exam_provider.dart';
 import '../../providers/submission_provider.dart';
-import '../../providers/student_provider.dart';
-import '../../../core/config/app_constants.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../core/config/app_constants.dart';
+import '../../widgets/common_widgets.dart';
 
 class StudentDashboard extends ConsumerWidget {
   const StudentDashboard({Key? key}) : super(key: key);
@@ -22,12 +21,8 @@ class StudentDashboard extends ConsumerWidget {
     final submissions = ref.watch(studentSubmissionsProvider);
     final theme = Theme.of(context);
 
-    // Get class name from student data
-    final students = ref.watch(allStudentsProvider);
-    final currentStudent = students.isNotEmpty
-        ? students.where((s) => s.id == ref.watch(userIdProvider)).firstOrNull
-        : null;
-    final className = currentStudent?.className ?? '-';
+    // Get class name from persisted auth data
+    final className = ref.watch(studentClassNameProvider) ?? '-';
 
     return Scaffold(
       appBar: AppBar(

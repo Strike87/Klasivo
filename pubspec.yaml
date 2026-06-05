@@ -22,7 +22,6 @@ dependencies:
   firebase_core: ^2.24.0
   firebase_auth: ^4.14.0
   cloud_firestore: ^4.14.0
-  firebase_storage: ^11.5.0
   firebase_messaging: ^14.6.0
 
   # Notifications
@@ -31,7 +30,6 @@ dependencies:
   # Serialization
   freezed_annotation: ^2.4.0
   json_annotation: ^4.8.0
-  json_serializable: ^6.7.0
 
   # Local Storage
   hive_flutter: ^1.1.0

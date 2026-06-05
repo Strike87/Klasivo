@@ -214,7 +214,7 @@ class QuestionService {
           .get();
 
       if (snapshot.docs.isEmpty) return 0;
-      return (snapshot.docs.first.data()['order'] as int?) ?? 0 + 1;
+      return ((snapshot.docs.first.data()['order'] as int?) ?? 0) + 1;
     } catch (e) {
       return 0;
     }

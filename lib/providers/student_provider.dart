@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../core/config/app_constants.dart';
 import '../core/services/student_service.dart';
 import 'auth_provider.dart';
 
@@ -72,7 +71,8 @@ class StudentData {
   final String className;
   final String fullName;
   final String studentCode;
-  final String password;
+  // Note: password is NOT exposed in the data model for security.
+  // It is only accessed directly in AuthService for login verification.
   final String? grade;
   final DateTime? createdAt;
 
@@ -83,7 +83,6 @@ class StudentData {
     required this.className,
     required this.fullName,
     required this.studentCode,
-    required this.password,
     this.grade,
     this.createdAt,
   });
@@ -97,7 +96,6 @@ class StudentData {
       className: data['className'] ?? '',
       fullName: data['fullName'] ?? '',
       studentCode: data['studentCode'] ?? '',
-      password: data['password'] ?? '',
       grade: data['grade'],
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
@@ -111,7 +109,6 @@ class StudentData {
       'className': className,
       'fullName': fullName,
       'studentCode': studentCode,
-      'password': password,
       'grade': grade,
       'createdAt': createdAt,
     };

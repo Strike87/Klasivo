@@ -509,7 +509,16 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
         _optionBController.text = q.options.length > 1 ? q.options[1] : '';
         _optionCController.text = q.options.length > 2 ? q.options[2] : '';
         _optionDController.text = q.options.length > 3 ? q.options[3] : '';
-        _selectedCorrectOption = q.correctAnswer;
+        // Reverse-lookup: find which option matches the correctAnswer text
+        if (q.correctAnswer == _optionAController.text) {
+          _selectedCorrectOption = 'A';
+        } else if (q.correctAnswer == _optionBController.text) {
+          _selectedCorrectOption = 'B';
+        } else if (q.correctAnswer == _optionCController.text) {
+          _selectedCorrectOption = 'C';
+        } else if (q.correctAnswer == _optionDController.text) {
+          _selectedCorrectOption = 'D';
+        }
       } else if (q.questionType == AppConstants.questionTypeTrueFalse) {
         _tfCorrectAnswer = q.correctAnswer == 'True';
       } else {
@@ -566,17 +575,24 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
         // ── Update existing question ──
         if (widget.questionType ==
             AppConstants.questionTypeMultipleChoice) {
+          // Store the actual option text as correctAnswer, not the label
+          final options = [
+            _optionAController.text.trim(),
+            _optionBController.text.trim(),
+            _optionCController.text.trim(),
+            _optionDController.text.trim(),
+          ];
+          final correctAnswerText = _selectedCorrectOption == 'A' ? options[0]
+              : _selectedCorrectOption == 'B' ? options[1]
+              : _selectedCorrectOption == 'C' ? options[2]
+              : options[3];
+
           await widget.questionService.updateQuestion(
             questionId: widget.existingQuestion!.id,
             examId: widget.examId,
             questionText: _questionController.text.trim(),
-            options: [
-              _optionAController.text.trim(),
-              _optionBController.text.trim(),
-              _optionCController.text.trim(),
-              _optionDController.text.trim(),
-            ],
-            correctAnswer: _selectedCorrectOption!,
+            options: options,
+            correctAnswer: correctAnswerText,
             marks: int.parse(_marksController.text.trim()),
           );
         } else if (widget.questionType ==
@@ -606,16 +622,23 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
         // ── Create new question ──
         if (widget.questionType ==
             AppConstants.questionTypeMultipleChoice) {
+          // Store the actual option text as correctAnswer, not the label
+          final options = [
+            _optionAController.text.trim(),
+            _optionBController.text.trim(),
+            _optionCController.text.trim(),
+            _optionDController.text.trim(),
+          ];
+          final correctAnswerText = _selectedCorrectOption == 'A' ? options[0]
+              : _selectedCorrectOption == 'B' ? options[1]
+              : _selectedCorrectOption == 'C' ? options[2]
+              : options[3];
+
           await widget.questionService.addMultipleChoiceQuestion(
             examId: widget.examId,
             questionText: _questionController.text.trim(),
-            options: [
-              _optionAController.text.trim(),
-              _optionBController.text.trim(),
-              _optionCController.text.trim(),
-              _optionDController.text.trim(),
-            ],
-            correctAnswer: _selectedCorrectOption!,
+            options: options,
+            correctAnswer: correctAnswerText,
             marks: int.parse(_marksController.text.trim()),
             order: nextOrder,
           );

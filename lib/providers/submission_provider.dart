@@ -62,7 +62,6 @@ final examSubmissionsProvider =
 
 final studentExamStatsProvider = Provider<StudentExamStats>((ref) {
   final submissions = ref.watch(studentSubmissionsProvider);
-  final exams = ref.watch(examsProvider);
   final classId = ref.watch(studentClassIdProvider);
   final now = DateTime.now();
 
@@ -70,14 +69,23 @@ final studentExamStatsProvider = Provider<StudentExamStats>((ref) {
   int completed = 0;
   double avgScore = 0;
 
-  // Count upcoming/completed exams for the student's class
-  for (final exam in exams) {
-    if (exam.classId != classId) continue;
-    if (exam.status != AppConstants.statusPublished) continue;
-    if (exam.endDate.isBefore(now)) {
-      completed++;
-    } else {
-      upcoming++;
+  // Use class-based exam stream instead of teacher-filtered examsProvider
+  if (classId != null && classId.isNotEmpty) {
+    final examsAsync = ref.watch(classExamsStreamProvider(classId));
+    final exams = examsAsync.when(
+      data: (snapshot) =>
+          snapshot.docs.map((doc) => ExamData.fromFirestore(doc)).toList(),
+      loading: () => <ExamData>[],
+      error: (_, __) => <ExamData>[],
+    );
+
+    for (final exam in exams) {
+      if (exam.status != AppConstants.statusPublished) continue;
+      if (exam.endDate.isBefore(now)) {
+        completed++;
+      } else {
+        upcoming++;
+      }
     }
   }
 

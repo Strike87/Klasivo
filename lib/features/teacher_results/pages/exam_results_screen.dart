@@ -6,7 +6,6 @@ import '../../../providers/exam_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/services/submission_service.dart';
 import '../../../widgets/common_widgets.dart';
 
 class ExamResultsScreen extends ConsumerWidget {

@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
@@ -58,6 +57,13 @@ final studentCodeProvider = StateProvider<String?>((ref) {
   return box.get('studentCode') as String?;
 });
 
+// ─── Student Class Name Provider (persisted with Hive) ────────────────────────
+
+final studentClassNameProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('studentClassName') as String?;
+});
+
 // ─── Auth Loading Provider ───────────────────────────────────────────────────
 
 final authLoadingProvider = StateProvider<bool>((ref) => false);
@@ -75,6 +81,7 @@ Future<void> saveAuthData({
   String? classId,
   String? teacherId,
   String? studentCode,
+  String? className,
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('userRole', role);
@@ -83,6 +90,7 @@ Future<void> saveAuthData({
   if (classId != null) await box.put('studentClassId', classId);
   if (teacherId != null) await box.put('studentTeacherId', teacherId);
   if (studentCode != null) await box.put('studentCode', studentCode);
+  if (className != null) await box.put('studentClassName', className);
 }
 
 // ─── Helper: Clear auth data ─────────────────────────────────────────────────
@@ -95,4 +103,5 @@ Future<void> clearAuthData() async {
   await box.delete('studentClassId');
   await box.delete('studentTeacherId');
   await box.delete('studentCode');
+  await box.delete('studentClassName');
 }
