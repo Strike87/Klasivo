@@ -7,15 +7,24 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      return web;
+      throw UnsupportedError(
+        'DefaultFirebaseOptions have not been configured for web - '
+        'you can reconfigure this by running the FlutterFire CLI again.',
+      );
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        return ios;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for iOS - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.macOS:
-        return macos;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for macos - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.windows:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for windows - '
@@ -33,43 +42,11 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyD...',
-    appId: '1:...:web:...',
-    messagingSenderId: '...',
-    projectId: 'smart-exam-pro',
-    authDomain: 'smart-exam-pro.firebaseapp.com',
-    databaseURL: 'https://smart-exam-pro.firebaseio.com',
-    storageBucket: 'smart-exam-pro.appspot.com',
-    measurementId: 'G-...',
-  );
-
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSy...',
-    appId: '1:...:android:...',
-    messagingSenderId: '...',
-    projectId: 'smart-exam-pro',
-    databaseURL: 'https://smart-exam-pro.firebaseio.com',
-    storageBucket: 'smart-exam-pro.appspot.com',
-  );
-
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSy...',
-    appId: '1:...:ios:...',
-    messagingSenderId: '...',
-    projectId: 'smart-exam-pro',
-    databaseURL: 'https://smart-exam-pro.firebaseio.com',
-    storageBucket: 'smart-exam-pro.appspot.com',
-    iosBundleId: 'com.example.smartExamPro',
-  );
-
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSy...',
-    appId: '1:...:macos:...',
-    messagingSenderId: '...',
-    projectId: 'smart-exam-pro',
-    databaseURL: 'https://smart-exam-pro.firebaseio.com',
-    storageBucket: 'smart-exam-pro.appspot.com',
-    iosBundleId: 'com.example.smartExamPro',
+    apiKey: 'AIzaSyCsKzPJuXgM7tyVrdGLj26EGkUlCe4mzsQ',
+    appId: '1:1024604033166:android:703804057597d96705f9df',
+    messagingSenderId: '1024604033166',
+    projectId: 'smart-exam-pro-3d1cf',
+    storageBucket: 'smart-exam-pro-3d1cf.firebasestorage.app',
   );
 }
