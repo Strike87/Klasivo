@@ -1,31 +1,21 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Utility class for exam security features.
 /// Handles screenshot prevention, screen recording detection, and app lifecycle monitoring.
 class ExamSecurityService {
-  static const _channel = MethodChannel('com.smartexampro.security');
+  static const _channel = MethodChannel('com.smartexampro.app/security');
 
   // ─── Prevent Screenshots ──────────────────────────────────────────────────
 
   /// Enable screenshot prevention (Android only).
-  /// Uses FLAG_SECURE to prevent screen capture and recording.
+  /// Uses FLAG_SECURE via platform channel to prevent screen capture and recording.
   static Future<void> enableScreenshotProtection() async {
     try {
-      // Use flutter_windowmanager as a fallback
-      // The platform channel approach is preferred for production
       await _channel.invokeMethod('enableScreenshotProtection');
     } on PlatformException catch (_) {
-      // Fallback: flutter_windowmanager
-      try {
-        // ignore: depend_on_referenced_packages
-        // await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
-        // Note: flutter_windowmanager may need additional setup
-      } catch (_) {}
+      // Platform error — FLAG_SECURE not applied
     } on MissingPluginException catch (_) {
-      // Platform channel not set up — this is expected in development
-      // In production, you would set up the native Android code for FLAG_SECURE
+      // Platform channel not set up — expected if native code not yet configured
     }
   }
 
@@ -34,9 +24,9 @@ class ExamSecurityService {
     try {
       await _channel.invokeMethod('disableScreenshotProtection');
     } on PlatformException catch (_) {
-      // Fallback
+      // Platform error
     } on MissingPluginException catch (_) {
-      // Expected in development
+      // Platform channel not set up
     }
   }
 
