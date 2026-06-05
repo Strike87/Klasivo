@@ -18,9 +18,15 @@ import 'features/classes/pages/class_form_screen.dart';
 import 'features/students/pages/student_list_screen.dart';
 import 'features/students/pages/student_form_screen.dart';
 import 'features/students/pages/all_students_screen.dart';
+import 'features/exams/pages/exam_list_screen.dart';
+import 'features/exams/pages/exam_form_screen.dart';
+import 'features/exams/pages/question_builder_screen.dart';
+import 'features/exams/pages/exam_detail_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
+import 'providers/exam_provider.dart';
+import 'providers/question_provider.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -196,6 +202,48 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'students',
             builder: (context, state) => const AllStudentsScreen(),
+          ),
+
+          // ── Exams ──
+          GoRoute(
+            path: 'exams',
+            builder: (context, state) => const ExamListScreen(),
+            routes: [
+              GoRoute(
+                path: 'create',
+                builder: (context, state) => const ExamFormScreen(
+                  isEditing: false,
+                ),
+              ),
+              GoRoute(
+                path: 'edit/:examId',
+                builder: (context, state) {
+                  final examData = state.extra as ExamData?;
+                  return ExamFormScreen(
+                    isEditing: true,
+                    examData: examData,
+                  );
+                },
+              ),
+              // ── Exam Detail ──
+              GoRoute(
+                path: ':examId',
+                builder: (context, state) {
+                  final examId = state.pathParameters['examId']!;
+                  return ExamDetailScreen(examId: examId);
+                },
+                routes: [
+                  // ── Question Builder ──
+                  GoRoute(
+                    path: 'questions',
+                    builder: (context, state) {
+                      final examId = state.pathParameters['examId']!;
+                      return QuestionBuilderScreen(examId: examId);
+                    },
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),

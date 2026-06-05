@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/class_provider.dart';
 import '../../providers/student_provider.dart';
+import '../../providers/exam_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 
@@ -17,6 +18,7 @@ class TeacherDashboard extends ConsumerWidget {
     final userName = ref.watch(userNameProvider);
     final totalClasses = ref.watch(totalClassesProvider);
     final totalStudents = ref.watch(totalStudentsProvider);
+    final examStats = ref.watch(examStatsProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -73,6 +75,7 @@ class TeacherDashboard extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(classesStreamProvider);
             ref.invalidate(allStudentsStreamProvider);
+            ref.invalidate(examsStreamProvider);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -155,22 +158,18 @@ class TeacherDashboard extends ConsumerWidget {
                   children: [
                     _StatCard(
                       title: 'Upcoming Exams',
-                      value: '0',
+                      value: '${examStats['upcoming'] ?? 0}',
                       icon: Icons.quiz_outlined,
                       color: Colors.orange,
-                      onTap: () {
-                        // TODO: Navigate to exams
-                      },
+                      onTap: () => context.go('/teacher/exams'),
                     ),
                     const SizedBox(width: 12),
                     _StatCard(
                       title: 'Completed',
-                      value: '0',
+                      value: '${examStats['completed'] ?? 0}',
                       icon: Icons.check_circle_outline,
                       color: Colors.purple,
-                      onTap: () {
-                        // TODO: Navigate to results
-                      },
+                      onTap: () => context.go('/teacher/exams'),
                     ),
                   ],
                 ),
@@ -190,9 +189,7 @@ class TeacherDashboard extends ConsumerWidget {
                       icon: Icons.add_circle_outline,
                       label: 'Create Exam',
                       color: theme.colorScheme.primary,
-                      onTap: () {
-                        // TODO: Navigate to create exam
-                      },
+                      onTap: () => context.go('/teacher/exams/create'),
                     ),
                     const SizedBox(width: 12),
                     _QuickAction(
@@ -256,9 +253,9 @@ class TeacherDashboard extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/teacher/classes/create'),
+        onPressed: () => context.go('/teacher/exams/create'),
         icon: const Icon(Icons.add),
-        label: const Text('New Class'),
+        label: const Text('New Exam'),
       ),
     );
   }
