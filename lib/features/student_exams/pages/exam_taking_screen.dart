@@ -11,7 +11,7 @@ import '../../../providers/submission_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/submission_service.dart';
-import '../../../core/services/question_service.dart';
+import '../../../core/services/exam_security_service.dart';
 import '../../../widgets/common_widgets.dart';
 
 class ExamTakingScreen extends ConsumerStatefulWidget {
@@ -54,6 +54,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
     _countdownTimer?.cancel();
     _autoSaveTimer?.cancel();
     WakelockPlus.disable();
+    ExamSecurityService.disableAll();
     super.dispose();
   }
 
@@ -132,6 +133,9 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
 
       // Enable wakelock
       await WakelockPlus.enable();
+
+      // Enable exam security
+      await ExamSecurityService.enableAll();
 
       // Start countdown timer
       _startCountdownTimer();
@@ -292,6 +296,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       setState(() => _hasSubmitted = true);
 
       await WakelockPlus.disable();
+      await ExamSecurityService.disableAll();
 
       if (mounted) {
         showSnackBar(context, message: 'Exam submitted successfully!');

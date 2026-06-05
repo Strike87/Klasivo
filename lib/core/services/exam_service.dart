@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'notification_service.dart';
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -90,6 +91,32 @@ class ExamService {
         'status': AppConstants.statusPublished,
         'publishedAt': FieldValue.serverTimestamp(),
       });
+
+      // Schedule exam reminders for students
+      final examDoc = await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
+          .get();
+      if (examDoc.exists) {
+        final data = examDoc.data()!;
+        final startDate = (data['startDate'] as Timestamp?)?.toDate();
+        final title = data['title'] as String? ?? 'Exam';
+        final classId = data['classId'] as String? ?? '';
+
+        if (startDate != null) {
+          await NotificationService.scheduleExamReminders(
+            examId: examId,
+            examTitle: title,
+            startDate: startDate,
+          );
+        }
+
+        // Notify students about new exam
+        await NotificationService.notifyExamPublished(
+          examTitle: title,
+          className: classId, // We could look up class name but this is fine for now
+        );
+      }
     } catch (e) {
       rethrow;
     }
@@ -106,6 +133,9 @@ class ExamService {
         'status': AppConstants.statusDraft,
         'publishedAt': FieldValue.delete(),
       });
+
+      // Cancel scheduled reminders
+      await NotificationService.cancelExamReminders(examId);
     } catch (e) {
       rethrow;
     }

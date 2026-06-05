@@ -32,6 +32,7 @@ import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
 import 'providers/question_provider.dart';
 import 'providers/submission_provider.dart';
+import 'core/services/notification_service.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -41,6 +42,10 @@ Future<void> main() async {
   );
   await HiveFlutter.init();
   await Hive.openBox(AppConstants.authBox);
+
+  // Initialize notifications
+  await NotificationService.initialize();
+
   runApp(const ProviderScope(child: MyApp()));
 }
 

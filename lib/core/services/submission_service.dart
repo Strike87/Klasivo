@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'notification_service.dart';
 
 class SubmissionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -230,6 +231,22 @@ class SubmissionService {
       );
 
       await batch.commit();
+
+      // Notify student about result
+      try {
+        final examDoc = await _firestore
+            .collection(AppConstants.examsCollection)
+            .doc(examId)
+            .get();
+        final examTitle = examDoc.data()?['title'] as String? ?? 'Exam';
+
+        await NotificationService.notifyResultPublished(
+          examTitle: examTitle,
+          percentage: percentage,
+        );
+      } catch (_) {
+        // Don't fail the submission if notification fails
+      }
     } catch (e) {
       rethrow;
     }
