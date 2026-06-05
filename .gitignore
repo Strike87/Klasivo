@@ -87,9 +87,9 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 .env.local
 .env.*.local
 
-# Firebase
-google-services.json
-GoogleService-Info.plist
+# Firebase (uncomment these after you add real credentials)
+# google-services.json
+# GoogleService-Info.plist
 
 # Generated files
 .dart_tool/
