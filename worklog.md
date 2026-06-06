@@ -38,3 +38,39 @@ Stage Summary:
 - Firestore rules: teacher-ownership-based access control, no more blanket isAuth() reads
 - institutionId: now present in ALL collections (15 total), defaulting to 'default'
 - Flutter SDK not available on server for compile check, but code has been manually reviewed for correctness
+
+---
+Task ID: B
+Agent: Main Agent
+Task: Phase B - Data Foundation (Routes, Notifications, Analytics, Cascade Deletes, Navigation)
+
+Work Log:
+- B.1: Verified GoRouter routes - all v1.5 screens already registered (stages, grades, groups, question_bank, notifications, analytics, QR, excel_import)
+- B.2: Added Firestore notification writes
+  - Updated notifyExamPublished() to write Firestore doc when teacherId/classId provided
+  - Updated notifyResultPublished() to write Firestore doc when studentId provided
+  - Updated notifyAnnouncement() to write Firestore doc when userId provided
+  - Added _createFirestoreNotification() private method for consistent Firestore writes
+  - Added markNotificationRead() and markAllNotificationsRead() static methods
+  - Updated exam_service.dart publishExam to pass teacherId/classId to notification
+  - Updated submission_service.dart submitExam to fetch studentId and pass to notification
+  - Updated notification_center_screen.dart to use NotificationService methods instead of raw Firestore
+- B.3: Verified teacher dashboard - already has Quick Actions for Question Bank, Stages, Analytics, notifications badge
+- B.4: Rewrote analytics dashboard to use teacher's exam data
+  - Fixed: was using studentSubmissionsProvider (wrong - teacher's own submissions), now uses examStatsStreamProvider + examSubmissionsStreamProvider
+  - Added per-exam performance cards with score distribution charts
+  - Added _StatsRow with Students/Submitted/Avg/PassRate chips
+  - Shows precomputed exam_stats data per completed exam
+- B.5: Fixed cascade deletes
+  - class_service.dart deleteClass now: deletes groups → students → exams (with questions, submissions, answers, instances, stats) → class
+  - stage_service.dart deleteStage already had cascade to grades
+- B.6: Fixed stage card navigation
+  - Added forward arrow button to _StageCard that navigates to /teacher/stages/{stageId}/grades
+  - Added go_router import
+
+Stage Summary:
+- Phase B complete: All 6 subtasks implemented
+- Firestore notifications now persist alongside local/FCM notifications
+- Analytics dashboard now shows real teacher exam data with per-exam score distribution
+- Cascade deletes fully handle groups, students, exams, and all sub-collections
+- Stage → Grade navigation now works via arrow button
