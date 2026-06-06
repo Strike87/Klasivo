@@ -22,3 +22,47 @@ Stage Summary:
 - Precomputed exam_stats Firestore collection with grade distribution, std deviation, question-level analysis
 - Analytics dashboard now has 3 tabs: Overview, Performance Trends (line charts), Question Analysis
 - All files pushed to GitHub repo Strike87/Smart-Exam-Pro-
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Rename app to Klasivo + Phase E (Violation Logging, Enhanced Lockdown, Exam Integrity Dashboard)
+
+Work Log:
+- Renamed app from "Smart Exam Pro" to "Klasivo" across 14 files:
+  - AndroidManifest.xml, strings.xml, build.gradle, MainActivity.kt
+  - splash_screen.dart, role_selection_screen.dart, teacher_registration_screen.dart
+  - teacher_dashboard.dart, student_dashboard.dart, notification_service.dart
+  - pdf_service.dart, exam_security_service.dart, main.dart, pubspec.yaml
+  - Package name changed: com.smartexampro.app → com.klasivo.app
+- Enhanced violation_service.dart with:
+  - Detailed violation logging (deviceInfo, sessionId, ipAddress, questionIndex, timeElapsedSeconds)
+  - Auto-severity calculation (high/medium/low) based on violation type
+  - Violation review workflow (single + bulk review)
+  - getViolationSummary() for aggregated analytics
+  - getTeacherViolations() for cross-exam violation analysis
+- Enhanced exam_security_service.dart with:
+  - enterLockdownMode() / exitLockdownMode() with violation callback
+  - Clipboard monitoring (periodic check, auto-clear on detection)
+  - Lockdown state tracking (isLockdownActive)
+  - reportViolation() helper for real-time callback
+  - getLockdownStatus() for UI status display
+- Created exam_integrity_dashboard.dart with:
+  - Exam selector dropdown
+  - Severity distribution pie chart
+  - Violation type breakdown with progress bars
+  - Top violators list with flagging
+  - Recent violations timeline with review status
+  - Unreviewed count and flagging indicators
+- Updated violation_provider.dart with:
+  - violationSummaryProvider, teacherAllViolationsProvider, examViolationsProvider
+  - violationsByStudentListProvider
+- Added new violation types to app_constants.dart:
+  - clipboard_activity, back_navigation, idle_timeout
+- Updated main.dart with /teacher/integrity route
+- All files pushed to GitHub successfully
+
+Stage Summary:
+- App renamed from "Smart Exam Pro" to "Klasivo" across all 14 files
+- Phase E complete: Enhanced Violation Logging + Lockdown Mode + Exam Integrity Dashboard
+- 6 files pushed for Phase E, 14 files pushed for rename
