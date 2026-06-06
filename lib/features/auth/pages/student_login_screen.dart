@@ -245,6 +245,30 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
                         fontSize: 12,
                       ),
                     ),
+                    const SizedBox(height: 24),
+                    // ── OR divider ──
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text('OR', style: TextStyle(color: Colors.grey[600])),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // ── QR Scan Button (Phase C) ──
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/student/qr-scan'),
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Scan QR Code to Enroll'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.green.shade400),
+                        foregroundColor: Colors.green.shade700,
+                      ),
+                    ),
                   ],
                 ),
               ),

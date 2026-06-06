@@ -402,6 +402,32 @@ class ExamDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+
+                // ── View Exam Instances (Phase C) ──
+                if (!isDraft)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.go(
+                          '/teacher/exams/$examId/instances',
+                        ),
+                        icon: const Icon(Icons.shuffle),
+                        label: const Text(
+                          'View Exam Instances',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

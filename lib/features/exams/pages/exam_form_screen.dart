@@ -36,6 +36,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
   DateTime? _endDate;
   TimeOfDay? _endTime;
   bool _isLoading = false;
+  bool _isRandomized = false;
+  bool _allowRetake = false;
 
   @override
   void initState() {
@@ -50,6 +52,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       _startTime = TimeOfDay.fromDateTime(widget.examData!.startDate);
       _endDate = widget.examData!.endDate;
       _endTime = TimeOfDay.fromDateTime(widget.examData!.endDate);
+      _isRandomized = widget.examData!.isRandomized;
+      _allowRetake = widget.examData!.allowRetake;
     } else {
       _durationController.text = '30';
       _passingScoreController.text = '50';
@@ -173,6 +177,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
           startDate: _combinedStart,
           endDate: _combinedEnd,
           passingScore: int.parse(_passingScoreController.text.trim()),
+          isRandomized: _isRandomized,
+          allowRetake: _allowRetake,
         );
         if (mounted) {
           showSnackBar(context, message: 'Exam updated successfully');
@@ -191,6 +197,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
           startDate: _combinedStart,
           endDate: _combinedEnd,
           passingScore: int.parse(_passingScoreController.text.trim()),
+          isRandomized: _isRandomized,
+          allowRetake: _allowRetake,
         );
         if (mounted) {
           showSnackBar(context, message: 'Exam created! Now add questions.');
@@ -490,6 +498,40 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 32),
+
+              // ── Exam Options (Phase C) ──
+              Text(
+                'Exam Options',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Randomize Questions'),
+                subtitle: const Text(
+                    'Each student sees questions in a different order'),
+                value: _isRandomized,
+                onChanged: _isLoading
+                    ? null
+                    : (v) => setState(() => _isRandomized = v),
+                secondary: Icon(Icons.shuffle,
+                    color: _isRandomized ? theme.colorScheme.primary : null),
+                contentPadding: EdgeInsets.zero,
+              ),
+              SwitchListTile(
+                title: const Text('Allow Retake'),
+                subtitle:
+                    const Text('Students can retake the exam'),
+                value: _allowRetake,
+                onChanged: _isLoading
+                    ? null
+                    : (v) => setState(() => _allowRetake = v),
+                secondary: Icon(Icons.replay,
+                    color: _allowRetake ? theme.colorScheme.primary : null),
+                contentPadding: EdgeInsets.zero,
               ),
               const SizedBox(height: 32),
 

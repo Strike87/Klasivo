@@ -193,6 +193,29 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    // ── Import buttons (Phase C) ──
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _AddQuestionButton(
+                            icon: Icons.library_books,
+                            label: 'From\nBank',
+                            color: const Color(0xFF9C27B0),
+                            onTap: () => context.go('/teacher/question-bank'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _AddQuestionButton(
+                            icon: Icons.upload_file,
+                            label: 'From\nExcel',
+                            color: const Color(0xFF009688),
+                            onTap: () => context.go('/teacher/excel-import'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),

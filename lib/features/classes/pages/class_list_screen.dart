@@ -203,6 +203,15 @@ class _ClassCard extends StatelessWidget {
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
                   if (value == 'delete') onDelete();
+                  if (value == 'qr') {
+                    context.go(
+                      '/teacher/classes/${classData.id}/qr',
+                      extra: {
+                        'className': classData.name,
+                        'grade': classData.grade,
+                      },
+                    );
+                  }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
@@ -212,6 +221,16 @@ class _ClassCard extends StatelessWidget {
                         Icon(Icons.edit_outlined, size: 20),
                         SizedBox(width: 8),
                         Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'qr',
+                    child: Row(
+                      children: [
+                        Icon(Icons.qr_code, size: 20, color: Colors.indigo),
+                        SizedBox(width: 8),
+                        Text('QR Enrollment Code', style: TextStyle(color: Colors.indigo)),
                       ],
                     ),
                   ),
