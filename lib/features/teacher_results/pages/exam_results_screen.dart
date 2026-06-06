@@ -7,6 +7,8 @@ import '../../../providers/submission_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/services/pdf_service.dart';
+import 'dart:io';
 
 class ExamResultsScreen extends ConsumerWidget {
   final String examId;
@@ -79,6 +81,16 @@ class ExamResultsScreen extends ConsumerWidget {
           appBar: AppBar(
             title: Text('${exam.title} - Results'),
             centerTitle: true,
+            actions: [
+              _PdfExportButton(
+                examId: examId,
+                examTitle: exam.title,
+                className: exam.getClassName(ref.watch(classesProvider)),
+                totalMarks: exam.totalMarks,
+                passingScore: exam.passingScore,
+                submissions: submittedSubs,
+              ),
+            ],
           ),
           body: RefreshIndicator(
             onRefresh: () async {
@@ -185,6 +197,90 @@ class ExamResultsScreen extends ConsumerWidget {
         );
       },
     );
+  }
+}
+
+
+// ─── PDF Export ─────────────────────────────────────────────────────────────
+
+class _PdfExportButton extends ConsumerWidget {
+  final String examId;
+  final String examTitle;
+  final String className;
+  final int totalMarks;
+  final int passingScore;
+  final List<SubmissionData> submissions;
+
+  const _PdfExportButton({
+    required this.examId,
+    required this.examTitle,
+    required this.className,
+    required this.totalMarks,
+    required this.passingScore,
+    required this.submissions,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return IconButton(
+      icon: const Icon(Icons.picture_as_pdf_outlined),
+      tooltip: 'Export PDF Report',
+      onPressed: () => _exportPdf(context, ref),
+    );
+  }
+
+  Future<void> _exportPdf(BuildContext context, WidgetRef ref) async {
+    try {
+      showSnackBar(context, message: 'Generating PDF report...');
+
+      final submittedSubs = submissions.where((s) => s.isSubmitted).toList();
+      final totalStudents = ref.read(studentsByClassListProvider(
+        submissions.isNotEmpty ? submissions.first.classId : ''
+      )).length;
+
+      // Calculate stats
+      int totalScore = submittedSubs.fold(0, (sum, s) => sum + s.score);
+      double avgScore = submittedSubs.isNotEmpty ? totalScore / submittedSubs.length : 0;
+      int highScore = submittedSubs.isEmpty ? 0 : submittedSubs.map((s) => s.score).reduce((a, b) => a > b ? a : b);
+      int lowScore = submittedSubs.isEmpty ? 0 : submittedSubs.map((s) => s.score).reduce((a, b) => a < b ? a : b);
+      int passCount = submittedSubs.where((s) => s.percentage >= passingScore).length;
+      double passRate = submittedSubs.isNotEmpty ? (passCount / submittedSubs.length) * 100 : 0;
+
+      // Grade distribution
+      final gradeDist = <Map<String, dynamic>>[];
+      for (var range in [('0-20%', 0, 20), ('21-40%', 21, 40), ('41-60%', 41, 60), ('61-80%', 61, 80), ('81-100%', 81, 100)]) {
+        final count = submittedSubs.where((s) => s.percentage >= range.$2 && s.percentage <= range.$3).length;
+        gradeDist.add({'range': range.$1, 'count': count, 'percentage': submittedSubs.isNotEmpty ? (count / submittedSubs.length * 100).round() : 0});
+      }
+
+      // Student results for table
+      final students = ref.read(allStudentsProvider);
+      final studentResults = submittedSubs.map((s) {
+        final student = students.where((st) => st.id == s.studentId).firstOrNull;
+        return {'name': student?.fullName ?? 'Unknown', 'code': student?.studentCode ?? '', 'score': s.score, 'totalMarks': totalMarks, 'percentage': s.percentage, 'status': s.isFlagged ? 'Flagged' : (s.percentage >= passingScore ? 'Passed' : 'Failed')};
+      }).toList();
+
+      final file = await PdfService.generateExamReport(
+        examTitle: examTitle,
+        className: className,
+        totalStudents: totalStudents,
+        submittedStudents: submittedSubs.length,
+        averageScore: avgScore,
+        highestScore: highScore,
+        lowestScore: lowScore,
+        passRate: passRate,
+        totalMarks: totalMarks,
+        passingScore: passingScore,
+        gradeDistribution: gradeDist,
+        studentResults: studentResults,
+      );
+
+      if (context.mounted) {
+        await PdfService.sharePdf(file);
+      }
+    } catch (e) {
+      if (context.mounted) showSnackBar(context, message: 'PDF failed: $e', isError: true);
+    }
   }
 }
 
