@@ -25,7 +25,7 @@ class StudentDashboard extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Exam Pro'),
+        title: const Text('Klasivo'),
         actions: [
           IconButton(
             icon: Badge(
