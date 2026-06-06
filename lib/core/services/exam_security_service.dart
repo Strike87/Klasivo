@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 /// Utility class for exam security features.
 /// Handles screenshot prevention, screen recording detection, and app lifecycle monitoring.
 class ExamSecurityService {
-  static const _channel = MethodChannel('com.smartexampro.app/security');
+  static const _channel = MethodChannel('com.klasivo.app/security');
 
   // ─── Prevent Screenshots ──────────────────────────────────────────────────
 
