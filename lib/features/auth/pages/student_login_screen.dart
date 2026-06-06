@@ -260,7 +260,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
                     const SizedBox(height: 16),
                     // ── QR Scan Button (Phase C) ──
                     OutlinedButton.icon(
-                      onPressed: () => context.go('/student/qr-scan'),
+                      onPressed: () => context.go('/student/scan-qr'),
                       icon: const Icon(Icons.qr_code_scanner),
                       label: const Text('Scan QR Code to Enroll'),
                       style: OutlinedButton.styleFrom(
