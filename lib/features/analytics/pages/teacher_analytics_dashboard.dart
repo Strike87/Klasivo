@@ -79,7 +79,7 @@ class TeacherAnalyticsDashboard extends ConsumerWidget {
               completed: examStats['completed'] ?? 0,
               draft: examStats['draft'] ?? 0,
             ),
-            const SizedBox(height: 24,
+            const SizedBox(height: 24),
 
             // ── Quick Navigation ──
             Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
