@@ -9,6 +9,8 @@ import '../../../providers/question_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/services/pdf_service.dart';
+import 'dart:io';
 
 class StudentResultsScreen extends ConsumerWidget {
   const StudentResultsScreen({Key? key}) : super(key: key);
@@ -56,6 +58,45 @@ class _ResultCard extends ConsumerWidget {
   final SubmissionData submission;
 
   const _ResultCard({required this.submission});
+
+  Future<void> _downloadReport(BuildContext context, WidgetRef ref) async {
+    try {
+      final exams = ref.read(examsProvider);
+      final exam = exams.where((e) => e.id == submission.examId).firstOrNull;
+      final studentName = ref.read(userNameProvider) ?? 'Student';
+      final className = ref.read(studentClassNameProvider) ?? '';
+      final timeMin = submission.timeSpent ~/ 60;
+
+      // Get answers for the report
+      final answers = await ref.read(submissionServiceProvider).getAnswers(submission.id);
+      final answerMaps = answers.map((a) => {
+        'questionText': a['questionId'] ?? '',
+        'answer': a['answer'] ?? '',
+        'correctAnswer': '',
+        'isCorrect': a['isCorrect'] ?? false,
+        'marksAwarded': a['marksAwarded'] ?? 0,
+        'marks': 0,
+      }).toList();
+
+      final file = await PdfService.generateStudentReport(
+        studentName: studentName,
+        examTitle: exam?.title ?? 'Exam',
+        score: submission.score,
+        totalMarks: submission.totalMarks,
+        percentage: submission.percentage,
+        className: className,
+        answers: answerMaps,
+        violationCount: submission.violationCount,
+        timeSpentMinutes: timeMin,
+      );
+
+      if (context.mounted) {
+        await PdfService.sharePdf(file);
+      }
+    } catch (e) {
+      if (context.mounted) showSnackBar(context, message: 'PDF failed: \$e', isError: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -239,21 +280,43 @@ class _ResultCard extends ConsumerWidget {
 
               const SizedBox(height: 12),
 
-              // ── View Details Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 36,
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      context.go('/student/results/${submission.id}'),
-                  icon: const Icon(Icons.visibility_outlined, size: 16),
-                  label: const Text('View Details'),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+              // ── Action Buttons ──
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            context.go('/student/results/${submission.id}'),
+                        icon: const Icon(Icons.visibility_outlined, size: 16),
+                        label: const Text('Details'),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _downloadReport(context, ref),
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                        label: const Text('PDF'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
