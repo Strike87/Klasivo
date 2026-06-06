@@ -74,7 +74,7 @@ class NotificationService {
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
         'smart_exam_pro_channel',
-        'Smart Exam Pro',
+        'Klasivo',
         description: 'Notifications for exams and results',
         importance: Importance.high,
       ));
@@ -138,7 +138,7 @@ class NotificationService {
     final notification = message.notification;
     if (notification != null) {
       showNotification(
-        title: notification.title ?? 'Smart Exam Pro',
+        title: notification.title ?? 'Klasivo',
         body: notification.body ?? '',
         payload: message.data.toString(),
       );
@@ -208,7 +208,7 @@ class NotificationService {
   }) async {
     const androidDetails = AndroidNotificationDetails(
       'smart_exam_pro_channel',
-      'Smart Exam Pro',
+      'Klasivo',
       channelDescription: 'Notifications for exams and results',
       importance: Importance.high,
       priority: Priority.high,
