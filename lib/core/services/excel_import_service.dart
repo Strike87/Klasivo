@@ -63,6 +63,50 @@ class ExcelImportService {
     }
   }
 
+  /// Extract header names from sheet data
+  List<String> extractHeaders(List<List<String>> rows) {
+    if (rows.isEmpty) return [];
+    return rows.first.where((c) => c.isNotEmpty).toList();
+  }
+
+  /// Extract data rows (excluding header) from sheet data
+  List<Map<String, String>> extractDataRows(
+    List<List<String>> rows, {
+    List<String>? headers,
+  }) {
+    final effectiveHeaders = headers ?? extractHeaders(rows);
+    if (rows.length <= 1) return [];
+
+    final List<Map<String, String>> dataRows = [];
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      final Map<String, String> rowData = {};
+      for (int j = 0; j < effectiveHeaders.length && j < row.length; j++) {
+        rowData[effectiveHeaders[j]] = row[j];
+      }
+      if (rowData.values.any((v) => v.isNotEmpty)) {
+        dataRows.add(rowData);
+      }
+    }
+    return dataRows;
+  }
+
+  /// Map columns from Excel data to target fields using a column mapping
+  List<Map<String, String>> mapColumns({
+    required List<Map<String, String>> dataRows,
+    required Map<String, String> columnMapping,
+  }) {
+    return dataRows.map((row) {
+      final Map<String, String> mapped = {};
+      columnMapping.forEach((targetField, excelColumn) {
+        if (excelColumn.isNotEmpty && row.containsKey(excelColumn)) {
+          mapped[targetField] = row[excelColumn] ?? '';
+        }
+      });
+      return mapped;
+    }).where((row) => row.values.any((v) => v.isNotEmpty)).toList();
+  }
+
   Future<String> _generateStudentCode(String teacherId) async {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     String code;
