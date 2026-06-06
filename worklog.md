@@ -1,31 +1,40 @@
 ---
-Task ID: 1
+Task ID: A
 Agent: Main Agent
-Task: Implement Smart Exam Pro v1.5 - Full feature upgrade
+Task: Phase A - Security (Password Hashing, Firestore Rules, institutionId)
 
 Work Log:
-- Read and analyzed the entire existing codebase (38 Dart files, ~8,150+ lines)
-- Updated pubspec.yaml to v1.5.0+2 with 8 new packages (crypto, excel, file_picker, qr_flutter, mobile_scanner, pdf, printing, fl_chart)
-- Updated app_constants.dart with 16 collection names, violation types, notification types, difficulty levels, default password constant
-- Updated firestore.rules with 9 new collection rules (stages, grades, groups, question_bank, exam_instances, exam_stats, violations, notifications)
-- Created firestore.indexes.json with 17 composite indexes
-- Updated auth_service.dart with SHA-256 password hashing and migration support
-- Updated student_service.dart with passwordHash, stageId, gradeId, groupId, institutionId
-- Updated class_service.dart with gradeId, stageId, institutionId
-- Updated exam_service.dart with isRandomized, allowRetake, institutionId, exam_instances, exam_stats
-- Updated question_service.dart with imageUrl, difficulty, bankQuestionId
-- Created 8 new services: stage, grade, group, question_bank, violation, excel_import, pdf, qr
-- Updated 4 existing providers: exam (isRandomized, allowRetake, publishedAt), student (stageId, gradeId, groupId), class (gradeId, stageId), question (imageUrl, difficulty)
-- Created 6 new providers: stage, grade, group, question_bank, notification, violation
-- Created 9 new UI screens: StageList, GradeList, GroupList, QuestionBank, NotificationCenter, ExcelImport, QrGenerate, QrScan, TeacherAnalyticsDashboard
-- Updated main.dart with all new routes (stages, question-bank, notifications, analytics, import, qr, scan-qr)
-- Updated teacher_dashboard.dart with new quick actions and notification badge
-- Updated student_dashboard.dart with QR scan button and notification badge
-- Pushed all changes to GitHub (56 files changed, 4,502 insertions, 701 deletions)
+- Explored full project structure, read all service files, provider files, and key screens
+- Phase A.1: SHA-256 Password Hashing
+  - Upgraded hashPassword() in AuthService to use per-user salt (salt$hash format)
+  - Added verifyPassword() static method that handles salted, unsalted, and plaintext formats
+  - Added isSaltedHash() helper for format detection
+  - Removed plaintext 'password' field from all Firestore writes (student_service, excel_import_service)
+  - Centralized hashPassword: removed duplicate implementations from student_service and excel_import_service
+  - All services now call AuthService.hashPassword() instead of local copies
+  - loginStudent now auto-migrates: unsalted hash → salted hash, plaintext → salted hash on successful login
+
+- Phase A.2: Firestore Security Rules Audit
+  - Replaced blanket isAuth() read access with teacher-ownership checks (isOwner)
+  - Teachers can only CRUD their own data (students, classes, stages, grades, groups, exams, question_bank)
+  - Exam stats are now teacher-only read (students shouldn't see aggregated stats)
+  - Violations are teacher-only read (students can still create them)
+  - Notifications use isUserOwner check (userId-based)
+  - Users collection: only self-read/update
+  - Added helper functions: isOwner(), isUserOwner(), getUserInstitutionId()
+
+- Phase A.3: Add institutionId to all collections
+  - Added institutionId to: questions collection (question_service.dart - 3 add methods)
+  - Added institutionId to: submissions collection (submission_service.dart - startSubmission, exam_service.dart - createExamInstance)
+  - Added institutionId to: answers collection (submission_service.dart - saveAnswer, bulkSaveAnswers)
+  - Added institutionId to: exam_instances collection (exam_service.dart - createExamInstance)
+  - Added institutionId to: exam_stats collection (exam_service.dart - updateExamStats)
+  - Added institutionId to: question_bank import (question_bank_service.dart - importQuestionToExam inherits from bank)
+  - Updated all data model classes: QuestionData, SubmissionData, NotificationData (added institutionId field, fromFirestore, toMap)
 
 Stage Summary:
-- v1.5 code is complete and pushed to GitHub
-- User needs to: git pull, flutter pub get, flutter run
-- Firebase setup still needed: deploy indexes, configure Google Sign-In SHA-1
-- Total new Dart files: 23 (8 services, 6 providers, 9 screens)
-- Total modified Dart files: 14
+- Phase A complete: All three subtasks implemented
+- Password security: salted SHA-256, no plaintext storage, backward-compatible migration
+- Firestore rules: teacher-ownership-based access control, no more blanket isAuth() reads
+- institutionId: now present in ALL collections (15 total), defaulting to 'default'
+- Flutter SDK not available on server for compile check, but code has been manually reviewed for correctness
