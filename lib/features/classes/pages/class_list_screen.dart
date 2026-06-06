@@ -205,7 +205,7 @@ class _ClassCard extends StatelessWidget {
                   if (value == 'delete') onDelete();
                   if (value == 'qr') {
                     context.go(
-                      '/teacher/classes/${classData.id}/qr',
+                      '/teacher/classes/${classData.id}/students/qr',
                       extra: {
                         'className': classData.name,
                         'grade': classData.grade,
