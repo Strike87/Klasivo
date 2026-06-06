@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'exam_service.dart';
+import 'exam_stats_service.dart';
 import 'notification_service.dart';
 
 class SubmissionService {
@@ -233,10 +234,10 @@ class SubmissionService {
 
       await batch.commit();
 
-      // Update exam stats
+      // Update precomputed exam stats (Phase D: uses ExamStatsService)
       try {
-        final examService = ExamService();
-        await examService.updateExamStats(examId);
+        final statsService = ExamStatsService();
+        await statsService.recalculateExamStats(examId);
       } catch (_) {}
 
       // Notify student about result
