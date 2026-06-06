@@ -94,7 +94,7 @@ class _ResultCard extends ConsumerWidget {
         await PdfService.sharePdf(file);
       }
     } catch (e) {
-      if (context.mounted) showSnackBar(context, message: 'PDF failed: \$e', isError: true);
+      if (context.mounted) showSnackBar(context, message: 'PDF failed: \${e.toString()}', isError: true);
     }
   }
 
