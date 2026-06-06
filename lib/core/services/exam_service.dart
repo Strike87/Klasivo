@@ -399,11 +399,6 @@ class ExamService {
     }
   }
 
-  /// Public method to update exam stats after a submission (called from SubmissionService)
-  Future<void> _updateExamStatsAfterSubmission(String examId) async {
-    await updateExamStats(examId);
-  }
-
   Stream<QuerySnapshot> getExamsStream(String teacherId) {
     return _firestore
         .collection(AppConstants.examsCollection)
