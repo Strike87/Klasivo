@@ -235,7 +235,8 @@ class SubmissionService {
 
       // Update exam stats
       try {
-        await ExamService()._updateExamStatsAfterSubmission(examId);
+        final examService = ExamService();
+        await examService.updateExamStats(examId);
       } catch (_) {}
 
       // Notify student about result
