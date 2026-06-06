@@ -101,7 +101,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: 32),
               const Text(
-                'Smart Exam Pro',
+                'Klasivo',
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
