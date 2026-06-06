@@ -15,12 +15,7 @@ class PdfService {
     required List<Map<String, dynamic>> answers,
     int violationCount = 0,
   }) async {
-    final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: await pw.Font.fromAssetName('NotoSansArabic-Regular.ttf'),
-        bold: await pw.Font.fromAssetName('NotoSansArabic-Bold.ttf'),
-      ),
-    );
+    final pdf = pw.Document();
 
     final passed = percentage >= 50;
 
@@ -93,12 +88,7 @@ class PdfService {
     required double passRate,
     required List<Map<String, dynamic>> gradeDistribution,
   }) async {
-    final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: await pw.Font.fromAssetName('NotoSansArabic-Regular.ttf'),
-        bold: await pw.Font.fromAssetName('NotoSansArabic-Bold.ttf'),
-      ),
-    );
+    final pdf = pw.Document();
 
     pdf.addPage(
       pw.MultiPage(
