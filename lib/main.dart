@@ -38,12 +38,15 @@ import 'features/excel_import/pages/excel_import_screen.dart';
 import 'features/qr/pages/qr_generate_screen.dart';
 import 'features/qr/pages/qr_scan_screen.dart';
 import 'features/analytics/pages/teacher_analytics_dashboard.dart';
+// v1.5 Phase D imports
+import 'features/reports/pages/report_generation_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
 import 'providers/question_provider.dart';
 import 'providers/submission_provider.dart';
+import 'providers/exam_stats_provider.dart';
 import 'core/services/notification_service.dart';
 import 'firebase_options.dart';
 
@@ -337,6 +340,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'analytics',
             builder: (context, state) => const TeacherAnalyticsDashboard(),
+          ),
+          // v1.5 Phase D: Reports
+          GoRoute(
+            path: 'reports',
+            builder: (context, state) => const ReportGenerationScreen(),
           ),
         ],
       ),
