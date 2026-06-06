@@ -54,6 +54,9 @@ class AppConstants {
   static const String violationScreenshotAttempt = 'screenshot_attempt';
   static const String violationScreenRecording = 'screen_recording';
   static const String violationMultipleLogin = 'multiple_login';
+  static const String violationClipboardActivity = 'clipboard_activity';
+  static const String violationBackNavigation = 'back_navigation';
+  static const String violationIdleTimeout = 'idle_timeout';
 
   // Notification Types
   static const String notificationExamPublished = 'exam_published';
