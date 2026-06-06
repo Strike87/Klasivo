@@ -1,11 +1,7 @@
-import 'dart:math';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
-
-import '../config/app_constants.dart';
 
 // ─── Background message handler (must be top-level function) ────────────────
 

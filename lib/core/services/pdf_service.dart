@@ -63,10 +63,12 @@ class PdfService {
         }
 
         if (await regularFile.exists()) {
-          _arabicFont = pw.Font.ttf(await regularFile.readAsBytes());
+          final bytes = await regularFile.readAsBytes();
+          _arabicFont = pw.Font.ttf(ByteData.sublistView(Uint8List.fromList(bytes)));
         }
         if (await boldFile.exists()) {
-          _arabicBoldFont = pw.Font.ttf(await boldFile.readAsBytes());
+          final bytes = await boldFile.readAsBytes();
+          _arabicBoldFont = pw.Font.ttf(ByteData.sublistView(Uint8List.fromList(bytes)));
         }
       } catch (_) {
         // CDN download failed, use fallback

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../providers/exam_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/exam_stats_provider.dart';
-import '../../../core/config/app_constants.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../widgets/common_widgets.dart';
 
@@ -321,8 +318,7 @@ class _ReportGenerationScreenState
     showSnackBar(context, message: 'Generating exam analytics report...');
 
     // Get exam data
-    final examsAsync = ref.read(examsStreamProvider);
-    final snapshot = await examsAsync.future;
+    final snapshot = await ref.read(examsStreamProvider.future);
     final examDoc =
         snapshot.docs.where((d) => d.id == _selectedExamId).firstOrNull;
     if (examDoc == null) throw Exception('Exam not found');

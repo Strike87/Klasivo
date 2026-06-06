@@ -1,8 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../core/config/app_constants.dart';
 import '../core/services/violation_service.dart';
 import 'auth_provider.dart';
 

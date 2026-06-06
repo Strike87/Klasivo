@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 /// Service for managing exam instances - per-student snapshots of exams
 /// with randomized question order for anti-cheating.

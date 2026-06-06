@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../providers/auth_provider.dart';
-import '../../../core/config/app_constants.dart';
 
 class TeacherRegistrationScreen extends ConsumerStatefulWidget {
   const TeacherRegistrationScreen({Key? key}) : super(key: key);

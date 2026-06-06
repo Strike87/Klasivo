@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../providers/exam_provider.dart';
+import '../../../providers/class_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../providers/exam_stats_provider.dart';

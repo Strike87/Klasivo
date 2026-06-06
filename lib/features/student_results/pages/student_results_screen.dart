@@ -10,7 +10,6 @@ import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../core/services/pdf_service.dart';
-import 'dart:io';
 
 class StudentResultsScreen extends ConsumerWidget {
   const StudentResultsScreen({Key? key}) : super(key: key);

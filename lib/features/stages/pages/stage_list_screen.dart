@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/stage_provider.dart';
 import '../../../providers/grade_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class StageListScreen extends ConsumerWidget {

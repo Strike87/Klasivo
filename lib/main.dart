@@ -44,14 +44,9 @@ import 'features/analytics/pages/teacher_analytics_dashboard.dart';
 import 'features/reports/pages/report_generation_screen.dart';
 // v1.5 Phase E imports
 import 'features/integrity/pages/exam_integrity_dashboard.dart';
-import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
-import 'providers/question_provider.dart';
-import 'providers/submission_provider.dart';
-import 'providers/exam_stats_provider.dart';
-import 'providers/violation_provider.dart';
 import 'core/services/notification_service.dart';
 import 'firebase_options.dart';
 

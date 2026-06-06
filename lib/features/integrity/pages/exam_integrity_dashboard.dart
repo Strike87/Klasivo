@@ -8,7 +8,6 @@ import '../../../providers/student_provider.dart';
 import '../../../providers/violation_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/violation_service.dart';
-import '../../../widgets/common_widgets.dart';
 
 class ExamIntegrityDashboard extends ConsumerStatefulWidget {
   const ExamIntegrityDashboard({Key? key}) : super(key: key);

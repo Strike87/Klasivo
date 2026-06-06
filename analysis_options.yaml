@@ -1,25 +1,6 @@
-# This file configures the analyzer, which statically analyzes Dart code to
-# check for errors, warnings, and lints.
-#
-# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
-# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
-# invoked from the command line by running `flutter analyze`.
-
-# The following line activates a set of recommended lints for Flutter apps,
-# packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
 linter:
-  # The lint rules applied to this project can be customized in the
-  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
-  # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
-  #
-  # Instead of disabling a lint rule for the entire project in the
-  # section below, it is preferred to disable the lint only for a single line
-  # of code or a specific dart file by using the `// ignore: name_of_lint` and
-  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
-  # producing the lint.
   rules:
     - camel_case_types
     - camel_case_extensions
@@ -35,7 +16,6 @@ linter:
     - prefer_const_literals_to_create_immutables
     - prefer_constructors_over_static_methods
     - prefer_contains
-    - prefer_equal_for_default_values
     - prefer_expression_function_bodies
     - prefer_final_fields
     - prefer_final_in_for_each
@@ -45,8 +25,6 @@ linter:
     - prefer_function_declarations_over_variables
     - prefer_generic_function_type_aliases
     - prefer_if_elements_to_conditional_expressions
-    - prefer_if_null_to_conditional_expression
-    - prefer_if_null_to_conditional_expressions
     - prefer_initializing_formals
     - prefer_inlined_adds
     - prefer_int_literals
@@ -54,13 +32,10 @@ linter:
     - prefer_is_empty
     - prefer_is_not_empty
     - prefer_is_not_operator
-    - prefer_is_null_check_on_nullable_type_parameter
     - prefer_iterable_whereType
     - prefer_null_aware_operators
-    - prefer_relative_import_paths
     - prefer_single_quotes
     - prefer_spread_collections
-    - prefer_to_literals
     - provide_deprecation_message
     - recursive_getters
     - sized_box_for_whitespace
@@ -78,7 +53,6 @@ linter:
     - unnecessary_null_aware_assignments
     - unnecessary_null_in_if_null_operators
     - unnecessary_null_checks
-    - unnecessary_null_in_map_literal
     - unnecessary_parenthesis
     - unnecessary_string_escapes
     - unnecessary_string_interpolations
@@ -89,7 +63,6 @@ linter:
     - use_build_context_synchronously
     - use_full_hex_values_for_flutter_colors
     - use_function_type_syntax_for_parameters
-    - use_if_null_to_convert_nullability
     - use_is_even_rather_than_modulo
     - use_key_in_widget_constructors
     - use_late_for_private_fields_and_variables
@@ -98,5 +71,4 @@ linter:
     - use_setters_to_change_properties
     - use_string_buffers
     - use_test_throws_matchers
-    - use_to_close_resource
     - void_checks

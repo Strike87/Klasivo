@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/exam_stats_service.dart';
 import 'auth_provider.dart';
-import 'class_provider.dart';
 import 'exam_provider.dart';
 
 // ─── Service Provider ────────────────────────────────────────────────────────

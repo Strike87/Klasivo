@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../providers/student_provider.dart';
-import '../../../providers/class_provider.dart';
-import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 
 class StudentListScreen extends ConsumerWidget {

@@ -264,7 +264,7 @@ class ExamService {
       }
 
       // Create submission
-      final classId = questions.isNotEmpty ? questions.first['examData']?['classId'] ?? '' : '';
+      final classId = questions.isNotEmpty ? (questions.first['examData']?['classId'] ?? '') : '';
       final submissionRef = await _firestore.collection(AppConstants.submissionsCollection).add({
         'examId': examId,
         'studentId': studentId,
