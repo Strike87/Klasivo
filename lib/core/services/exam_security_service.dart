@@ -1,11 +1,23 @@
 import 'package:flutter/services.dart';
+import 'dart:async';
 
-/// Utility class for exam security features.
-/// Handles screenshot prevention, screen recording detection, and app lifecycle monitoring.
+/// Enhanced exam security service with lockdown mode, screenshot detection,
+/// clipboard monitoring, and comprehensive violation reporting.
 class ExamSecurityService {
   static const _channel = MethodChannel('com.klasivo.app/security');
 
-  // ─── Prevent Screenshots ──────────────────────────────────────────────────
+  // ─── Lockdown State ─────────────────────────────────────────────────────
+
+  static bool _isLockdownActive = false;
+  static bool get isLockdownActive => _isLockdownActive;
+
+  // Violation callback for real-time reporting
+  static void Function(String type, String? details)? _onViolationDetected;
+  static Timer? _clipboardCheckTimer;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCREENSHOT PROTECTION
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Enable screenshot prevention (Android only).
   /// Uses FLAG_SECURE via platform channel to prevent screen capture and recording.
@@ -13,9 +25,9 @@ class ExamSecurityService {
     try {
       await _channel.invokeMethod('enableScreenshotProtection');
     } on PlatformException catch (_) {
-      // Platform error — FLAG_SECURE not applied
+      // FLAG_SECURE not applied
     } on MissingPluginException catch (_) {
-      // Platform channel not set up — expected if native code not yet configured
+      // Platform channel not set up
     }
   }
 
@@ -23,14 +35,13 @@ class ExamSecurityService {
   static Future<void> disableScreenshotProtection() async {
     try {
       await _channel.invokeMethod('disableScreenshotProtection');
-    } on PlatformException catch (_) {
-      // Platform error
-    } on MissingPluginException catch (_) {
-      // Platform channel not set up
-    }
+    } on PlatformException catch (_) {}
+    on MissingPluginException catch (_) {}
   }
 
-  // ─── Lock Screen Orientation ──────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCK SCREEN ORIENTATION
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Lock to portrait mode during exam.
   static Future<void> lockPortrait() async {
@@ -50,7 +61,9 @@ class ExamSecurityService {
     ]);
   }
 
-  // ─── Full Screen Mode ─────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // FULL SCREEN MODE
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Enter immersive/full-screen mode during exam.
   static Future<void> enterFullScreen() async {
@@ -62,19 +75,100 @@ class ExamSecurityService {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  // ─── Enable All Security Features ─────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // CLIPBOARD MONITORING
+  // ══════════════════════════════════════════════════════════════════════════
 
+  /// Start monitoring clipboard for copy/paste activity during exam
+  static void startClipboardMonitoring() {
+    _clipboardCheckTimer?.cancel();
+    _clipboardCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        if (data?.text != null && data!.text!.isNotEmpty) {
+          _onViolationDetected?.call(
+            'clipboard_activity',
+            'Clipboard contains text: "${data.text!.substring(0, data.text!.length > 50 ? 50 : data.text!.length)}..."',
+          );
+          // Clear clipboard to prevent pasting
+          await Clipboard.setData(const ClipboardData(text: ''));
+        }
+      } catch (_) {
+        // Clipboard access may fail silently
+      }
+    });
+  }
+
+  /// Stop clipboard monitoring
+  static void stopClipboardMonitoring() {
+    _clipboardCheckTimer?.cancel();
+    _clipboardCheckTimer = null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ENHANCED LOCKDOWN MODE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Enter full lockdown mode: screenshot protection + portrait lock +
+  /// full screen + clipboard monitoring + violation callback
+  static Future<void> enterLockdownMode({
+    void Function(String type, String? details)? onViolation,
+  }) async {
+    _onViolationDetected = onViolation;
+    _isLockdownActive = true;
+
+    await enableScreenshotProtection();
+    await lockPortrait();
+    await enterFullScreen();
+    startClipboardMonitoring();
+
+    // Disable clipboard paste
+    await Clipboard.setData(const ClipboardData(text: ''));
+  }
+
+  /// Exit lockdown mode and restore normal device behavior
+  static Future<void> exitLockdownMode() async {
+    _isLockdownActive = false;
+    _onViolationDetected = null;
+
+    await disableScreenshotProtection();
+    await unlockOrientation();
+    await exitFullScreen();
+    stopClipboardMonitoring();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LEGACY COMPATIBILITY
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Enable all security features (legacy API)
   static Future<void> enableAll() async {
     await enableScreenshotProtection();
     await lockPortrait();
     await enterFullScreen();
   }
 
-  // ─── Disable All Security Features ────────────────────────────────────────
-
+  /// Disable all security features (legacy API)
   static Future<void> disableAll() async {
-    await disableScreenshotProtection();
-    await unlockOrientation();
-    await exitFullScreen();
+    await exitLockdownMode();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VIOLATION REPORTING HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Report a detected violation through the callback
+  static void reportViolation(String type, {String? details}) {
+    _onViolationDetected?.call(type, details);
+  }
+
+  /// Get lockdown status summary for display
+  static Map<String, bool> getLockdownStatus() {
+    return {
+      'screenshotProtection': _isLockdownActive,
+      'portraitLock': _isLockdownActive,
+      'fullScreen': _isLockdownActive,
+      'clipboardMonitoring': _clipboardCheckTimer != null,
+    };
   }
 }
