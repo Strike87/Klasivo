@@ -116,7 +116,7 @@ class PdfService {
           // ── Header ──
           _buildReportHeader(
             title: 'Student Exam Report',
-            subtitle: institutionName ?? 'Smart Exam Pro',
+            subtitle: institutionName ?? 'Klasivo',
           ),
           pw.SizedBox(height: 20),
 
@@ -219,7 +219,7 @@ class PdfService {
           // ── Header ──
           _buildReportHeader(
             title: 'Exam Analytics Report',
-            subtitle: institutionName ?? 'Smart Exam Pro',
+            subtitle: institutionName ?? 'Klasivo',
           ),
           pw.SizedBox(height: 20),
 
@@ -353,7 +353,7 @@ class PdfService {
         build: (context) => [
           _buildReportHeader(
             title: 'Class Performance Report',
-            subtitle: institutionName ?? 'Smart Exam Pro',
+            subtitle: institutionName ?? 'Klasivo',
           ),
           pw.SizedBox(height: 20),
 
@@ -437,7 +437,7 @@ class PdfService {
         build: (context) => [
           _buildReportHeader(
             title: 'Student Report Card',
-            subtitle: institutionName ?? 'Smart Exam Pro',
+            subtitle: institutionName ?? 'Klasivo',
           ),
           pw.SizedBox(height: 20),
 
@@ -649,7 +649,7 @@ class PdfService {
   static Future<void> sharePdf(File file) async {
     await Share.shareXFiles(
       [XFile(file.path)],
-      subject: 'Smart Exam Pro Report',
+      subject: 'Klasivo Report',
     );
   }
 
