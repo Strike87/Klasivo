@@ -12,6 +12,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/submission_service.dart';
 import '../../../core/services/exam_security_service.dart';
+import '../../../core/services/exam_instance_service.dart';
 import '../../../widgets/common_widgets.dart';
 
 class ExamTakingScreen extends ConsumerStatefulWidget {
@@ -36,6 +37,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
   bool _isSubmitting = false;
   bool _hasSubmitted = false;
   int _timeSpentSeconds = 0;
+  bool _useInstanceOrder = false;
   int _remainingSeconds = 0;
   Timer? _countdownTimer;
   Timer? _autoSaveTimer;
@@ -90,18 +92,39 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       if (subData != null &&
           (subData['status'] == AppConstants.submissionStatusSubmitted ||
               subData['status'] == AppConstants.submissionStatusFlagged)) {
-        // Already submitted — can't retake
-        if (mounted) {
-          setState(() {
-            _hasSubmitted = true;
-            _isLoading = false;
-          });
-          showSnackBar(context,
-              message: 'You have already submitted this exam',
-              isError: true);
-          context.go('/student/exams');
+        // Already submitted — check if retake is allowed
+        final examData = await ref.read(examServiceProvider).getExam(widget.examId);
+        final allowRetake = examData?['allowRetake'] as bool? ?? false;
+        if (!allowRetake) {
+          if (mounted) {
+            setState(() {
+              _hasSubmitted = true;
+              _isLoading = false;
+            });
+            showSnackBar(context,
+                message: 'You have already submitted this exam',
+                isError: true);
+            context.go('/student/exams');
+          }
+          return;
         }
-        return;
+      }
+
+      // ── Create or get exam instance (for randomized question order) ──
+      final examData = await ref.read(examServiceProvider).getExam(widget.examId);
+      final isRandomized = examData?['isRandomized'] as bool? ?? false;
+      final teacherId = examData?['teacherId'] as String? ?? '';
+
+      if (isRandomized) {
+        final instanceService = ExamInstanceService();
+        await instanceService.createExamInstance(
+          examId: widget.examId,
+          studentId: studentId,
+          classId: classId,
+          teacherId: teacherId,
+          isRandomized: true,
+        );
+        _useInstanceOrder = true;
       }
 
       // Load existing answers if any
@@ -113,7 +136,6 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       }
 
       // Get exam duration
-      final examData = await ref.read(examServiceProvider).getExam(widget.examId);
       final durationMinutes =
           examData?['durationMinutes'] as int? ?? 30;
 
@@ -370,7 +392,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
           ),
         ),
         data: (snapshot) {
-          final questions = snapshot.docs
+          List<QuestionData> questions = snapshot.docs
               .map((doc) => QuestionData.fromFirestore(doc))
               .toList();
 
