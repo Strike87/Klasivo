@@ -5,11 +5,7 @@ import '../core/config/app_constants.dart';
 import '../core/services/class_service.dart';
 import 'auth_provider.dart';
 
-// ─── Class Service Provider ──────────────────────────────────────────────────
-
 final classServiceProvider = Provider<ClassService>((ref) => ClassService());
-
-// ─── Classes Stream Provider ─────────────────────────────────────────────────
 
 final classesStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   final teacherId = ref.watch(userIdProvider);
@@ -18,8 +14,6 @@ final classesStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   }
   return ref.read(classServiceProvider).getClassesStream(teacherId);
 });
-
-// ─── Classes List Provider (parsed data) ─────────────────────────────────────
 
 final classesProvider = Provider<List<ClassData>>((ref) {
   final asyncClasses = ref.watch(classesStreamProvider);
@@ -32,20 +26,19 @@ final classesProvider = Provider<List<ClassData>>((ref) {
   );
 });
 
-// ─── Total Classes Count Provider ────────────────────────────────────────────
-
 final totalClassesProvider = Provider<int>((ref) {
   return ref.watch(classesProvider).length;
 });
-
-// ─── Class Data Model (simplified, no Freezed dependency) ────────────────────
 
 class ClassData {
   final String id;
   final String teacherId;
   final String name;
   final String? grade;
+  final String? gradeId;
+  final String? stageId;
   final int studentCount;
+  final String institutionId;
   final DateTime? createdAt;
 
   ClassData({
@@ -53,7 +46,10 @@ class ClassData {
     required this.teacherId,
     required this.name,
     this.grade,
+    this.gradeId,
+    this.stageId,
     this.studentCount = 0,
+    this.institutionId = AppConstants.defaultInstitutionId,
     this.createdAt,
   });
 
@@ -64,7 +60,10 @@ class ClassData {
       teacherId: data['teacherId'] ?? '',
       name: data['name'] ?? '',
       grade: data['grade'],
+      gradeId: data['gradeId'],
+      stageId: data['stageId'],
       studentCount: data['studentCount'] ?? 0,
+      institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -75,7 +74,10 @@ class ClassData {
       'teacherId': teacherId,
       'name': name,
       'grade': grade,
+      'gradeId': gradeId,
+      'stageId': stageId,
       'studentCount': studentCount,
+      'institutionId': institutionId,
       'createdAt': createdAt,
     };
   }

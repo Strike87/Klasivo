@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,15 +37,21 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
     ref.read(authErrorProvider.notifier).state = null;
 
     try {
+      // IMPORTANT: Sign out any existing Firebase Auth session
+      // Students don't use Firebase Auth — they use code-based login
+      // If a teacher session exists, it must be cleared first
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
       final authService = ref.read(authServiceProvider);
       final userData = await authService.loginStudent(
         studentCode: _studentCodeController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Save auth data locally for role-based navigation
-      await saveAuthData(
-        role: userData['role'] as String,
+      // Save student auth data using the new helper
+      await saveStudentAuthData(
         name: userData['fullName'] as String,
         userId: userData['id'] as String,
         classId: userData['classId'] as String?,
@@ -53,8 +60,9 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
         className: userData['className'] as String?,
       );
 
-      // Update providers
-      ref.read(userRoleProvider.notifier).state = userData['role'] as String;
+      // Update Riverpod providers
+      ref.read(isLoggedInProvider.notifier).state = true;
+      ref.read(userRoleProvider.notifier).state = AppConstants.roleStudent;
       ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
       ref.read(userIdProvider.notifier).state = userData['id'] as String;
       ref.read(studentClassIdProvider.notifier).state = userData['classId'] as String?;

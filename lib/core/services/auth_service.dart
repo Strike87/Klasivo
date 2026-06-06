@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
@@ -6,6 +8,13 @@ import 'firebase_service.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// Hash a password using SHA-256
+  static String hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
 
   // ─── Teacher Registration ────────────────────────────────────────────────
 
@@ -24,6 +33,7 @@ class AuthService {
         'role': AppConstants.roleTeacher,
         'fullName': fullName,
         'email': email,
+        'institutionId': AppConstants.defaultInstitutionId,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -49,7 +59,6 @@ class AuthService {
           await FirebaseService.loginWithEmail(email, password);
       final user = userCredential.user!;
 
-      // Fetch user data from Firestore to get role and name
       final userDoc = await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -72,20 +81,20 @@ class AuthService {
         'role': role ?? AppConstants.roleTeacher,
         'fullName': userData['fullName'] ?? 'Teacher',
         'email': userData['email'] ?? email,
+        'institutionId': userData['institutionId'] ?? AppConstants.defaultInstitutionId,
       };
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Student Login ───────────────────────────────────────────────────────
+  // ─── Student Login (with hashed password support) ──────────────────────
 
   Future<Map<String, dynamic>> loginStudent({
     required String studentCode,
     required String password,
   }) async {
     try {
-      // Query students collection by student code
       final snapshot = await _firestore
           .collection(AppConstants.studentsCollection)
           .where('studentCode', isEqualTo: studentCode)
@@ -99,7 +108,28 @@ class AuthService {
       final studentDoc = snapshot.docs.first;
       final student = studentDoc.data();
 
-      if (student['password'] != password) {
+      // Support both hashed and plaintext passwords for migration period
+      final storedPasswordHash = student['passwordHash'] as String?;
+      final storedPlaintext = student['password'] as String?;
+      final inputHash = hashPassword(password);
+
+      bool passwordMatches = false;
+      if (storedPasswordHash != null && storedPasswordHash.isNotEmpty) {
+        // New system: compare hashes
+        passwordMatches = inputHash == storedPasswordHash;
+      } else if (storedPlaintext != null) {
+        // Legacy: compare plaintext
+        passwordMatches = password == storedPlaintext;
+        // Migrate to hash on successful login
+        if (passwordMatches) {
+          await _firestore
+              .collection(AppConstants.studentsCollection)
+              .doc(studentDoc.id)
+              .update({'passwordHash': inputHash});
+        }
+      }
+
+      if (!passwordMatches) {
         throw Exception('Invalid password. Please try again.');
       }
 
@@ -111,6 +141,10 @@ class AuthService {
         'className': student['className'],
         'classId': student['classId'],
         'teacherId': student['teacherId'],
+        'stageId': student['stageId'],
+        'gradeId': student['gradeId'],
+        'groupId': student['groupId'],
+        'institutionId': student['institutionId'] ?? AppConstants.defaultInstitutionId,
       };
     } catch (e) {
       rethrow;

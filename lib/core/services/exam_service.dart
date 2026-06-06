@@ -1,11 +1,10 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart';
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // ─── Create a new exam (draft by default) ────────────────────────────────
 
   Future<String> createExam({
     required String teacherId,
@@ -16,6 +15,9 @@ class ExamService {
     required DateTime startDate,
     required DateTime endDate,
     required int passingScore,
+    bool isRandomized = false,
+    bool allowRetake = false,
+    String institutionId = AppConstants.defaultInstitutionId,
   }) async {
     try {
       final docRef =
@@ -27,10 +29,13 @@ class ExamService {
         'durationMinutes': durationMinutes,
         'startDate': startDate,
         'endDate': endDate,
-        'totalMarks': 0, // calculated when questions are added
+        'totalMarks': 0,
         'passingScore': passingScore,
         'status': AppConstants.statusDraft,
         'questionCount': 0,
+        'isRandomized': isRandomized,
+        'allowRetake': allowRetake,
+        'institutionId': institutionId,
         'createdAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
@@ -38,8 +43,6 @@ class ExamService {
       rethrow;
     }
   }
-
-  // ─── Update exam settings ────────────────────────────────────────────────
 
   Future<void> updateExam({
     required String examId,
@@ -50,12 +53,11 @@ class ExamService {
     required DateTime startDate,
     required DateTime endDate,
     required int passingScore,
+    bool? isRandomized,
+    bool? allowRetake,
   }) async {
     try {
-      await _firestore
-          .collection(AppConstants.examsCollection)
-          .doc(examId)
-          .update({
+      final data = <String, dynamic>{
         'title': title,
         'description': description,
         'classId': classId,
@@ -63,17 +65,21 @@ class ExamService {
         'startDate': startDate,
         'endDate': endDate,
         'passingScore': passingScore,
-      });
+      };
+      if (isRandomized != null) data['isRandomized'] = isRandomized;
+      if (allowRetake != null) data['allowRetake'] = allowRetake;
+
+      await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
+          .update(data);
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Publish exam (draft → published) ────────────────────────────────────
-
   Future<void> publishExam(String examId) async {
     try {
-      // Verify exam has at least 1 question before publishing
       final questionsSnapshot = await _firestore
           .collection(AppConstants.questionsCollection)
           .where('examId', isEqualTo: examId)
@@ -92,7 +98,6 @@ class ExamService {
         'publishedAt': FieldValue.serverTimestamp(),
       });
 
-      // Schedule exam reminders for students
       final examDoc = await _firestore
           .collection(AppConstants.examsCollection)
           .doc(examId)
@@ -111,18 +116,15 @@ class ExamService {
           );
         }
 
-        // Notify students about new exam
         await NotificationService.notifyExamPublished(
           examTitle: title,
-          className: classId, // We could look up class name but this is fine for now
+          className: classId,
         );
       }
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Unpublish exam (published → draft) ──────────────────────────────────
 
   Future<void> unpublishExam(String examId) async {
     try {
@@ -134,20 +136,18 @@ class ExamService {
         'publishedAt': FieldValue.delete(),
       });
 
-      // Cancel scheduled reminders
       await NotificationService.cancelExamReminders(examId);
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Delete exam and its questions ───────────────────────────────────────
-
   Future<void> deleteExam(String examId) async {
     try {
+      await NotificationService.cancelExamReminders(examId);
+
       final batch = _firestore.batch();
 
-      // Delete all questions for this exam
       final questionsSnapshot = await _firestore
           .collection(AppConstants.questionsCollection)
           .where('examId', isEqualTo: examId)
@@ -156,13 +156,11 @@ class ExamService {
         batch.delete(doc.reference);
       }
 
-      // Delete all submissions for this exam
       final submissionsSnapshot = await _firestore
           .collection(AppConstants.submissionsCollection)
           .where('examId', isEqualTo: examId)
           .get();
       for (final doc in submissionsSnapshot.docs) {
-        // Delete answers for each submission
         final answersSnapshot = await _firestore
             .collection(AppConstants.answersCollection)
             .where('submissionId', isEqualTo: doc.id)
@@ -173,7 +171,24 @@ class ExamService {
         batch.delete(doc.reference);
       }
 
-      // Delete the exam itself
+      // Delete exam instances
+      final instancesSnapshot = await _firestore
+          .collection(AppConstants.examInstancesCollection)
+          .where('examId', isEqualTo: examId)
+          .get();
+      for (final doc in instancesSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete exam stats
+      final statsSnapshot = await _firestore
+          .collection(AppConstants.examStatsCollection)
+          .where('examId', isEqualTo: examId)
+          .get();
+      for (final doc in statsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
       batch.delete(
         _firestore.collection(AppConstants.examsCollection).doc(examId),
       );
@@ -183,8 +198,6 @@ class ExamService {
       rethrow;
     }
   }
-
-  // ─── Recalculate total marks from questions ──────────────────────────────
 
   Future<void> recalculateTotalMarks(String examId) async {
     try {
@@ -210,7 +223,181 @@ class ExamService {
     }
   }
 
-  // ─── Get stream of exams for a teacher ───────────────────────────────────
+  // ─── Exam Instance (for randomization) ────────────────────────────────
+
+  /// Create an exam instance with randomized question order when student starts
+  Future<String> createExamInstance({
+    required String examId,
+    required String studentId,
+    required List<Map<String, dynamic>> questions,
+    bool randomizeQuestions = false,
+    bool randomizeOptions = false,
+  }) async {
+    try {
+      // Check if instance already exists for this student
+      final existingSnapshot = await _firestore
+          .collection(AppConstants.examInstancesCollection)
+          .where('examId', isEqualTo: examId)
+          .where('studentId', isEqualTo: studentId)
+          .limit(1)
+          .get();
+
+      if (existingSnapshot.docs.isNotEmpty) {
+        return existingSnapshot.docs.first.id;
+      }
+
+      // Randomize questions if needed
+      List<Map<String, dynamic>> processedQuestions = List.from(questions);
+      if (randomizeQuestions) {
+        processedQuestions.shuffle(Random());
+      }
+
+      // Randomize options within each question if needed
+      if (randomizeOptions) {
+        for (final q in processedQuestions) {
+          final options = List<String>.from(q['options'] ?? []);
+          if (options.isNotEmpty) {
+            options.shuffle(Random());
+            q['options'] = options;
+          }
+        }
+      }
+
+      // Create submission
+      final classId = questions.isNotEmpty ? questions.first['examData']?['classId'] ?? '' : '';
+      final submissionRef = await _firestore.collection(AppConstants.submissionsCollection).add({
+        'examId': examId,
+        'studentId': studentId,
+        'classId': classId,
+        'status': AppConstants.submissionStatusStarted,
+        'startedAt': FieldValue.serverTimestamp(),
+        'submittedAt': null,
+        'timeSpent': 0,
+        'totalMarks': 0,
+        'score': 0,
+        'percentage': 0,
+        'violationCount': 0,
+      });
+
+      // Create exam instance (immutable snapshot)
+      final docRef = await _firestore.collection(AppConstants.examInstancesCollection).add({
+        'examId': examId,
+        'studentId': studentId,
+        'randomizedQuestions': processedQuestions,
+        'startedAt': FieldValue.serverTimestamp(),
+        'submissionId': submissionRef.id,
+      });
+
+      return docRef.id;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Get exam instance for a student
+  Future<Map<String, dynamic>?> getExamInstance({
+    required String examId,
+    required String studentId,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.examInstancesCollection)
+          .where('examId', isEqualTo: examId)
+          .where('studentId', isEqualTo: studentId)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+      return {'id': snapshot.docs.first.id, ...snapshot.docs.first.data()};
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Exam Stats (precomputed) ────────────────────────────────────────
+
+  /// Update exam stats after a submission
+  Future<void> updateExamStats(String examId) async {
+    try {
+      final submissionsSnapshot = await _firestore
+          .collection(AppConstants.submissionsCollection)
+          .where('examId', isEqualTo: examId)
+          .get();
+
+      int totalStudents = submissionsSnapshot.docs.length;
+      int submittedStudents = 0;
+      int totalScore = 0;
+      int highestScore = 0;
+      int lowestScore = 0;
+      bool firstScore = true;
+      int passCount = 0;
+
+      // Get passing score
+      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
+      final passingScore = (examDoc.data()?['passingScore'] as int?) ?? 0;
+      final totalMarks = (examDoc.data()?['totalMarks'] as int?) ?? 0;
+
+      for (final doc in submissionsSnapshot.docs) {
+        final data = doc.data();
+        final status = data['status'] as String? ?? '';
+        final score = data['score'] as int? ?? 0;
+        final percentage = data['percentage'] as int? ?? 0;
+
+        if (status == AppConstants.submissionStatusSubmitted ||
+            status == AppConstants.submissionStatusFlagged) {
+          submittedStudents++;
+          totalScore += score;
+
+          if (firstScore) {
+            highestScore = score;
+            lowestScore = score;
+            firstScore = false;
+          } else {
+            if (score > highestScore) highestScore = score;
+            if (score < lowestScore) lowestScore = score;
+          }
+
+          if (percentage >= passingScore) passCount++;
+        }
+      }
+
+      final averageScore = submittedStudents > 0
+          ? (totalScore / submittedStudents).round()
+          : 0;
+      final passRate = submittedStudents > 0
+          ? (passCount / submittedStudents) * 100
+          : 0.0;
+
+      // Upsert exam stats
+      final statsSnapshot = await _firestore
+          .collection(AppConstants.examStatsCollection)
+          .where('examId', isEqualTo: examId)
+          .limit(1)
+          .get();
+
+      final statsData = {
+        'examId': examId,
+        'totalStudents': totalStudents,
+        'submittedStudents': submittedStudents,
+        'averageScore': averageScore,
+        'highestScore': highestScore,
+        'lowestScore': lowestScore,
+        'passRate': passRate,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (statsSnapshot.docs.isNotEmpty) {
+        await _firestore
+            .collection(AppConstants.examStatsCollection)
+            .doc(statsSnapshot.docs.first.id)
+            .update(statsData);
+      } else {
+        await _firestore.collection(AppConstants.examStatsCollection).add(statsData);
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
 
   Stream<QuerySnapshot> getExamsStream(String teacherId) {
     return _firestore
@@ -220,8 +407,6 @@ class ExamService {
         .snapshots();
   }
 
-  // ─── Get stream of published exams for a class ───────────────────────────
-
   Stream<QuerySnapshot> getClassExamsStream(String classId) {
     return _firestore
         .collection(AppConstants.examsCollection)
@@ -230,8 +415,6 @@ class ExamService {
         .orderBy('startDate', descending: false)
         .snapshots();
   }
-
-  // ─── Get a single exam ──────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> getExam(String examId) async {
     try {
@@ -244,8 +427,6 @@ class ExamService {
       rethrow;
     }
   }
-
-  // ─── Get exam counts by status ───────────────────────────────────────────
 
   Future<Map<String, int>> getExamCounts(String teacherId) async {
     try {

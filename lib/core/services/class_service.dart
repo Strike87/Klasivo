@@ -4,12 +4,13 @@ import '../config/app_constants.dart';
 class ClassService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ─── Create a new class ──────────────────────────────────────────────────
-
   Future<String> createClass({
     required String teacherId,
     required String name,
     String? grade,
+    String? gradeId,
+    String? stageId,
+    String institutionId = AppConstants.defaultInstitutionId,
   }) async {
     try {
       final docRef = await _firestore
@@ -18,7 +19,10 @@ class ClassService {
         'teacherId': teacherId,
         'name': name,
         'grade': grade,
+        'gradeId': gradeId,
+        'stageId': stageId,
         'studentCount': 0,
+        'institutionId': institutionId,
         'createdAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
@@ -27,31 +31,32 @@ class ClassService {
     }
   }
 
-  // ─── Update an existing class ────────────────────────────────────────────
-
   Future<void> updateClass({
     required String classId,
     required String name,
     String? grade,
+    String? gradeId,
+    String? stageId,
   }) async {
     try {
+      final data = <String, dynamic>{
+        'name': name,
+        'grade': grade,
+      };
+      if (gradeId != null) data['gradeId'] = gradeId;
+      if (stageId != null) data['stageId'] = stageId;
+
       await _firestore
           .collection(AppConstants.classesCollection)
           .doc(classId)
-          .update({
-        'name': name,
-        'grade': grade,
-      });
+          .update(data);
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Delete a class and its students ─────────────────────────────────────
-
   Future<void> deleteClass(String classId) async {
     try {
-      // Delete all students in this class
       final studentsSnapshot = await _firestore
           .collection(AppConstants.studentsCollection)
           .where('classId', isEqualTo: classId)
@@ -70,8 +75,6 @@ class ClassService {
     }
   }
 
-  // ─── Get a single class ──────────────────────────────────────────────────
-
   Future<Map<String, dynamic>?> getClass(String classId) async {
     try {
       final doc = await _firestore
@@ -84,8 +87,6 @@ class ClassService {
     }
   }
 
-  // ─── Get stream of classes for a teacher ─────────────────────────────────
-
   Stream<QuerySnapshot> getClassesStream(String teacherId) {
     return _firestore
         .collection(AppConstants.classesCollection)
@@ -93,8 +94,6 @@ class ClassService {
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
-
-  // ─── Get all classes for a teacher (one-time fetch) ──────────────────────
 
   Future<QuerySnapshot> getClasses(String teacherId) async {
     return await _firestore
@@ -104,8 +103,6 @@ class ClassService {
         .get();
   }
 
-  // ─── Get student count for a class ───────────────────────────────────────
-
   Future<int> getStudentCount(String classId) async {
     try {
       final snapshot = await _firestore
@@ -113,13 +110,11 @@ class ClassService {
           .where('classId', isEqualTo: classId)
           .count()
           .get();
-      return snapshot.count;
+      return snapshot.count ?? 0;
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Update student count in class ───────────────────────────────────────
 
   Future<void> updateStudentCount(String classId, int count) async {
     try {

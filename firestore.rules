@@ -21,18 +21,14 @@ service cloud.firestore {
 
     // ====== Users Collection ======
     match /users/{userId} {
-      // Anyone authenticated can read user profiles
       allow read: if isAuth();
-      // Only the user themselves can write their profile
       allow create: if isAuth() && request.auth.uid == userId;
       allow update: if isAuth() && request.auth.uid == userId;
-      allow delete: if false; // No deletion through client
+      allow delete: if false;
     }
 
     // ====== Students Collection ======
     match /students/{studentId} {
-      // Teachers can read/write all students
-      // Students can read their own record
       allow read: if isAuth();
       allow create: if isTeacher();
       allow update: if isTeacher();
@@ -47,10 +43,32 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
 
+    // ====== Stages Collection ======
+    match /stages/{stageId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isTeacher();
+      allow delete: if isTeacher();
+    }
+
+    // ====== Grades Collection ======
+    match /grades/{gradeId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isTeacher();
+      allow delete: if isTeacher();
+    }
+
+    // ====== Groups Collection ======
+    match /groups/{groupId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isTeacher();
+      allow delete: if isTeacher();
+    }
+
     // ====== Exams Collection ======
     match /exams/{examId} {
-      // Everyone authenticated can read exams
-      // Only teachers can create/update/delete
       allow read: if isAuth();
       allow create: if isTeacher();
       allow update: if isTeacher();
@@ -65,13 +83,20 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
 
+    // ====== Question Bank Collection ======
+    match /question_bank/{questionId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isTeacher();
+      allow delete: if isTeacher();
+    }
+
     // ====== Submissions Collection ======
     match /submissions/{submissionId} {
-      // Teachers can read all, students can read their own
       allow read: if isAuth();
       allow create: if isAuth();
       allow update: if isAuth();
-      allow delete: if false; // No deletion
+      allow delete: if false;
     }
 
     // ====== Answers Collection ======
@@ -79,7 +104,39 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth();
       allow update: if isAuth();
-      allow delete: if false; // No deletion
+      allow delete: if false;
+    }
+
+    // ====== Exam Instances Collection ======
+    match /exam_instances/{instanceId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if false;
+    }
+
+    // ====== Exam Stats Collection ======
+    match /exam_stats/{statId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isTeacher();
+      allow delete: if false;
+    }
+
+    // ====== Violations Collection ======
+    match /violations/{violationId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isTeacher();
+      allow delete: if false;
+    }
+
+    // ====== Notifications Collection ======
+    match /notifications/{notificationId} {
+      allow read: if isAuth();
+      allow create: if isTeacher();
+      allow update: if isAuth();
+      allow delete: if false;
     }
   }
 }

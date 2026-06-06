@@ -51,13 +51,15 @@ class _TeacherRegistrationScreenState
       );
 
       // Save auth data locally for role-based navigation
-      await saveAuthData(
+      await saveTeacherAuthData(
+        email: _emailController.text.trim(),
         role: userData['role'] as String,
         name: userData['fullName'] as String,
         userId: userData['id'] as String,
       );
 
       // Update providers
+      ref.read(isLoggedInProvider.notifier).state = true;
       ref.read(userRoleProvider.notifier).state = userData['role'] as String;
       ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
       ref.read(userIdProvider.notifier).state = userData['id'] as String;

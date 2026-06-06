@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -26,6 +28,16 @@ import 'features/student_exams/pages/student_exam_list_screen.dart';
 import 'features/student_exams/pages/exam_taking_screen.dart';
 import 'features/student_results/pages/student_results_screen.dart';
 import 'features/teacher_results/pages/exam_results_screen.dart';
+// v1.5 imports
+import 'features/stages/pages/stage_list_screen.dart';
+import 'features/grades/pages/grade_list_screen.dart';
+import 'features/groups/pages/group_list_screen.dart';
+import 'features/question_bank/pages/question_bank_screen.dart';
+import 'features/notifications/pages/notification_center_screen.dart';
+import 'features/excel_import/pages/excel_import_screen.dart';
+import 'features/qr/pages/qr_generate_screen.dart';
+import 'features/qr/pages/qr_scan_screen.dart';
+import 'features/analytics/pages/teacher_analytics_dashboard.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
@@ -40,7 +52,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await HiveFlutter.init();
+  await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
 
   // Initialize notifications
@@ -67,25 +79,73 @@ class MyApp extends ConsumerWidget {
   }
 }
 
+// ─── Auth Change Notifier for GoRouter refresh ──────────────────────────────
+
+class AuthChangeNotifier extends ChangeNotifier {
+  StreamSubscription<User?>? _firebaseSub;
+  StreamSubscription? _hiveSub;
+
+  AuthChangeNotifier() {
+    _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(
+      (_) => notifyListeners(),
+      onError: (_) => notifyListeners(),
+    );
+    _startHiveWatch();
+  }
+
+  void _startHiveWatch() {
+    bool _lastValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
+    Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
+      final currentValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
+      if (currentValue != _lastValue) {
+        _lastValue = currentValue;
+        notifyListeners();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _firebaseSub?.cancel();
+    super.dispose();
+  }
+}
+
+final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
+  final notifier = AuthChangeNotifier();
+  ref.onDispose(() => notifier.dispose());
+  return notifier;
+});
+
 // ─── GoRouter with Auth Guards ───────────────────────────────────────────────
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
-  final userRole = ref.watch(userRoleProvider);
+  final notifier = ref.watch(authChangeNotifierProvider);
 
   return GoRouter(
     initialLocation: '/',
     debugLogDiagnostics: true,
+    refreshListenable: notifier,
     redirect: (context, state) {
-      final isLoggedIn = authState.value != null;
+      final box = Hive.box(AppConstants.authBox);
+      final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+      final userRole = box.get('userRole', defaultValue: '') as String;
+
       final isOnSplash = state.matchedLocation == '/';
       final isOnAuth = state.matchedLocation.startsWith('/auth');
       final isOnDashboard =
           state.matchedLocation.startsWith('/teacher') ||
           state.matchedLocation.startsWith('/student');
 
-      // ── Splash screen logic ──
       if (isOnSplash) {
+        if (isLoggedIn && userRole.isNotEmpty) {
+          if (userRole == AppConstants.roleTeacher) return '/teacher';
+          if (userRole == AppConstants.roleStudent) return '/student';
+        }
+        return '/auth';
+      }
+
+      if (isOnAuth) {
         if (isLoggedIn && userRole.isNotEmpty) {
           if (userRole == AppConstants.roleTeacher) return '/teacher';
           if (userRole == AppConstants.roleStudent) return '/student';
@@ -93,41 +153,28 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // ── Auth pages are always accessible when not logged in ──
-      if (isOnAuth && !isLoggedIn) return null;
-
-      // ── If logged in and trying to access auth pages, redirect to dashboard ──
-      if (isOnAuth && isLoggedIn) {
+      if (isOnDashboard) {
+        if (!isLoggedIn) return '/auth';
+        if (userRole.isEmpty) return '/auth';
+        if (userRole == AppConstants.roleTeacher &&
+            state.matchedLocation.startsWith('/teacher')) {
+          return null;
+        }
+        if (userRole == AppConstants.roleStudent &&
+            state.matchedLocation.startsWith('/student')) {
+          return null;
+        }
         if (userRole == AppConstants.roleTeacher) return '/teacher';
         if (userRole == AppConstants.roleStudent) return '/student';
-        return '/auth';
-      }
-
-      // ── Dashboard pages require authentication ──
-      if (isOnDashboard && !isLoggedIn) {
-        return '/auth';
-      }
-
-      // ── Role-based dashboard access ──
-      if (state.matchedLocation.startsWith('/teacher') &&
-          userRole != AppConstants.roleTeacher) {
-        return '/auth';
-      }
-      if (state.matchedLocation.startsWith('/student') &&
-          userRole != AppConstants.roleStudent) {
-        return '/auth';
       }
 
       return null;
     },
     routes: [
-      // ── Splash ──
       GoRoute(
         path: '/',
         builder: (context, state) => const SplashScreen(),
       ),
-
-      // ── Auth Routes ──
       GoRoute(
         path: '/auth',
         builder: (context, state) => const RoleSelectionScreen(),
@@ -146,34 +193,27 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-
-      // ── Teacher Routes ──
+      // ─── Teacher Routes ──────────────────────────────────────────────
       GoRoute(
         path: '/teacher',
         builder: (context, state) => const TeacherDashboard(),
         routes: [
-          // ── Classes ──
+          // Classes
           GoRoute(
             path: 'classes',
             builder: (context, state) => const ClassListScreen(),
             routes: [
               GoRoute(
                 path: 'create',
-                builder: (context, state) => const ClassFormScreen(
-                  isEditing: false,
-                ),
+                builder: (context, state) => const ClassFormScreen(isEditing: false),
               ),
               GoRoute(
                 path: 'edit/:classId',
                 builder: (context, state) {
                   final classData = state.extra as ClassData?;
-                  return ClassFormScreen(
-                    isEditing: true,
-                    classData: classData,
-                  );
+                  return ClassFormScreen(isEditing: true, classData: classData);
                 },
               ),
-              // ── Students in Class ──
               GoRoute(
                 path: ':classId/students',
                 builder: (context, state) {
@@ -185,10 +225,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: 'create',
                     builder: (context, state) {
                       final classId = state.pathParameters['classId']!;
-                      return StudentFormScreen(
-                        classId: classId,
-                        isEditing: false,
-                      );
+                      return StudentFormScreen(classId: classId, isEditing: false);
                     },
                   ),
                   GoRoute(
@@ -196,46 +233,57 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) {
                       final classId = state.pathParameters['classId']!;
                       final studentData = state.extra as StudentData?;
-                      return StudentFormScreen(
-                        classId: classId,
-                        isEditing: true,
-                        studentData: studentData,
-                      );
+                      return StudentFormScreen(classId: classId, isEditing: true, studentData: studentData);
+                    },
+                  ),
+                  // v1.5: Excel Import
+                  GoRoute(
+                    path: 'import',
+                    builder: (context, state) {
+                      final classId = state.pathParameters['classId']!;
+                      return ExcelImportScreen(classId: classId);
+                    },
+                  ),
+                  // v1.5: QR Generate
+                  GoRoute(
+                    path: 'qr',
+                    builder: (context, state) {
+                      final classId = state.pathParameters['classId']!;
+                      return QrGenerateScreen(classId: classId);
+                    },
+                  ),
+                  // v1.5: Groups
+                  GoRoute(
+                    path: 'groups',
+                    builder: (context, state) {
+                      final classId = state.pathParameters['classId']!;
+                      return GroupListScreen(classId: classId);
                     },
                   ),
                 ],
               ),
             ],
           ),
-
-          // ── All Students ──
           GoRoute(
             path: 'students',
             builder: (context, state) => const AllStudentsScreen(),
           ),
-
-          // ── Exams ──
+          // Exams
           GoRoute(
             path: 'exams',
             builder: (context, state) => const ExamListScreen(),
             routes: [
               GoRoute(
                 path: 'create',
-                builder: (context, state) => const ExamFormScreen(
-                  isEditing: false,
-                ),
+                builder: (context, state) => const ExamFormScreen(isEditing: false),
               ),
               GoRoute(
                 path: 'edit/:examId',
                 builder: (context, state) {
                   final examData = state.extra as ExamData?;
-                  return ExamFormScreen(
-                    isEditing: true,
-                    examData: examData,
-                  );
+                  return ExamFormScreen(isEditing: true, examData: examData);
                 },
               ),
-              // ── Exam Detail ──
               GoRoute(
                 path: ':examId',
                 builder: (context, state) {
@@ -243,7 +291,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                   return ExamDetailScreen(examId: examId);
                 },
                 routes: [
-                  // ── Question Builder ──
                   GoRoute(
                     path: 'questions',
                     builder: (context, state) {
@@ -251,7 +298,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return QuestionBuilderScreen(examId: examId);
                     },
                   ),
-                  // ── Exam Results (Teacher View) ──
                   GoRoute(
                     path: 'results',
                     builder: (context, state) {
@@ -263,20 +309,46 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // v1.5: Stages
+          GoRoute(
+            path: 'stages',
+            builder: (context, state) => const StageListScreen(),
+            routes: [
+              GoRoute(
+                path: ':stageId/grades',
+                builder: (context, state) {
+                  final stageId = state.pathParameters['stageId']!;
+                  return GradeListScreen(stageId: stageId);
+                },
+              ),
+            ],
+          ),
+          // v1.5: Question Bank
+          GoRoute(
+            path: 'question-bank',
+            builder: (context, state) => const QuestionBankScreen(),
+          ),
+          // v1.5: Notifications
+          GoRoute(
+            path: 'notifications',
+            builder: (context, state) => const NotificationCenterScreen(),
+          ),
+          // v1.5: Analytics
+          GoRoute(
+            path: 'analytics',
+            builder: (context, state) => const TeacherAnalyticsDashboard(),
+          ),
         ],
       ),
-
-      // ── Student Routes ──
+      // ─── Student Routes ──────────────────────────────────────────────
       GoRoute(
         path: '/student',
         builder: (context, state) => const StudentDashboard(),
         routes: [
-          // ── Student Exams ──
           GoRoute(
             path: 'exams',
             builder: (context, state) => const StudentExamListScreen(),
             routes: [
-              // ── Take Exam ──
               GoRoute(
                 path: ':examId/take',
                 builder: (context, state) {
@@ -286,8 +358,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-
-          // ── Student Results ──
           GoRoute(
             path: 'results',
             builder: (context, state) => const StudentResultsScreen(),
@@ -303,6 +373,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
+          ),
+          // v1.5: QR Scan
+          GoRoute(
+            path: 'scan-qr',
+            builder: (context, state) => const QrScanScreen(),
+          ),
+          // v1.5: Notifications
+          GoRoute(
+            path: 'notifications',
+            builder: (context, state) => const NotificationCenterScreen(),
           ),
         ],
       ),

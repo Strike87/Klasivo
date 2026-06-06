@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/exam_provider.dart';
 import '../../providers/submission_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../core/config/app_constants.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -14,14 +15,12 @@ class StudentDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authStateProvider);
     final userName = ref.watch(userNameProvider);
     final classId = ref.watch(studentClassIdProvider);
     final stats = ref.watch(studentExamStatsProvider);
     final submissions = ref.watch(studentSubmissionsProvider);
     final theme = Theme.of(context);
 
-    // Get class name from persisted auth data
     final className = ref.watch(studentClassNameProvider) ?? '-';
 
     return Scaffold(
@@ -29,10 +28,16 @@ class StudentDashboard extends ConsumerWidget {
         title: const Text('Smart Exam Pro'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {
-              // TODO: Phase 7 - Notifications
-            },
+            icon: Badge(
+              isLabelVisible: (ref.watch(unreadNotificationsProvider)) > 0,
+              label: Text('${ref.watch(unreadNotificationsProvider)}'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            onPressed: () => context.go('/student/notifications'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => context.go('/student/scan-qr'),
           ),
           PopupMenuButton<String>(
             onSelected: (value) async {
@@ -46,7 +51,6 @@ class StudentDashboard extends ConsumerWidget {
                 );
                 if (confirmed == true && context.mounted) {
                   await clearAuthData();
-                  await ref.read(authServiceProvider).logout();
                   if (context.mounted) {
                     context.go('/auth');
                   }
@@ -68,157 +72,150 @@ class StudentDashboard extends ConsumerWidget {
           ),
         ],
       ),
-      body: authState.when(
-        loading: () => const LoadingIndicator(),
-        error: (error, stack) => ErrorWidgetCustom(
-          message: 'Error: $error',
-          onRetry: () => ref.invalidate(authStateProvider),
-        ),
-        data: (user) => RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(examsStreamProvider);
-            ref.invalidate(studentSubmissionsStreamProvider);
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Welcome Section ──
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(examsStreamProvider);
+          ref.invalidate(studentSubmissionsStreamProvider);
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Welcome Section ──
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.green.shade700,
-                          Colors.green.shade500,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hello,',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          userName ?? 'Student',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Ready for your next exam?',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.green.shade700,
+                        Colors.green.shade500,
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Stats Cards ──
-                Row(
-                  children: [
-                    _StudentStatCard(
-                      title: 'Upcoming',
-                      value: '${stats.upcoming}',
-                      icon: Icons.upcoming_outlined,
-                      color: Colors.orange,
-                      onTap: () => context.go('/student/exams'),
-                    ),
-                    const SizedBox(width: 12),
-                    _StudentStatCard(
-                      title: 'Completed',
-                      value: '${stats.completed}',
-                      icon: Icons.check_circle_outline,
-                      color: Colors.green,
-                      onTap: () => context.go('/student/exams'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _StudentStatCard(
-                      title: 'Average Score',
-                      value: stats.averageScore > 0
-                          ? '${stats.averageScore.toStringAsFixed(0)}%'
-                          : '-',
-                      icon: Icons.bar_chart_outlined,
-                      color: Colors.blue,
-                      onTap: () => context.go('/student/results'),
-                    ),
-                    const SizedBox(width: 12),
-                    _StudentStatCard(
-                      title: 'My Class',
-                      value: className,
-                      icon: Icons.class_outlined,
-                      color: Colors.purple,
-                      onTap: null,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // ── Active Exams Section ──
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Available Exams',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello,',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: Colors.white70,
+                        ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.go('/student/exams'),
-                      child: const Text('View All'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _ActiveExamsList(classId: classId),
-                const SizedBox(height: 24),
-
-                // ── Recent Results Section ──
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Recent Results',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      const SizedBox(height: 4),
+                      Text(
+                        userName ?? 'Student',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.go('/student/results'),
-                      child: const Text('View All'),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Ready for your next exam?',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                _RecentResultsList(submissions: submissions),
-              ],
-            ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── Stats Cards ──
+              Row(
+                children: [
+                  _StudentStatCard(
+                    title: 'Upcoming',
+                    value: '${stats.upcoming}',
+                    icon: Icons.upcoming_outlined,
+                    color: Colors.orange,
+                    onTap: () => context.go('/student/exams'),
+                  ),
+                  const SizedBox(width: 12),
+                  _StudentStatCard(
+                    title: 'Completed',
+                    value: '${stats.completed}',
+                    icon: Icons.check_circle_outline,
+                    color: Colors.green,
+                    onTap: () => context.go('/student/exams'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _StudentStatCard(
+                    title: 'Average Score',
+                    value: stats.averageScore > 0
+                        ? '${stats.averageScore.toStringAsFixed(0)}%'
+                        : '-',
+                    icon: Icons.bar_chart_outlined,
+                    color: Colors.blue,
+                    onTap: () => context.go('/student/results'),
+                  ),
+                  const SizedBox(width: 12),
+                  _StudentStatCard(
+                    title: 'My Class',
+                    value: className,
+                    icon: Icons.class_outlined,
+                    color: Colors.purple,
+                    onTap: null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // ── Active Exams Section ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Available Exams',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => context.go('/student/exams'),
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _ActiveExamsList(classId: classId),
+              const SizedBox(height: 24),
+
+              // ── Recent Results Section ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Recent Results',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => context.go('/student/results'),
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _RecentResultsList(submissions: submissions),
+            ],
           ),
         ),
       ),
@@ -279,7 +276,6 @@ class _ActiveExamsList extends ConsumerWidget {
             .map((doc) => ExamData.fromFirestore(doc))
             .toList();
 
-        // Filter: only upcoming & active exams (not ended, not yet submitted)
         final activeExams = allExams.where((exam) {
           final hasSubmitted = submissions.any(
             (s) =>
@@ -409,7 +405,6 @@ class _ActiveExamsList extends ConsumerWidget {
       },
     );
   }
-
 }
 
 // ─── Recent Results List Widget ──────────────────────────────────────────────
@@ -458,7 +453,7 @@ class _RecentResultsList extends ConsumerWidget {
 
     return Column(
       children: submittedSubs.map((sub) {
-        final passed = sub.percentage >= 50; // Will compare with exam passingScore in Phase 5
+        final passed = sub.percentage >= 50;
         final dateFormat = DateFormat('MMM dd, yyyy');
 
         return Card(

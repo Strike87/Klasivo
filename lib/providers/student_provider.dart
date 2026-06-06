@@ -4,18 +4,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/services/student_service.dart';
 import 'auth_provider.dart';
 
-// ─── Student Service Provider ────────────────────────────────────────────────
-
 final studentServiceProvider = Provider<StudentService>((ref) => StudentService());
-
-// ─── Students by Class Stream Provider ───────────────────────────────────────
 
 final studentsByClassProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, classId) {
   return ref.read(studentServiceProvider).getStudentsByClassStream(classId);
 });
-
-// ─── All Students for Teacher Stream Provider ────────────────────────────────
 
 final allStudentsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   final teacherId = ref.watch(userIdProvider);
@@ -24,8 +18,6 @@ final allStudentsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   }
   return ref.read(studentServiceProvider).getStudentsByTeacherStream(teacherId);
 });
-
-// ─── All Students List (parsed data) ─────────────────────────────────────────
 
 final allStudentsProvider = Provider<List<StudentData>>((ref) {
   final asyncStudents = ref.watch(allStudentsStreamProvider);
@@ -37,8 +29,6 @@ final allStudentsProvider = Provider<List<StudentData>>((ref) {
     error: (_, __) => [],
   );
 });
-
-// ─── Students by Class List (parsed data) ────────────────────────────────────
 
 final studentsByClassListProvider =
     Provider.family<List<StudentData>, String>((ref, classId) {
@@ -52,17 +42,11 @@ final studentsByClassListProvider =
   );
 });
 
-// ─── Total Students Count Provider ───────────────────────────────────────────
-
 final totalStudentsProvider = Provider<int>((ref) {
   return ref.watch(allStudentsProvider).length;
 });
 
-// ─── Selected Class ID Provider (for filtering) ─────────────────────────────
-
 final selectedClassIdProvider = StateProvider<String?>((ref) => null);
-
-// ─── Student Data Model ──────────────────────────────────────────────────────
 
 class StudentData {
   final String id;
@@ -71,9 +55,14 @@ class StudentData {
   final String className;
   final String fullName;
   final String studentCode;
-  // Note: password is NOT exposed in the data model for security.
-  // It is only accessed directly in AuthService for login verification.
   final String? grade;
+  final String? stageId;
+  final String? gradeId;
+  final String? groupId;
+  final String? phone;
+  final String? email;
+  final String? parentPhone;
+  final String institutionId;
   final DateTime? createdAt;
 
   StudentData({
@@ -84,6 +73,13 @@ class StudentData {
     required this.fullName,
     required this.studentCode,
     this.grade,
+    this.stageId,
+    this.gradeId,
+    this.groupId,
+    this.phone,
+    this.email,
+    this.parentPhone,
+    this.institutionId = 'default',
     this.createdAt,
   });
 
@@ -97,6 +93,13 @@ class StudentData {
       fullName: data['fullName'] ?? '',
       studentCode: data['studentCode'] ?? '',
       grade: data['grade'],
+      stageId: data['stageId'],
+      gradeId: data['gradeId'],
+      groupId: data['groupId'],
+      phone: data['phone'],
+      email: data['email'],
+      parentPhone: data['parentPhone'],
+      institutionId: data['institutionId'] ?? 'default',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -110,6 +113,13 @@ class StudentData {
       'fullName': fullName,
       'studentCode': studentCode,
       'grade': grade,
+      'stageId': stageId,
+      'gradeId': gradeId,
+      'groupId': groupId,
+      'phone': phone,
+      'email': email,
+      'parentPhone': parentPhone,
+      'institutionId': institutionId,
       'createdAt': createdAt,
     };
   }

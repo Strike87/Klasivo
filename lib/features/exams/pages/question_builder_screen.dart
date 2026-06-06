@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/question_provider.dart';
 import '../../../providers/exam_provider.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/question_service.dart';
 import '../../../widgets/common_widgets.dart';
 
 class QuestionBuilderScreen extends ConsumerStatefulWidget {

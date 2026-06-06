@@ -5,19 +5,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/question_service.dart';
 
-// ─── Question Service Provider ──────────────────────────────────────────────
-
 final questionServiceProvider =
     Provider<QuestionService>((ref) => QuestionService());
-
-// ─── Questions Stream Provider (by exam) ────────────────────────────────────
 
 final questionsStreamProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, examId) {
   return ref.read(questionServiceProvider).getQuestionsStream(examId);
 });
-
-// ─── Questions List Provider (parsed data) ──────────────────────────────────
 
 final questionsProvider =
     Provider.family<List<QuestionData>, String>((ref, examId) {
@@ -30,8 +24,6 @@ final questionsProvider =
   );
 });
 
-// ─── Question Data Model ────────────────────────────────────────────────────
-
 class QuestionData {
   final String id;
   final String examId;
@@ -41,6 +33,9 @@ class QuestionData {
   final String correctAnswer;
   final int marks;
   final int order;
+  final String? imageUrl;
+  final String? difficulty;
+  final String? bankQuestionId;
   final DateTime? createdAt;
 
   QuestionData({
@@ -52,6 +47,9 @@ class QuestionData {
     required this.correctAnswer,
     required this.marks,
     required this.order,
+    this.imageUrl,
+    this.difficulty,
+    this.bankQuestionId,
     this.createdAt,
   });
 
@@ -66,11 +64,13 @@ class QuestionData {
       correctAnswer: data['correctAnswer'] ?? '',
       marks: data['marks'] ?? 1,
       order: data['order'] ?? 0,
+      imageUrl: data['imageUrl'],
+      difficulty: data['difficulty'],
+      bankQuestionId: data['bankQuestionId'],
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
 
-  /// Human-readable question type label
   String get typeLabel {
     switch (questionType) {
       case AppConstants.questionTypeMultipleChoice:
@@ -84,7 +84,6 @@ class QuestionData {
     }
   }
 
-  /// Icon for question type
   IconData get typeIcon {
     switch (questionType) {
       case AppConstants.questionTypeMultipleChoice:
@@ -98,17 +97,16 @@ class QuestionData {
     }
   }
 
-  /// Color for question type badge
   Color get typeColor {
     switch (questionType) {
       case AppConstants.questionTypeMultipleChoice:
-        return const Color(0xFF2196F3); // Blue
+        return const Color(0xFF2196F3);
       case AppConstants.questionTypeTrueFalse:
-        return const Color(0xFF4CAF50); // Green
+        return const Color(0xFF4CAF50);
       case AppConstants.questionTypeShortAnswer:
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFFF9800);
       default:
-        return const Color(0xFF9E9E9E); // Grey
+        return const Color(0xFF9E9E9E);
     }
   }
 
@@ -122,6 +120,8 @@ class QuestionData {
       'correctAnswer': correctAnswer,
       'marks': marks,
       'order': order,
+      'imageUrl': imageUrl,
+      'difficulty': difficulty,
     };
   }
 }

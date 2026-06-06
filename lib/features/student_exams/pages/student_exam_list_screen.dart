@@ -107,7 +107,7 @@ class StudentExamListScreen extends ConsumerWidget {
                   exams: upcomingExams,
                   submissions: submissions,
                   studentId: studentId ?? '',
-                  emptyIcon: Icons.event_upcoming,
+                  emptyIcon: Icons.event_note,
                   emptyTitle: 'No Upcoming Exams',
                   emptySubtitle: 'Your scheduled exams will appear here',
                   isUpcoming: true,

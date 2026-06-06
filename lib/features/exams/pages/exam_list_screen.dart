@@ -62,7 +62,7 @@ class ExamListScreen extends ConsumerWidget {
                 _ExamTabList(
                   exams: upcoming,
                   classes: classes,
-                  emptyIcon: Icons.event_upcoming,
+                  emptyIcon: Icons.event_note,
                   emptyTitle: 'No Upcoming Exams',
                   emptySubtitle: 'Create and publish an exam to see it here',
                 ),
@@ -262,19 +262,25 @@ class _ExamCard extends StatelessWidget {
                 children: [
                   Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
                   const SizedBox(width: 4),
-                  Text(
-                    '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  Flexible(
+                    child: Text(
+                      '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  Text(
-                    ' → ',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(Icons.arrow_forward, size: 12, color: Colors.grey[500]),
                   ),
-                  Text(
-                    '${dateFormat.format(exam.endDate)} ${timeFormat.format(exam.endDate)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  Flexible(
+                    child: Text(
+                      '${dateFormat.format(exam.endDate)} ${timeFormat.format(exam.endDate)}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 4),
                   IconButton(
                     icon: Icon(Icons.delete_outline,
                         size: 20, color: Colors.red[400]),

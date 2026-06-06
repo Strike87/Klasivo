@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
-import '../../../providers/auth_provider.dart';
 
-class SplashScreen extends ConsumerStatefulWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
 
   @override
-  ConsumerState<SplashScreen> createState() => _SplashScreenState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen>
+class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeIn;
@@ -39,16 +38,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _navigateToNext() async {
-    // Wait for splash animation
     await Future.delayed(const Duration(seconds: 2));
-
     if (!mounted) return;
 
-    final authState = ref.read(authStateProvider);
-    final userRole = ref.read(userRoleProvider);
+    // Use Hive as the SINGLE SOURCE OF TRUTH for auth state
+    // This works for BOTH teachers (Firebase Auth) AND students (code-based login)
+    final box = Hive.box(AppConstants.authBox);
+    final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+    final userRole = box.get('userRole', defaultValue: '') as String;
 
-    if (authState.value != null && userRole.isNotEmpty) {
-      // User is logged in — navigate to appropriate dashboard
+    if (isLoggedIn && userRole.isNotEmpty) {
       if (userRole == AppConstants.roleTeacher) {
         context.go('/teacher');
       } else if (userRole == AppConstants.roleStudent) {
@@ -57,7 +56,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         context.go('/auth');
       }
     } else {
-      // User is not logged in — navigate to role selection
       context.go('/auth');
     }
   }

@@ -1,18 +1,33 @@
 import 'dart:math';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 
 import '../config/app_constants.dart';
 
+// ─── Background message handler (must be top-level function) ────────────────
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Initialize Firebase for background isolate
+  await FirebaseMessaging.instance.getInitialMessage();
+}
+
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  static final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   static bool _initialized = false;
+  static String? _fcmToken;
 
-  // ─── Initialize Timezone & Local Notifications ──────────────────────────
+  // ─── Get FCM Token ──────────────────────────────────────────────────────
+
+  static String? get fcmToken => _fcmToken;
+
+  // ─── Initialize Timezone, Local Notifications & FCM ─────────────────────
 
   static Future<void> initialize() async {
     if (_initialized) return;
@@ -20,6 +35,7 @@ class NotificationService {
     // Initialize timezone data for scheduled notifications
     tz_data.initializeTimeZones();
 
+    // Initialize local notifications
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
@@ -40,12 +56,116 @@ class NotificationService {
       },
     );
 
+    // Create Android notification channels
+    await _createNotificationChannels();
+
+    // Initialize FCM
+    await _initializeFCM();
+
     _initialized = true;
+  }
+
+  // ─── Create Android Notification Channels ────────────────────────────────
+
+  static Future<void> _createNotificationChannels() async {
+    final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        'smart_exam_pro_channel',
+        'Smart Exam Pro',
+        description: 'Notifications for exams and results',
+        importance: Importance.high,
+      ));
+
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        'smart_exam_pro_scheduled',
+        'Exam Reminders',
+        description: 'Scheduled notifications for exam reminders',
+        importance: Importance.high,
+      ));
+
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        'exam_notifications',
+        'Exam Notifications',
+        description: 'Push notifications for exams',
+        importance: Importance.high,
+      ));
+    }
+  }
+
+  // ─── Initialize Firebase Cloud Messaging ─────────────────────────────────
+
+  static Future<void> _initializeFCM() async {
+    // Request permission
+    await requestPermissions();
+
+    // Get FCM token
+    _fcmToken = await _fcm.getToken();
+    print('FCM Token: $_fcmToken');
+
+    // Listen to token refresh
+    _fcm.onTokenRefresh.listen((newToken) {
+      _fcmToken = newToken;
+      print('FCM Token refreshed: $newToken');
+      // TODO: Send token to server for targeted push notifications
+    });
+
+    // Handle foreground messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _handleForegroundMessage(message);
+    });
+
+    // Handle background messages (when app is in background but not terminated)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _handleMessageOpenedApp(message);
+    });
+
+    // Check if app was opened from a notification (terminated state)
+    final initialMessage = await _fcm.getInitialMessage();
+    if (initialMessage != null) {
+      _handleMessageOpenedApp(initialMessage);
+    }
+
+    // Register background handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
+  // ─── Handle Foreground Messages ──────────────────────────────────────────
+
+  static void _handleForegroundMessage(RemoteMessage message) {
+    final notification = message.notification;
+    if (notification != null) {
+      showNotification(
+        title: notification.title ?? 'Smart Exam Pro',
+        body: notification.body ?? '',
+        payload: message.data.toString(),
+      );
+    }
+  }
+
+  // ─── Handle Message Opened App ───────────────────────────────────────────
+
+  static void _handleMessageOpenedApp(RemoteMessage message) {
+    // TODO: Navigate to relevant screen based on message.data
+    // Example: if message.data['type'] == 'exam', go to exam screen
+    final data = message.data;
+    print('Notification opened with data: $data');
   }
 
   // ─── Request Notification Permissions ────────────────────────────────────
 
   static Future<bool> requestPermissions() async {
+    // Request FCM permission (iOS mostly, Android auto-grants)
+    final fcmSettings = await _fcm.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+
+    // Also request local notification permission for Android 13+
     final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
@@ -55,10 +175,28 @@ class NotificationService {
     final iosPlugin = _localNotifications.resolvePlatformSpecificImplementation<
         IOSFlutterLocalNotificationsPlugin>();
     if (iosPlugin != null) {
-      return await iosPlugin.requestPermissions(alert: true, badge: true, sound: true);
+      return await iosPlugin.requestPermissions(alert: true, badge: true, sound: true) ?? false;
     }
 
-    return true;
+    return fcmSettings.authorizationStatus == AuthorizationStatus.authorized;
+  }
+
+  // ─── Subscribe to Topics ─────────────────────────────────────────────────
+
+  static Future<void> subscribeToClass(String classId) async {
+    await _fcm.subscribeToTopic('class_$classId');
+  }
+
+  static Future<void> unsubscribeFromClass(String classId) async {
+    await _fcm.unsubscribeFromTopic('class_$classId');
+  }
+
+  static Future<void> subscribeToExam(String examId) async {
+    await _fcm.subscribeToTopic('exam_$examId');
+  }
+
+  static Future<void> unsubscribeFromExam(String examId) async {
+    await _fcm.unsubscribeFromTopic('exam_$examId');
   }
 
   // ─── Show Local Notification ─────────────────────────────────────────────
@@ -134,10 +272,32 @@ class NotificationService {
     );
   }
 
+  // ─── Notification: Homework Assigned ─────────────────────────────────────
+
+  static Future<void> notifyHomeworkAssigned({
+    required String homeworkTitle,
+    required String className,
+  }) async {
+    await showNotification(
+      title: 'New Homework',
+      body: '"$homeworkTitle" assigned for $className',
+    );
+  }
+
+  // ─── Notification: Announcement ──────────────────────────────────────────
+
+  static Future<void> notifyAnnouncement({
+    required String title,
+    required String message,
+  }) async {
+    await showNotification(
+      title: title,
+      body: message,
+    );
+  }
+
   // ─── Schedule Exam Reminders ─────────────────────────────────────────────
 
-  /// Schedules local notifications for upcoming exams.
-  /// Notifies 30 min before and at exam start time.
   static Future<void> scheduleExamReminders({
     required String examId,
     required String examTitle,
@@ -145,21 +305,43 @@ class NotificationService {
   }) async {
     final now = DateTime.now();
 
-    // 30 minutes before
-    final thirtyMinBefore = startDate.subtract(const Duration(minutes: 30));
-    if (thirtyMinBefore.isAfter(now)) {
+    // 24 hours before
+    final twentyFourHoursBefore = startDate.subtract(const Duration(hours: 24));
+    if (twentyFourHoursBefore.isAfter(now)) {
+      await _scheduleNotification(
+        id: (examId.hashCode & 0x7FFFFFFF) + 0,
+        title: 'Exam Reminder',
+        body: '"$examTitle" starts tomorrow',
+        scheduledDate: tz.TZDateTime.from(twentyFourHoursBefore, tz.local),
+      );
+    }
+
+    // 1 hour before
+    final oneHourBefore = startDate.subtract(const Duration(hours: 1));
+    if (oneHourBefore.isAfter(now)) {
       await _scheduleNotification(
         id: (examId.hashCode & 0x7FFFFFFF) + 1,
         title: 'Exam Starting Soon',
-        body: '"$examTitle" starts in 30 minutes',
-        scheduledDate: tz.TZDateTime.from(thirtyMinBefore, tz.local),
+        body: '"$examTitle" starts in 1 hour',
+        scheduledDate: tz.TZDateTime.from(oneHourBefore, tz.local),
+      );
+    }
+
+    // 15 minutes before
+    final fifteenMinBefore = startDate.subtract(const Duration(minutes: 15));
+    if (fifteenMinBefore.isAfter(now)) {
+      await _scheduleNotification(
+        id: (examId.hashCode & 0x7FFFFFFF) + 2,
+        title: 'Exam Starting Soon!',
+        body: '"$examTitle" starts in 15 minutes',
+        scheduledDate: tz.TZDateTime.from(fifteenMinBefore, tz.local),
       );
     }
 
     // At start time
     if (startDate.isAfter(now)) {
       await _scheduleNotification(
-        id: (examId.hashCode & 0x7FFFFFFF) + 2,
+        id: (examId.hashCode & 0x7FFFFFFF) + 3,
         title: 'Exam Started!',
         body: '"$examTitle" has started. Open the app to take it now!',
         scheduledDate: tz.TZDateTime.from(startDate, tz.local),
@@ -170,8 +352,10 @@ class NotificationService {
   // ─── Cancel Scheduled Reminders ──────────────────────────────────────────
 
   static Future<void> cancelExamReminders(String examId) async {
+    await _localNotifications.cancel((examId.hashCode & 0x7FFFFFFF) + 0);
     await _localNotifications.cancel((examId.hashCode & 0x7FFFFFFF) + 1);
     await _localNotifications.cancel((examId.hashCode & 0x7FFFFFFF) + 2);
+    await _localNotifications.cancel((examId.hashCode & 0x7FFFFFFF) + 3);
   }
 
   // ─── Cancel All Notifications ────────────────────────────────────────────
@@ -190,7 +374,7 @@ class NotificationService {
   }) async {
     const androidDetails = AndroidNotificationDetails(
       'smart_exam_pro_scheduled',
-      'Smart Exam Pro - Scheduled',
+      'Exam Reminders',
       channelDescription: 'Scheduled notifications for exam reminders',
       importance: Importance.high,
       priority: Priority.high,

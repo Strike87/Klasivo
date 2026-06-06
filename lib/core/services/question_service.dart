@@ -5,8 +5,6 @@ import 'exam_service.dart';
 class QuestionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ─── Add a Multiple Choice Question ──────────────────────────────────────
-
   Future<String> addMultipleChoiceQuestion({
     required String examId,
     required String questionText,
@@ -14,30 +12,32 @@ class QuestionService {
     required String correctAnswer,
     required int marks,
     required int order,
+    String? imageUrl,
+    String? difficulty,
+    String? bankQuestionId,
   }) async {
     try {
-      final docRef =
-          await _firestore.collection(AppConstants.questionsCollection).add({
+      final data = <String, dynamic>{
         'examId': examId,
         'questionType': AppConstants.questionTypeMultipleChoice,
         'questionText': questionText,
-        'options': options, // [A, B, C, D]
-        'correctAnswer': correctAnswer, // e.g. 'A' or the option text
+        'options': options,
+        'correctAnswer': correctAnswer,
         'marks': marks,
         'order': order,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (imageUrl != null) data['imageUrl'] = imageUrl;
+      if (difficulty != null) data['difficulty'] = difficulty;
+      if (bankQuestionId != null) data['bankQuestionId'] = bankQuestionId;
 
-      // Recalculate exam total marks
+      final docRef = await _firestore.collection(AppConstants.questionsCollection).add(data);
       await ExamService().recalculateTotalMarks(examId);
-
       return docRef.id;
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Add a True/False Question ───────────────────────────────────────────
 
   Future<String> addTrueFalseQuestion({
     required String examId,
@@ -45,10 +45,12 @@ class QuestionService {
     required bool correctAnswer,
     required int marks,
     required int order,
+    String? imageUrl,
+    String? difficulty,
+    String? bankQuestionId,
   }) async {
     try {
-      final docRef =
-          await _firestore.collection(AppConstants.questionsCollection).add({
+      final data = <String, dynamic>{
         'examId': examId,
         'questionType': AppConstants.questionTypeTrueFalse,
         'questionText': questionText,
@@ -57,17 +59,18 @@ class QuestionService {
         'marks': marks,
         'order': order,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (imageUrl != null) data['imageUrl'] = imageUrl;
+      if (difficulty != null) data['difficulty'] = difficulty;
+      if (bankQuestionId != null) data['bankQuestionId'] = bankQuestionId;
 
+      final docRef = await _firestore.collection(AppConstants.questionsCollection).add(data);
       await ExamService().recalculateTotalMarks(examId);
-
       return docRef.id;
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Add a Short Answer Question ─────────────────────────────────────────
 
   Future<String> addShortAnswerQuestion({
     required String examId,
@@ -75,10 +78,12 @@ class QuestionService {
     required String correctAnswer,
     required int marks,
     required int order,
+    String? imageUrl,
+    String? difficulty,
+    String? bankQuestionId,
   }) async {
     try {
-      final docRef =
-          await _firestore.collection(AppConstants.questionsCollection).add({
+      final data = <String, dynamic>{
         'examId': examId,
         'questionType': AppConstants.questionTypeShortAnswer,
         'questionText': questionText,
@@ -87,17 +92,18 @@ class QuestionService {
         'marks': marks,
         'order': order,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (imageUrl != null) data['imageUrl'] = imageUrl;
+      if (difficulty != null) data['difficulty'] = difficulty;
+      if (bankQuestionId != null) data['bankQuestionId'] = bankQuestionId;
 
+      final docRef = await _firestore.collection(AppConstants.questionsCollection).add(data);
       await ExamService().recalculateTotalMarks(examId);
-
       return docRef.id;
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Update a question ───────────────────────────────────────────────────
 
   Future<void> updateQuestion({
     required String questionId,
@@ -108,6 +114,8 @@ class QuestionService {
     String? correctAnswer,
     int? marks,
     int? order,
+    String? imageUrl,
+    String? difficulty,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -118,6 +126,8 @@ class QuestionService {
       if (correctAnswer != null) data['correctAnswer'] = correctAnswer;
       if (marks != null) data['marks'] = marks;
       if (order != null) data['order'] = order;
+      if (imageUrl != null) data['imageUrl'] = imageUrl;
+      if (difficulty != null) data['difficulty'] = difficulty;
 
       await _firestore
           .collection(AppConstants.questionsCollection)
@@ -130,8 +140,6 @@ class QuestionService {
     }
   }
 
-  // ─── Delete a question ───────────────────────────────────────────────────
-
   Future<void> deleteQuestion(String questionId, String examId) async {
     try {
       await _firestore
@@ -139,15 +147,12 @@ class QuestionService {
           .doc(questionId)
           .delete();
 
-      // Reorder remaining questions and recalculate
       await _reorderQuestions(examId);
       await ExamService().recalculateTotalMarks(examId);
     } catch (e) {
       rethrow;
     }
   }
-
-  // ─── Reorder questions ───────────────────────────────────────────────────
 
   Future<void> _reorderQuestions(String examId) async {
     try {
@@ -166,8 +171,6 @@ class QuestionService {
       rethrow;
     }
   }
-
-  // ─── Swap question order ─────────────────────────────────────────────────
 
   Future<void> swapQuestionOrder({
     required String examId,
@@ -192,8 +195,6 @@ class QuestionService {
     }
   }
 
-  // ─── Get stream of questions for an exam ─────────────────────────────────
-
   Stream<QuerySnapshot> getQuestionsStream(String examId) {
     return _firestore
         .collection(AppConstants.questionsCollection)
@@ -201,8 +202,6 @@ class QuestionService {
         .orderBy('order')
         .snapshots();
   }
-
-  // ─── Get next order number for a new question ────────────────────────────
 
   Future<int> getNextOrder(String examId) async {
     try {
