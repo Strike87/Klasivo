@@ -31,7 +31,7 @@ class RoleSelectionScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                'Smart Exam Pro',
+                'Klasivo',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
