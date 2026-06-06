@@ -110,8 +110,6 @@ class ExamData {
   final String institutionId;
   final DateTime? createdAt;
   final DateTime? publishedAt;
-  final bool isRandomized;
-  final bool allowRetake;
 
   ExamData({
     required this.id,
@@ -131,8 +129,6 @@ class ExamData {
     this.institutionId = AppConstants.defaultInstitutionId,
     this.createdAt,
     this.publishedAt,
-    this.isRandomized = false,
-    this.allowRetake = false,
   });
 
   factory ExamData.fromFirestore(DocumentSnapshot doc) {
@@ -150,13 +146,11 @@ class ExamData {
       passingScore: data['passingScore'] as int? ?? 0,
       status: data['status'] ?? AppConstants.statusDraft,
       questionCount: data['questionCount'] as int? ?? 0,
-      isRandomized: data['isRandomized'] ?? false,
-      allowRetake: data['allowRetake'] ?? false,
+      isRandomized: data['isRandomized'] as bool? ?? false,
+      allowRetake: data['allowRetake'] as bool? ?? false,
       institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       publishedAt: (data['publishedAt'] as Timestamp?)?.toDate(),
-      isRandomized: data['isRandomized'] as bool? ?? false,
-      allowRetake: data['allowRetake'] as bool? ?? false,
     );
   }
 
