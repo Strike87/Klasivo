@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'exam_service.dart';
 import 'notification_service.dart';
 
 class SubmissionService {
@@ -231,6 +232,11 @@ class SubmissionService {
       );
 
       await batch.commit();
+
+      // Update exam stats
+      try {
+        await ExamService()._updateExamStatsAfterSubmission(examId);
+      } catch (_) {}
 
       // Notify student about result
       try {
