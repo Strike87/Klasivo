@@ -1,4 +1,4 @@
-package com.smartexampro.app
+package com.klasivo.app
 
 import android.view.WindowManager.LayoutParams
 import io.flutter.embedding.android.FlutterActivity
@@ -6,7 +6,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.smartexampro.app/security"
+    private val CHANNEL = "com.klasivo.app/security"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
