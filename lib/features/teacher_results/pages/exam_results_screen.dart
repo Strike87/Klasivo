@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../providers/exam_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/student_provider.dart';
+import '../../../providers/exam_stats_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../core/services/pdf_service.dart';
@@ -77,6 +78,9 @@ class ExamResultsScreen extends ConsumerWidget {
         final students = ref.watch(studentsByClassListProvider(exam.classId));
         final absentCount = students.length - totalSubs;
 
+        // Get precomputed stats for quick access
+        final liveStats = ref.watch(liveExamStatsProvider(examId));
+
         return Scaffold(
           appBar: AppBar(
             title: Text('${exam.title} - Results'),
@@ -95,6 +99,7 @@ class ExamResultsScreen extends ConsumerWidget {
           body: RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(examSubmissionsStreamProvider(examId));
+              ref.invalidate(examStatsDataProvider(examId));
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -102,6 +107,34 @@ class ExamResultsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Precomputed Stats Banner ──
+                  if (liveStats != null)
+                    Card(
+                      color: Colors.blue.withOpacity(0.05),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.analytics_outlined,
+                                color: Colors.blue[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Live Stats: Avg ${liveStats.averagePercentage}% | Pass Rate ${liveStats.passRate.toStringAsFixed(0)}% | Std Dev ${liveStats.standardDeviation.toStringAsFixed(1)}',
+                                style: TextStyle(
+                                    color: Colors.blue[700],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (liveStats != null) const SizedBox(height: 12),
+
                   // ── Stats Grid ──
                   Row(
                     children: [
@@ -168,6 +201,35 @@ class ExamResultsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
 
+                  // ── Grade Distribution (from precomputed stats) ──
+                  if (liveStats != null &&
+                      liveStats.gradeDistribution.isNotEmpty) ...[
+                    Text(
+                      'Grade Distribution',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: liveStats.gradeDistributionList.map((g) {
+                        final range = g['range'] as String;
+                        final count = g['count'] as int;
+                        final pct = g['percentage'] as int;
+                        final color = _getGradeColor(range);
+                        return Chip(
+                          label: Text('$range: $count ($pct%)',
+                              style: TextStyle(fontSize: 11, color: color)),
+                          backgroundColor: color.withOpacity(0.1),
+                          side: BorderSide(color: color.withOpacity(0.3)),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // ── Submissions List ──
                   Text(
                     'Student Results',
@@ -197,6 +259,23 @@ class ExamResultsScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Color _getGradeColor(String range) {
+    switch (range) {
+      case '0-20%':
+        return Colors.red;
+      case '21-40%':
+        return Colors.orange;
+      case '41-60%':
+        return Colors.amber;
+      case '61-80%':
+        return Colors.lightGreen;
+      case '81-100%':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
   }
 }
 
@@ -260,6 +339,17 @@ class _PdfExportButton extends ConsumerWidget {
         return {'name': student?.fullName ?? 'Unknown', 'code': student?.studentCode ?? '', 'score': s.score, 'totalMarks': totalMarks, 'percentage': s.percentage, 'status': s.isFlagged ? 'Flagged' : (s.percentage >= passingScore ? 'Passed' : 'Failed')};
       }).toList();
 
+      // Get question analysis for the enhanced PDF (Phase D)
+      List<Map<String, dynamic>>? questionAnalysis;
+      try {
+        final questions = await ref.read(questionAnalysisProvider(examId).future);
+        if (questions.isNotEmpty) {
+          questionAnalysis = questions.map((q) => q.toMap()).toList();
+        }
+      } catch (_) {
+        // Non-critical: PDF will be generated without question analysis
+      }
+
       final file = await PdfService.generateExamReport(
         examTitle: examTitle,
         className: className,
@@ -273,6 +363,7 @@ class _PdfExportButton extends ConsumerWidget {
         passingScore: passingScore,
         gradeDistribution: gradeDist,
         studentResults: studentResults,
+        questionAnalysis: questionAnalysis,
       );
 
       if (context.mounted) {
