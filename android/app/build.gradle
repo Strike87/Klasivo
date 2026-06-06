@@ -24,7 +24,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.smartexampro.app"
+    namespace "com.klasivo.app"
     compileSdk 34
 
     compileOptions {
@@ -41,7 +41,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.smartexampro.app"
+        applicationId "com.klasivo.app"
         minSdk 23
         targetSdk 34
         versionCode flutterVersionCode.toInteger()
