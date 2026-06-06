@@ -192,7 +192,7 @@ class _TeacherRegistrationScreenState
               ),
               const SizedBox(height: 8),
               Text(
-                'Join Smart Exam Pro as a teacher',
+                'Join Klasivo as a teacher',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey[600],
