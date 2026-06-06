@@ -73,14 +73,14 @@ class NotificationService {
 
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
-        'smart_exam_pro_channel',
+        'klasivo_channel',
         'Klasivo',
         description: 'Notifications for exams and results',
         importance: Importance.high,
       ));
 
       await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
-        'smart_exam_pro_scheduled',
+        'klasivo_scheduled',
         'Exam Reminders',
         description: 'Scheduled notifications for exam reminders',
         importance: Importance.high,
@@ -207,7 +207,7 @@ class NotificationService {
     String? payload,
   }) async {
     const androidDetails = AndroidNotificationDetails(
-      'smart_exam_pro_channel',
+      'klasivo_channel',
       'Klasivo',
       channelDescription: 'Notifications for exams and results',
       importance: Importance.high,
@@ -373,7 +373,7 @@ class NotificationService {
     required tz.TZDateTime scheduledDate,
   }) async {
     const androidDetails = AndroidNotificationDetails(
-      'smart_exam_pro_scheduled',
+      'klasivo_scheduled',
       'Exam Reminders',
       channelDescription: 'Scheduled notifications for exam reminders',
       importance: Importance.high,

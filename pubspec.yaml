@@ -1,5 +1,5 @@
-name: smart_exam_pro
-description: A production-ready Android application for teachers to manage exams.
+name: klasivo
+description: Klasivo — A production-ready Android exam management application for teachers and students.
 publish_to: 'none'
 
 version: 1.5.0+2

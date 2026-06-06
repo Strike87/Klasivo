@@ -1,31 +1,38 @@
-# Smart Exam Pro MVP v1.0
+# Klasivo v1.5
 
-A production-ready Android application that allows teachers to create exams, manage students, schedule exams, send notifications, automatically grade exams, monitor exam participation, and prevent students from leaving the exam.
+A production-ready Android exam management application that empowers teachers to create and manage exams, import question banks from Excel, generate randomized exam instances, monitor student integrity with enhanced lockdown mode, and produce detailed PDF analytics reports — all powered by Flutter and Firebase.
 
 ## Features
 
 ### Teacher Features
-- ✅ Register and Login
-- ✅ Create and manage classes
-- ✅ Add and manage students
-- ✅ Create and publish exams
-- ✅ View exam results
-- ✅ Track student violations
-- ✅ Generate reports
+- Register and Login (Firebase Auth)
+- Create and manage classes with full educational hierarchy (Institution → Stage → Grade → Class → Group)
+- Add students manually or import from Excel with auto-detect column mapping
+- Create and publish exams with question bank support
+- Exam randomization (Fisher-Yates shuffle) — each student gets a unique instance
+- QR-based student enrollment
+- View exam results with live statistics
+- Track student violations with severity levels
+- Generate PDF reports (Exam Analytics, Student Report Cards, Class Comparison)
+- Enhanced analytics dashboard with performance trends and question difficulty analysis
+- Exam integrity dashboard with violation summaries and suspicious behavior detection
 
 ### Student Features
-- ✅ Login
-- ✅ View assigned exams
-- ✅ Take exams with auto-save
-- ✅ View results
-- ✅ Real-time timer
+- Login with class code
+- View assigned exams
+- Take exams with auto-save and auto-submit
+- View results with detailed breakdown
+- Real-time timer with screen wake lock
 
 ### Security Features
-- ✅ Prevent back navigation during exam
-- ✅ Disable screen capture
-- ✅ Keep screen awake
-- ✅ Detect app leave (home button, recent apps, minimize)
-- ✅ Track violations
+- Prevent back navigation during exam
+- Disable screen capture (FLAG_SECURE via native platform channel)
+- Keep screen awake during exams
+- Detect app leave (home button, recent apps, minimize)
+- Track violations with severity levels (low, medium, high, critical)
+- Enhanced lockdown mode with clipboard monitoring
+- Violation review workflow for teachers
+- New violation types: clipboard activity, back navigation, idle timeout
 
 ## Technology Stack
 
@@ -46,7 +53,18 @@ lib/
 ├── core/
 │   ├── services/
 │   │   ├── auth_service.dart
-│   │   └── firebase_service.dart
+│   │   ├── firebase_service.dart
+│   │   ├── exam_security_service.dart
+│   │   ├── violation_service.dart
+│   │   ├── exam_instance_service.dart
+│   │   ├── excel_import_service.dart
+│   │   ├── question_bank_service.dart
+│   │   ├── qr_enrollment_service.dart
+│   │   ├── qr_service.dart
+│   │   ├── exam_stats_service.dart
+│   │   ├── pdf_service.dart
+│   │   ├── submission_service.dart
+│   │   └── notification_service.dart
 │   ├── models/
 │   │   ├── user_model.dart
 │   │   ├── student_model.dart
@@ -55,22 +73,26 @@ lib/
 │       ├── theme.dart
 │       └── app_constants.dart
 ├── providers/
-│   └── auth_provider.dart
+│   ├── auth_provider.dart
+│   ├── exam_provider.dart
+│   ├── exam_instance_provider.dart
+│   ├── excel_import_provider.dart
+│   ├── question_bank_provider.dart
+│   ├── violation_provider.dart
+│   ├── exam_stats_provider.dart
+│   └── notification_provider.dart
 ├── features/
-│   ├── auth/
-│   │   └── pages/
-│   │       ├── splash_screen.dart
-│   │       ├── role_selection_screen.dart
-│   │       ├── teacher_login_screen.dart
-│   │       ├── teacher_registration_screen.dart
-│   │       └── student_login_screen.dart
+│   ├── auth/pages/
 │   ├── dashboard/
-│   │   ├── teacher_dashboard.dart
-│   │   └── student_dashboard.dart
-│   ├── students/
 │   ├── classes/
+│   ├── students/
 │   ├── exams/
-│   ├── results/
+│   ├── student_exams/
+│   ├── teacher_results/
+│   ├── student_results/
+│   ├── analytics/
+│   ├── integrity/
+│   ├── reports/
 │   └── notifications/
 ├── widgets/
 ├── firebase_options.dart
@@ -106,8 +128,8 @@ Splash Screen
 
 1. Clone the repository
 ```bash
-git clone https://github.com/Strike87/Smart-Exam-Pro-.git
-cd Smart-Exam-Pro-
+git clone https://github.com/Strike87/Klasivo.git
+cd Klasivo
 ```
 
 2. Install dependencies
@@ -147,35 +169,53 @@ flutter run
 - [x] Student login
 - [x] Local auth state persistence (Hive)
 
-### Phase 2: Core Features (In Progress)
-- [ ] Teacher Dashboard (data integration)
-- [ ] Class Management
-- [ ] Student Management
-- [ ] Exam Creation
+### Phase 2: Core Features ✅
+- [x] Teacher Dashboard with data integration
+- [x] Class Management
+- [x] Student Management
+- [x] Exam Creation
 
-### Phase 3: Student Exam Features
-- [ ] Student Dashboard (data integration)
-- [ ] Exam List
-- [ ] Exam Screen with Timer
-- [ ] Auto-save mechanism
-- [ ] Auto-submit on timer end
+### Phase 3: Student Exam Features ✅
+- [x] Student Dashboard with data integration
+- [x] Exam List
+- [x] Exam Screen with Timer
+- [x] Auto-save mechanism
+- [x] Auto-submit on timer end
 
-### Phase 4: Grading & Results
-- [ ] Auto-grading engine
-- [ ] Results display
-- [ ] Teacher reports
+### Phase 4: Grading & Results ✅
+- [x] Auto-grading engine
+- [x] Results display
+- [x] Teacher reports
 
-### Phase 5: Security & Notifications
-- [ ] App leave detection
-- [ ] Screen capture prevention
-- [ ] Notifications system
-- [ ] Violation tracking
+### Phase 5: Security & Notifications ✅
+- [x] App leave detection
+- [x] Screen capture prevention
+- [x] Notifications system
+- [x] Violation tracking
 
-### Phase 6: Testing & Optimization
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Performance optimization
-- [ ] Security audit
+### Phase A: Security Hardening ✅
+- [x] SHA-1 fingerprint for Firebase
+- [x] Firestore security rules deployed
+- [x] Screenshot protection via native platform channel
+
+### Phase C: Advanced Features ✅
+- [x] Excel import with 4-step wizard
+- [x] Question bank with reuse tracking
+- [x] Exam randomization (Fisher-Yates shuffle)
+- [x] QR code enrollment
+
+### Phase D: Reports & Analytics ✅
+- [x] PDF report generation (Arabic font support)
+- [x] Precomputed exam statistics
+- [x] Enhanced analytics dashboard with charts
+- [x] Live exam stats banner
+
+### Phase E: Integrity & Lockdown ✅
+- [x] Enhanced violation logging with severity levels
+- [x] Violation review workflow
+- [x] Enhanced lockdown mode (clipboard monitoring)
+- [x] Exam integrity dashboard
+- [x] New violation types (clipboard, back nav, idle timeout)
 
 ## License
 

@@ -3,7 +3,7 @@
 # proguardFiles setting in build.gradle.
 
 # Keep Firebase models
--keepclassmembers class com.smartexampro.app.** {
+-keepclassmembers class com.klasivo.app.** {
     *;
 }
 
