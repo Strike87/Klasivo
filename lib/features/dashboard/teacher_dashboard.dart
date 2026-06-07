@@ -172,7 +172,7 @@ class TeacherDashboard extends ConsumerWidget {
                             value: '${examStats['completed'] ?? 0}',
                             label: 'Completed',
                             icon: Icons.check_circle_outline,
-                            color: const Color(0xFF845EF7),
+                            color: KlasivoColors.subjectEnglish,
                             onTap: () => context.go('/teacher/exams'),
                           ),
                         ),
@@ -220,7 +220,7 @@ class TeacherDashboard extends ConsumerWidget {
                         _QuickAction(
                           icon: Icons.analytics_outlined,
                           label: 'Analytics',
-                          color: const Color(0xFF845EF7),
+                          color: KlasivoColors.subjectEnglish,
                           onTap: () => context.go('/teacher/analytics'),
                         ),
                       ],

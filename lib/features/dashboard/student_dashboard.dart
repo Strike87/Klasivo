@@ -220,7 +220,7 @@ class StudentDashboard extends ConsumerWidget {
                         value: className,
                         label: 'My Class',
                         icon: Icons.class_outlined,
-                        color: const Color(0xFF845EF7),
+                        color: KlasivoColors.subjectEnglish,
                         onTap: null,
                       ),
                     ),
