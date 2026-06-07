@@ -47,6 +47,8 @@
     { "collectionGroup": "violations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
 
     { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "isRead", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
 
     { "collectionGroup": "exam_attempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
 

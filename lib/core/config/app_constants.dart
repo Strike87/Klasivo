@@ -117,6 +117,9 @@ class AppConstants {
   static const String notificationAnnouncement = 'announcement';
   static const String notificationViolation = 'violation';
   static const String notificationNewMessage = 'new_message';
+  static const String notificationAssignmentPublished = 'assignment_published';
+  static const String notificationAttendance = 'attendance';
+  static const String notificationTeacherInvited = 'teacher_invited';
 
   // ─── Analytics Types ──────────────────────────────────────────────────────
 

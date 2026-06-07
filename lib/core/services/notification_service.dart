@@ -1,13 +1,14 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
+import '../config/app_constants.dart';
 
 // ─── Background message handler (must be top-level function) ────────────────
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Initialize Firebase for background isolate
   await FirebaseMessaging.instance.getInitialMessage();
 }
 
@@ -16,6 +17,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static bool _initialized = false;
   static String? _fcmToken;
 
@@ -28,10 +30,8 @@ class NotificationService {
   static Future<void> initialize() async {
     if (_initialized) return;
 
-    // Initialize timezone data for scheduled notifications
     tz_data.initializeTimeZones();
 
-    // Initialize local notifications
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
@@ -48,14 +48,11 @@ class NotificationService {
     await _localNotifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        // Handle notification tap — will be connected to GoRouter for deep linking
+        // Will be connected to GoRouter for deep linking
       },
     );
 
-    // Create Android notification channels
     await _createNotificationChannels();
-
-    // Initialize FCM
     await _initializeFCM();
 
     _initialized = true;
@@ -71,7 +68,7 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
         'klasivo_channel',
         'Klasivo',
-        description: 'Notifications for exams and results',
+        description: 'General notifications',
         importance: Importance.high,
       ));
 
@@ -83,10 +80,17 @@ class NotificationService {
       ));
 
       await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
-        'exam_notifications',
-        'Exam Notifications',
-        description: 'Push notifications for exams',
+        'klasivo_messages',
+        'Messages',
+        description: 'New message notifications',
         importance: Importance.high,
+      ));
+
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        'klasivo_attendance',
+        'Attendance',
+        description: 'Attendance notifications',
+        importance: Importance.defaultImportance,
       ));
     }
   }
@@ -94,37 +98,27 @@ class NotificationService {
   // ─── Initialize Firebase Cloud Messaging ─────────────────────────────────
 
   static Future<void> _initializeFCM() async {
-    // Request permission
     await requestPermissions();
 
-    // Get FCM token
     _fcmToken = await _fcm.getToken();
-    print('FCM Token: $_fcmToken');
 
-    // Listen to token refresh
     _fcm.onTokenRefresh.listen((newToken) {
       _fcmToken = newToken;
-      print('FCM Token refreshed: $newToken');
-      // TODO: Send token to server for targeted push notifications
     });
 
-    // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       _handleForegroundMessage(message);
     });
 
-    // Handle background messages (when app is in background but not terminated)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _handleMessageOpenedApp(message);
     });
 
-    // Check if app was opened from a notification (terminated state)
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
       _handleMessageOpenedApp(initialMessage);
     }
 
-    // Register background handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
@@ -144,16 +138,13 @@ class NotificationService {
   // ─── Handle Message Opened App ───────────────────────────────────────────
 
   static void _handleMessageOpenedApp(RemoteMessage message) {
-    // TODO: Navigate to relevant screen based on message.data
-    // Example: if message.data['type'] == 'exam', go to exam screen
     final data = message.data;
-    print('Notification opened with data: $data');
+    // Will be connected to GoRouter for deep navigation
   }
 
   // ─── Request Notification Permissions ────────────────────────────────────
 
   static Future<bool> requestPermissions() async {
-    // Request FCM permission (iOS mostly, Android auto-grants)
     final fcmSettings = await _fcm.requestPermission(
       alert: true,
       badge: true,
@@ -161,7 +152,6 @@ class NotificationService {
       provisional: false,
     );
 
-    // Also request local notification permission for Android 13+
     final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
@@ -195,24 +185,32 @@ class NotificationService {
     await _fcm.unsubscribeFromTopic('exam_$examId');
   }
 
+  static Future<void> subscribeToOrganization(String orgId) async {
+    await _fcm.subscribeToTopic('org_$orgId');
+  }
+
   // ─── Show Local Notification ─────────────────────────────────────────────
 
   static Future<void> showNotification({
     required String title,
     required String body,
     String? payload,
+    String channelId = 'klasivo_channel',
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      'klasivo_channel',
-      'Klasivo',
-      channelDescription: 'Notifications for exams and results',
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelId == 'klasivo_messages'
+          ? 'Messages'
+          : channelId == 'klasivo_attendance'
+              ? 'Attendance'
+              : 'Klasivo',
       importance: Importance.high,
       priority: Priority.high,
     );
 
     const iosDetails = DarwinNotificationDetails();
 
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -221,74 +219,315 @@ class NotificationService {
     await _localNotifications.show(id, title, body, details, payload: payload);
   }
 
-  // ─── Notification: Exam Published ────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FIRESTORE NOTIFICATION RECORDS (In-App Notification Center)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  static Future<void> notifyExamPublished({
-    required String examTitle,
-    required String className,
+  /// Create a notification record in Firestore and show a local notification.
+  /// This is the central method for all in-app notifications.
+  static Future<String> createNotification({
+    required String userId,
+    required String type,
+    required String title,
+    required String body,
+    String? organizationId,
+    String? relatedId,   // examId, assignmentId, conversationId, etc.
+    String? relatedType, // 'exam', 'assignment', 'conversation', etc.
+    Map<String, dynamic>? data,
   }) async {
-    await showNotification(
-      title: 'New Exam Available',
-      body: '"$examTitle" has been published for $className',
+    try {
+      final docRef = await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .add({
+        'userId': userId,
+        'type': type,
+        'title': title,
+        'body': body,
+        'organizationId': organizationId,
+        'relatedId': relatedId,
+        'relatedType': relatedType,
+        'data': data ?? {},
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Also show a local notification
+      await showNotification(title: title, body: body);
+
+      return docRef.id;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Create notifications for multiple users (e.g., entire class).
+  static Future<void> createBulkNotifications({
+    required List<String> userIds,
+    required String type,
+    required String title,
+    required String body,
+    String? organizationId,
+    String? relatedId,
+    String? relatedType,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+
+      for (final userId in userIds) {
+        final docRef =
+            _firestore.collection(AppConstants.notificationsCollection).doc();
+        batch.set(docRef, {
+          'userId': userId,
+          'type': type,
+          'title': title,
+          'body': body,
+          'organizationId': organizationId,
+          'relatedId': relatedId,
+          'relatedType': relatedType,
+          'data': data ?? {},
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Mark a notification as read.
+  static Future<void> markAsRead(String notificationId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .doc(notificationId)
+          .update({'isRead': true});
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Mark all notifications as read for a user.
+  static Future<void> markAllAsRead(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Get unread notification count for a user.
+  static Future<int> getUnreadCount(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .count()
+          .get();
+      return snapshot.count ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Stream notifications for a user (for notification center UI).
+  static Stream<QuerySnapshot> getUserNotificationsStream(String userId) {
+    return _firestore
+        .collection(AppConstants.notificationsCollection)
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots();
+  }
+
+  /// Delete a notification.
+  static Future<void> deleteNotification(String notificationId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .doc(notificationId)
+          .delete();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Delete all notifications for a user.
+  static Future<void> deleteAllNotifications(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTO-GENERATED NOTIFICATIONS (Triggered by app events)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Called when an exam is created/published.
+  /// Notifies all students in the class.
+  static Future<void> notifyExamCreated({
+    required String organizationId,
+    required String classId,
+    required String examId,
+    required String examTitle,
+    required List<String> studentIds,
+  }) async {
+    await createBulkNotifications(
+      userIds: studentIds,
+      type: AppConstants.notificationExamPublished,
+      title: 'New Exam',
+      body: '"$examTitle" has been published',
+      organizationId: organizationId,
+      relatedId: examId,
+      relatedType: 'exam',
+      data: {'classId': classId},
     );
   }
 
-  // ─── Notification: Exam Starting Soon ────────────────────────────────────
+  /// Called when an assignment is published.
+  /// Notifies all students in the class/group.
+  static Future<void> notifyAssignmentPublished({
+    required String organizationId,
+    required String assignmentId,
+    required String assignmentTitle,
+    required List<String> studentIds,
+  }) async {
+    await createBulkNotifications(
+      userIds: studentIds,
+      type: AppConstants.notificationAssignmentPublished,
+      title: 'New Assignment',
+      body: '"$assignmentTitle" has been assigned',
+      organizationId: organizationId,
+      relatedId: assignmentId,
+      relatedType: 'assignment',
+    );
+  }
 
-  static Future<void> notifyExamStartingSoon({
+  /// Called when a message is received.
+  static Future<void> notifyNewMessage({
+    required String recipientId,
+    required String senderName,
+    required String messagePreview,
+    required String conversationId,
+    String? organizationId,
+  }) async {
+    await createNotification(
+      userId: recipientId,
+      type: AppConstants.notificationNewMessage,
+      title: senderName,
+      body: messagePreview.length > 100
+          ? '${messagePreview.substring(0, 100)}...'
+          : messagePreview,
+      organizationId: organizationId,
+      relatedId: conversationId,
+      relatedType: 'conversation',
+      channelId: 'klasivo_messages',
+    );
+  }
+
+  /// Called when attendance is marked (for students).
+  static Future<void> notifyAttendanceMarked({
+    required String studentId,
+    required String date,
+    required String status,
+    String? organizationId,
+  }) async {
+    // Only notify if absent or late (not for present/excused)
+    if (status == AppConstants.attendanceStatusAbsent ||
+        status == AppConstants.attendanceStatusLate) {
+      await createNotification(
+        userId: studentId,
+        type: AppConstants.notificationAttendance,
+        title: 'Attendance Marked',
+        body: 'You were marked as $status on $date',
+        organizationId: organizationId,
+        relatedType: 'attendance',
+        channelId: 'klasivo_attendance',
+      );
+    }
+  }
+
+  /// Called when a teacher is invited to join an organization.
+  static Future<void> notifyTeacherInvited({
+    required String ownerId,
+    required String ownerName,
+    required String organizationName,
+    String? organizationId,
+  }) async {
+    // This would typically be sent to the teacher being invited
+    // For now, notify the owner that an invite code was created
+    await createNotification(
+      userId: ownerId,
+      type: AppConstants.notificationTeacherInvited,
+      title: 'Invite Created',
+      body: 'Invite code created for $organizationName',
+      organizationId: organizationId,
+    );
+  }
+
+  /// Called when exam results are published.
+  static Future<void> notifyResultPublished({
+    required String studentId,
+    required String examTitle,
+    required double score,
+    String? organizationId,
+    String? examId,
+  }) async {
+    await createNotification(
+      userId: studentId,
+      type: AppConstants.notificationResultPublished,
+      title: 'Result Published',
+      body: 'Your result for "$examTitle": ${score.toStringAsFixed(1)}%',
+      organizationId: organizationId,
+      relatedId: examId,
+      relatedType: 'exam',
+    );
+  }
+
+  /// Called when an exam reminder is due.
+  static Future<void> notifyExamReminder({
+    required String userId,
     required String examTitle,
     required int minutesLeft,
+    String? organizationId,
+    String? examId,
   }) async {
-    await showNotification(
-      title: 'Exam Starting Soon',
-      body: '"$examTitle" starts in $minutesLeft minutes',
-    );
-  }
+    final timeText = minutesLeft >= 60
+        ? '${minutesLeft ~/ 60} hour(s)'
+        : '$minutesLeft minutes';
 
-  // ─── Notification: Exam Started ──────────────────────────────────────────
-
-  static Future<void> notifyExamStarted({
-    required String examTitle,
-  }) async {
-    await showNotification(
-      title: 'Exam Started!',
-      body: '"$examTitle" has started. Good luck!',
-    );
-  }
-
-  // ─── Notification: Result Published ──────────────────────────────────────
-
-  static Future<void> notifyResultPublished({
-    required String examTitle,
-    required int percentage,
-  }) async {
-    await showNotification(
-      title: 'Result Published',
-      body: 'Your result for "$examTitle" is ready. Score: $percentage%',
-    );
-  }
-
-  // ─── Notification: Homework Assigned ─────────────────────────────────────
-
-  static Future<void> notifyHomeworkAssigned({
-    required String homeworkTitle,
-    required String className,
-  }) async {
-    await showNotification(
-      title: 'New Homework',
-      body: '"$homeworkTitle" assigned for $className',
-    );
-  }
-
-  // ─── Notification: Announcement ──────────────────────────────────────────
-
-  static Future<void> notifyAnnouncement({
-    required String title,
-    required String message,
-  }) async {
-    await showNotification(
-      title: title,
-      body: message,
+    await createNotification(
+      userId: userId,
+      type: AppConstants.notificationExamReminder,
+      title: 'Exam Reminder',
+      body: '"$examTitle" starts in $timeText',
+      organizationId: organizationId,
+      relatedId: examId,
+      relatedType: 'exam',
     );
   }
 
@@ -301,7 +540,6 @@ class NotificationService {
   }) async {
     final now = DateTime.now();
 
-    // 24 hours before
     final twentyFourHoursBefore = startDate.subtract(const Duration(hours: 24));
     if (twentyFourHoursBefore.isAfter(now)) {
       await _scheduleNotification(
@@ -312,7 +550,6 @@ class NotificationService {
       );
     }
 
-    // 1 hour before
     final oneHourBefore = startDate.subtract(const Duration(hours: 1));
     if (oneHourBefore.isAfter(now)) {
       await _scheduleNotification(
@@ -323,7 +560,6 @@ class NotificationService {
       );
     }
 
-    // 15 minutes before
     final fifteenMinBefore = startDate.subtract(const Duration(minutes: 15));
     if (fifteenMinBefore.isAfter(now)) {
       await _scheduleNotification(
@@ -334,7 +570,6 @@ class NotificationService {
       );
     }
 
-    // At start time
     if (startDate.isAfter(now)) {
       await _scheduleNotification(
         id: (examId.hashCode & 0x7FFFFFFF) + 3,

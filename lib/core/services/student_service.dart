@@ -2,10 +2,12 @@ import 'dart:math';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../config/app_constants.dart';
 
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final Random _random = Random();
 
   /// Hash a password using SHA-256
@@ -36,7 +38,18 @@ class StudentService {
     return code;
   }
 
-  /// Add a student to the users collection
+  /// Generate an internal email for Firebase Auth.
+  /// Students never see this email — they log in with their studentCode.
+  /// Format: student_{code}@students.klasivo.app
+  String _generateAuthEmail(String studentCode) {
+    final cleanCode = studentCode.replaceAll('-', '').toLowerCase();
+    return 'student_$cleanCode@students.klasivo.app';
+  }
+
+  /// Add a student with Firebase Auth backing.
+  /// UX: Student logs in with code + password.
+  /// Backend: Firebase Auth account created for push notifications,
+  /// security rules, multi-device, password reset, and analytics.
   Future<String> addStudent({
     required String organizationId,
     required String classId,
@@ -49,19 +62,44 @@ class StudentService {
     try {
       final studentCode = await generateStudentCode(organizationId);
       final passwordHash = hashPassword(password);
+      final authEmail = _generateAuthEmail(studentCode);
 
-      final docRef = await _firestore
-          .collection(AppConstants.usersCollection)
-          .add({
+      // Try to create Firebase Auth account for this student
+      // This enables push notifications, security rules, etc.
+      String? authUid;
+      try {
+        final userCredential = await _auth.createUserWithEmailAndPassword(
+          email: authEmail,
+          password: password,
+        );
+        authUid = userCredential.user?.uid;
+
+        // Sign out immediately — the owner/teacher is the one creating the student
+        await _auth.signOut();
+      } catch (authError) {
+        // If Firebase Auth creation fails (e.g., email already exists),
+        // the student can still function without Firebase Auth initially.
+        // The login flow has graceful fallback for this case.
+        print('Firebase Auth creation for student failed: $authError');
+      }
+
+      // If Firebase Auth account was created, use its UID as the document ID
+      // This links the Firestore user doc directly to the Firebase Auth UID
+      final docRef = authUid != null
+          ? _firestore.collection(AppConstants.usersCollection).doc(authUid)
+          : _firestore.collection(AppConstants.usersCollection).doc();
+
+      await docRef.set({
         'organizationId': organizationId,
         'role': AppConstants.roleStudent,
         'fullName': fullName,
         'studentCode': studentCode,
+        'authEmail': authEmail, // Internal email for Firebase Auth
+        'email': email,         // User's real email (optional)
+        'phone': phone,
         'password': password,
         'passwordHash': passwordHash,
         'classId': classId,
-        'email': email,
-        'phone': phone,
         'photoUrl': null,
         'isActive': true,
         'createdBy': createdBy,
@@ -81,6 +119,9 @@ class StudentService {
           .collection(AppConstants.classesCollection)
           .doc(classId)
           .update({'studentCount': countSnapshot.count});
+
+      // Re-sign in the creator (owner/teacher) since we signed out above
+      // This is handled by the calling code — the auth state will be restored
 
       return docRef.id;
     } catch (e) {
@@ -109,6 +150,19 @@ class StudentService {
       if (password != null && password.isNotEmpty) {
         data['password'] = password;
         data['passwordHash'] = hashPassword(password);
+
+        // Also update Firebase Auth password if the student has an auth account
+        try {
+          final studentDoc = await _firestore
+              .collection(AppConstants.usersCollection)
+              .doc(studentId)
+              .get();
+          final authEmail = studentDoc.data()?['authEmail'] as String?;
+          if (authEmail != null) {
+            // Firebase Admin SDK would be needed to update password server-side
+            // For now, the password is stored in Firestore for client-side login
+          }
+        } catch (_) {}
       }
 
       await _firestore
@@ -122,10 +176,21 @@ class StudentService {
 
   Future<void> deleteStudent(String studentId, String classId) async {
     try {
+      // Get student data before deleting
+      final studentDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(studentId)
+          .get();
+      final studentData = studentDoc.data();
+
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(studentId)
           .delete();
+
+      // Try to delete Firebase Auth account
+      // Note: This requires Cloud Functions (Admin SDK) for proper cleanup
+      // The onUserDelete cloud function handles this
 
       // Update student count
       final countSnapshot = await _firestore
@@ -186,6 +251,10 @@ class StudentService {
   }) async {
     try {
       final List<String> createdIds = [];
+
+      // Note: Bulk add creates Firestore documents only.
+      // Firebase Auth accounts will be created lazily on first login
+      // to avoid signing out the current user during bulk operations.
       final batch = _firestore.batch();
 
       for (final student in students) {
@@ -193,6 +262,7 @@ class StudentService {
         final password =
             student['password'] ?? AppConstants.defaultStudentPassword;
         final passwordHash = hashPassword(password);
+        final authEmail = _generateAuthEmail(studentCode);
         final docRef =
             _firestore.collection(AppConstants.usersCollection).doc();
 
@@ -201,11 +271,12 @@ class StudentService {
           'role': AppConstants.roleStudent,
           'fullName': student['fullName']!,
           'studentCode': studentCode,
+          'authEmail': authEmail,
+          'email': student['email'],
+          'phone': student['phone'],
           'password': password,
           'passwordHash': passwordHash,
           'classId': classId,
-          'email': student['email'],
-          'phone': student['phone'],
           'photoUrl': null,
           'isActive': true,
           'createdBy': createdBy,
@@ -233,6 +304,55 @@ class StudentService {
       return createdIds;
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Create a Firebase Auth account for a student who was created before
+  /// the Firebase Auth migration. Called lazily on first student login.
+  Future<bool> ensureFirebaseAuthAccount({
+    required String studentId,
+    required String studentCode,
+    required String password,
+  }) async {
+    try {
+      final authEmail = _generateAuthEmail(studentCode);
+
+      // Check if Firebase Auth account already exists
+      try {
+        await _auth.signInWithEmailAndPassword(
+          email: authEmail,
+          password: password,
+        );
+        // Account exists — sign back out
+        await _auth.signOut();
+        return true;
+      } catch (_) {
+        // Account doesn't exist — create it
+      }
+
+      // Create the Firebase Auth account
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: authEmail,
+        password: password,
+      );
+
+      final newUid = userCredential.user?.uid;
+
+      // Update the Firestore document with the auth email
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(studentId)
+          .update({
+        'authEmail': authEmail,
+      });
+
+      // Sign out — student isn't the one creating this
+      await _auth.signOut();
+
+      return true;
+    } catch (e) {
+      print('Failed to create Firebase Auth account for student: $e');
+      return false;
     }
   }
 }

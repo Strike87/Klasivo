@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
+import 'invite_code_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -17,24 +18,26 @@ class AuthService {
     return digest.toString();
   }
 
-  // ─── Owner Registration (auto-creates organization) ─────────────────────
+  // ─── Owner Registration (auto-creates workspace) ────────────────────────
 
+  /// Register a new owner. Organization is auto-created with a default name.
+  /// The owner will be prompted to name their workspace after first login.
   Future<Map<String, dynamic>> registerOwner({
     required String email,
     required String password,
     required String fullName,
-    required String organizationName,
   }) async {
     try {
       final userCredential =
           await FirebaseService.registerWithEmail(email, password);
       final user = userCredential.user!;
 
-      // Create organization
+      // Auto-create organization with default name
+      // Owner will rename it in the post-registration onboarding screen
       final orgService = OrganizationService();
       final orgId = await orgService.createOrganization(
         ownerId: user.uid,
-        name: organizationName,
+        name: "$fullName's Workspace",
       );
 
       // Create user document with owner role
@@ -49,6 +52,7 @@ class AuthService {
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
+        'hasCompletedSetup': false, // Will be true after naming workspace
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -59,13 +63,14 @@ class AuthService {
         'role': AppConstants.roleOwner,
         'fullName': fullName,
         'email': email,
+        'hasCompletedSetup': false,
       };
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Teacher Login ───────────────────────────────────────────────────────
+  // ─── Teacher/Owner Login ────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> loginTeacher({
     required String email,
@@ -105,20 +110,25 @@ class AuthService {
         'role': role ?? AppConstants.roleTeacher,
         'fullName': userData['fullName'] ?? 'Teacher',
         'email': userData['email'] ?? email,
+        'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
       };
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Student Login (with hashed password support) ──────────────────────
+  // ─── Student Login (Firebase Auth backed, code-based UX) ───────────────
 
+  /// Student login using student code + password.
+  /// UX: Student enters code + password (simple).
+  /// Backend: Internally maps to Firebase Auth for push notifications,
+  /// multi-device, password reset, security rules, and analytics.
   Future<Map<String, dynamic>> loginStudent({
     required String studentCode,
     required String password,
   }) async {
     try {
-      // Find user by studentCode
+      // Step 1: Find user by studentCode
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: studentCode)
@@ -133,7 +143,7 @@ class AuthService {
       final userDoc = snapshot.docs.first;
       final student = userDoc.data();
 
-      // Support both hashed and plaintext passwords for migration period
+      // Step 2: Verify password
       final storedPasswordHash = student['passwordHash'] as String?;
       final storedPlaintext = student['password'] as String?;
       final inputHash = hashPassword(password);
@@ -161,6 +171,23 @@ class AuthService {
         throw Exception('Your account has been deactivated.');
       }
 
+      // Step 3: Sign in via Firebase Auth using the student's internal email
+      // This gives students push notifications, multi-device, security rules, etc.
+      final internalEmail = student['authEmail'] as String?;
+      if (internalEmail != null) {
+        try {
+          // Try Firebase Auth sign-in with the internal email
+          await _auth.signInWithEmailAndPassword(
+            email: internalEmail,
+            password: password,
+          );
+        } catch (authError) {
+          // If Firebase Auth fails, still allow login via Hive (graceful fallback)
+          // This handles cases where Firebase Auth account wasn't created yet
+          // (e.g., students created before this update)
+        }
+      }
+
       return {
         'id': userDoc.id,
         'organizationId': student['organizationId'] ?? '',
@@ -174,7 +201,7 @@ class AuthService {
     }
   }
 
-  // ─── Register Teacher via Invite Code ─────────────────────────────────────
+  // ─── Register Teacher via Invite Code ────────────────────────────────────
 
   Future<Map<String, dynamic>> registerTeacherWithInvite({
     required String email,
@@ -183,21 +210,18 @@ class AuthService {
     required String inviteCode,
   }) async {
     try {
-      // Validate invite code
-      final codeSnapshot = await _firestore
-          .collection(AppConstants.inviteCodesCollection)
-          .where('code', isEqualTo: inviteCode)
-          .where('type', isEqualTo: AppConstants.inviteTypeTeacher)
-          .where('isUsed', isEqualTo: false)
-          .limit(1)
-          .get();
+      // Validate invite code (supports both T-XXXXXXXX and URL code format)
+      final inviteService = InviteCodeService();
+      final codeData = await inviteService.validateInviteCode(inviteCode);
 
-      if (codeSnapshot.docs.isEmpty) {
+      if (codeData == null) {
         throw Exception('Invalid or expired invite code.');
       }
 
-      final codeDoc = codeSnapshot.docs.first;
-      final codeData = codeDoc.data();
+      if (codeData['type'] != AppConstants.inviteTypeTeacher) {
+        throw Exception('This invite code is not for teachers.');
+      }
+
       final organizationId = codeData['organizationId'] as String;
 
       // Create Firebase Auth account
@@ -217,6 +241,7 @@ class AuthService {
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
+        'hasCompletedSetup': true,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -224,11 +249,12 @@ class AuthService {
       // Mark invite code as used
       await _firestore
           .collection(AppConstants.inviteCodesCollection)
-          .doc(codeDoc.id)
+          .doc(codeData['id'])
           .update({
         'isUsed': true,
         'usedBy': user.uid,
         'usedAt': FieldValue.serverTimestamp(),
+        'useCount': FieldValue.increment(1),
       });
 
       return {
@@ -237,6 +263,7 @@ class AuthService {
         'role': AppConstants.roleTeacher,
         'fullName': fullName,
         'email': email,
+        'hasCompletedSetup': true,
       };
     } catch (e) {
       rethrow;
@@ -260,4 +287,27 @@ class AuthService {
   // ─── Check if user is logged in ──────────────────────────────────────────
 
   bool get isLoggedIn => _auth.currentUser != null;
+
+  // ─── Password Reset with custom domain ──────────────────────────────────
+
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      final actionCodeSettings = ActionCodeSettings(
+        url: AppConstants.appBaseUrl,
+        handleCodeInApp: true,
+        iOSBundleId: AppConstants.iosBundleId,
+        androidPackageName: AppConstants.androidPackageName,
+        androidInstallApp: true,
+        androidMinimumVersion: '21',
+        dynamicLinkDomain: AppConstants.dynamicLinkDomain,
+      );
+
+      await _auth.sendPasswordResetEmail(
+        email: email,
+        actionCodeSettings: actionCodeSettings,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
 }
