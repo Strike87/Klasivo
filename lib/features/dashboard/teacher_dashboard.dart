@@ -68,8 +68,8 @@ class TeacherDashboard extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(classesStreamProvider);
-          ref.invalidate(allStudentsStreamProvider);
+          ref.invalidate(classesByOrgProvider);
+          ref.invalidate(studentsByOrgProvider);
           ref.invalidate(examsStreamProvider);
         },
         child: SingleChildScrollView(
@@ -318,7 +318,7 @@ class _RecentClassesList extends ConsumerWidget {
             ),
             title: Text(classData.name, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(
-              '${classData.studentCount} students${classData.grade != null ? ' · ${classData.grade}' : ''}',
+              '${classData.studentCount} students${classData.academicYear != null ? ' · ${classData.academicYear}' : ''}',
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
             trailing: const Icon(Icons.chevron_right, size: 20),
@@ -376,7 +376,7 @@ class _RecentStudentsList extends ConsumerWidget {
             ),
             title: Text(student.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
             subtitle: Text(
-              '${student.studentCode} · ${student.className}',
+              '${student.studentCode}',
               style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
           ),

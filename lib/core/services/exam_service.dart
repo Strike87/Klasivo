@@ -117,8 +117,11 @@ class ExamService {
         }
 
         await NotificationService.notifyExamPublished(
+          organizationId: data['organizationId'] as String? ?? '',
+          classId: classId,
+          examId: examId,
           examTitle: title,
-          className: classId,
+          studentIds: [], // Will be populated by caller with actual student IDs
         );
       }
     } catch (e) {

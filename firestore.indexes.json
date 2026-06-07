@@ -74,7 +74,11 @@
     { "collectionGroup": "messages", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "conversationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] },
     { "collectionGroup": "messages", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "conversationId", "order": "ASCENDING" }, { "fieldPath": "senderId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
 
-    { "collectionGroup": "analytics_cache", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "computedAt", "order": "DESCENDING" }] }
+    { "collectionGroup": "analytics_cache", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "computedAt", "order": "DESCENDING" }] },
+
+    { "collectionGroup": "exam_instances", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
+    { "collectionGroup": "exam_instances", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "startedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "exam_instances", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "startedAt", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }

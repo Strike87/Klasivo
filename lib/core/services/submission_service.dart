@@ -241,16 +241,30 @@ class SubmissionService {
 
       // Notify student about result
       try {
+        // Get the submission to find the studentId
+        final submissionDoc = await _firestore
+            .collection(AppConstants.submissionsCollection)
+            .doc(submissionId)
+            .get();
+        final studentId = submissionDoc.data()?['studentId'] as String? ?? '';
+        final classId = submissionDoc.data()?['classId'] as String? ?? '';
+
         final examDoc = await _firestore
             .collection(AppConstants.examsCollection)
             .doc(examId)
             .get();
         final examTitle = examDoc.data()?['title'] as String? ?? 'Exam';
+        final orgId = examDoc.data()?['organizationId'] as String?;
 
-        await NotificationService.notifyResultPublished(
-          examTitle: examTitle,
-          percentage: percentage,
-        );
+        if (studentId.isNotEmpty) {
+          await NotificationService.notifyResultPublished(
+            studentId: studentId,
+            examTitle: examTitle,
+            score: percentage.toDouble(),
+            organizationId: orgId,
+            examId: examId,
+          );
+        }
       } catch (_) {
         // Don't fail the submission if notification fails
       }

@@ -55,6 +55,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
   void _onTabTap(int index) {
     if (index == _currentIndex) return;
     setState(() => _currentIndex = index);
+    context.go(_destinations[index].route);
   }
 
   @override

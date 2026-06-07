@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/notification_provider.dart';
 
@@ -22,27 +23,32 @@ class _StudentShellState extends ConsumerState<StudentShell> {
       label: 'Home',
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
+      route: '/student',
     ),
     _NavDestination(
       label: 'Exams',
       icon: Icons.quiz_outlined,
       selectedIcon: Icons.quiz_rounded,
+      route: '/student/exams',
     ),
     _NavDestination(
       label: 'Inbox',
       icon: Icons.inbox_outlined,
       selectedIcon: Icons.inbox_rounded,
+      route: '/student/notifications',
     ),
     _NavDestination(
       label: 'Settings',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings_rounded,
+      route: '/student/settings',
     ),
   ];
 
   void _onTabTap(int index) {
     if (index == _currentIndex) return;
     setState(() => _currentIndex = index);
+    context.go(_destinations[index].route);
   }
 
   @override
@@ -81,10 +87,12 @@ class _NavDestination {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+  final String route;
 
   const _NavDestination({
     required this.label,
     required this.icon,
     required this.selectedIcon,
+    required this.route,
   });
 }

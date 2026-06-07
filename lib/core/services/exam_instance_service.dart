@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../config/app_constants.dart';
 
 /// Service for managing exam instances - per-student snapshots of exams
 /// with randomized question order for anti-cheating.
@@ -18,7 +19,7 @@ class ExamInstanceService {
   }) async {
     // Check if instance already exists for this student+exam
     final existing = await _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('examId', isEqualTo: examId)
         .where('studentId', isEqualTo: studentId)
         .limit(1)
@@ -30,7 +31,7 @@ class ExamInstanceService {
 
     // Fetch all questions for this exam
     final questionsSnapshot = await _firestore
-        .collection('questions')
+        .collection(AppConstants.questionsCollection)
         .where('examId', isEqualTo: examId)
         .orderBy('order')
         .get();
@@ -56,10 +57,10 @@ class ExamInstanceService {
     }
 
     // Create the exam instance
-    final docRef = _firestore.collection('exam_instances').doc();
+    final docRef = _firestore.collection(AppConstants.examInstancesCollection).doc();
     await docRef.set({
       'id': docRef.id,
-      'institutionId': 'default',
+      'organizationId': AppConstants.defaultInstitutionId,
       'examId': examId,
       'studentId': studentId,
       'classId': classId,
@@ -80,7 +81,7 @@ class ExamInstanceService {
     required String studentId,
   }) async {
     final snapshot = await _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('examId', isEqualTo: examId)
         .where('studentId', isEqualTo: studentId)
         .limit(1)
@@ -94,7 +95,7 @@ class ExamInstanceService {
   /// Returns list of question data maps in the order the student should see them
   Future<List<Map<String, dynamic>>> getInstanceQuestions(String instanceId) async {
     // Fetch the instance
-    final instanceDoc = await _firestore.collection('exam_instances').doc(instanceId).get();
+    final instanceDoc = await _firestore.collection(AppConstants.examInstancesCollection).doc(instanceId).get();
     if (!instanceDoc.exists) return [];
 
     final instanceData = instanceDoc.data()!;
@@ -103,7 +104,7 @@ class ExamInstanceService {
     if (questionOrder.isEmpty) {
       // Fallback: fetch all questions in original order
       final questions = await _firestore
-          .collection('questions')
+          .collection(AppConstants.questionsCollection)
           .where('examId', isEqualTo: instanceData['examId'])
           .orderBy('order')
           .get();
@@ -113,7 +114,7 @@ class ExamInstanceService {
     // Fetch questions in the randomized order
     final List<Map<String, dynamic>> orderedQuestions = [];
     for (final questionId in questionOrder) {
-      final doc = await _firestore.collection('questions').doc(questionId as String).get();
+      final doc = await _firestore.collection(AppConstants.questionsCollection).doc(questionId as String).get();
       if (doc.exists) {
         orderedQuestions.add(doc.data()!);
       }
@@ -126,7 +127,7 @@ class ExamInstanceService {
   /// Fetches all questions first, then reorders them
   Stream<List<Map<String, dynamic>>> getInstanceQuestionsStream(String instanceId) {
     // First get the instance to know the order
-    return _firestore.collection('exam_instances').doc(instanceId).snapshots().asyncMap(
+    return _firestore.collection(AppConstants.examInstancesCollection).doc(instanceId).snapshots().asyncMap(
       (instanceDoc) async {
         if (!instanceDoc.exists) return [];
 
@@ -135,7 +136,7 @@ class ExamInstanceService {
 
         // Fetch all questions for the exam
         final questionsSnapshot = await _firestore
-            .collection('questions')
+            .collection(AppConstants.questionsCollection)
             .where('examId', isEqualTo: instanceData['examId'])
             .get();
 
@@ -164,7 +165,7 @@ class ExamInstanceService {
     required String instanceId,
     required String submissionId,
   }) async {
-    await _firestore.collection('exam_instances').doc(instanceId).update({
+    await _firestore.collection(AppConstants.examInstancesCollection).doc(instanceId).update({
       'completedAt': FieldValue.serverTimestamp(),
       'submissionId': submissionId,
     });
@@ -173,7 +174,7 @@ class ExamInstanceService {
   /// Get all instances for an exam (teacher view)
   Stream<QuerySnapshot> getExamInstancesStream(String examId) {
     return _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('examId', isEqualTo: examId)
         .orderBy('startedAt', descending: true)
         .snapshots();
@@ -182,7 +183,7 @@ class ExamInstanceService {
   /// Get all instances for a student
   Stream<QuerySnapshot> getStudentInstancesStream(String studentId) {
     return _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('studentId', isEqualTo: studentId)
         .orderBy('startedAt', descending: true)
         .snapshots();
@@ -191,7 +192,7 @@ class ExamInstanceService {
   /// Delete all instances for an exam (used when deleting an exam)
   Future<void> deleteExamInstances(String examId) async {
     final snapshot = await _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('examId', isEqualTo: examId)
         .get();
 
@@ -205,7 +206,7 @@ class ExamInstanceService {
   /// Get count of instances for an exam
   Future<int> getInstanceCount(String examId) async {
     final snapshot = await _firestore
-        .collection('exam_instances')
+        .collection(AppConstants.examInstancesCollection)
         .where('examId', isEqualTo: examId)
         .get();
     return snapshot.docs.length;

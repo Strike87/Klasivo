@@ -244,4 +244,12 @@ class AppConstants {
   static const int inviteCodeLength = 8;
   static const int maxSlugLength = 40;
   static const int notificationsPageSize = 50;
+
+  // ─── Default Values ──────────────────────────────────────────────────────
+
+  static const String defaultInstitutionId = 'default';
+
+  // ─── Extra Collections (referenced by services) ─────────────────────────
+
+  static const String examInstancesCollection = 'exam_instances';
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/organization_service.dart';
@@ -12,7 +13,10 @@ final organizationServiceProvider =
 
 // ─── Current Organization ID ─────────────────────────────────────────────────
 
-final currentOrganizationIdProvider = StateProvider<String?>((ref) => null);
+final currentOrganizationIdProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('organizationId') as String?;
+});
 
 // ─── Current Organization Stream ─────────────────────────────────────────────
 
