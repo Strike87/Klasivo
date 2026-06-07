@@ -1,22 +1,26 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 
-class GroupService {
+class SubjectService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<String> createGroup({
+  Future<String> createSubject({
     required String organizationId,
     required String classId,
     required String name,
+    String color = '#2196F3',
+    String? teacherId,
     String createdBy = '',
   }) async {
     try {
       final docRef = await _firestore
-          .collection(AppConstants.groupsCollection)
+          .collection(AppConstants.subjectsCollection)
           .add({
         'organizationId': organizationId,
         'classId': classId,
         'name': name,
+        'color': color,
+        'teacherId': teacherId,
         'createdBy': createdBy,
         'isArchived': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -28,9 +32,11 @@ class GroupService {
     }
   }
 
-  Future<void> updateGroup({
-    required String groupId,
+  Future<void> updateSubject({
+    required String subjectId,
     String? name,
+    String? color,
+    String? teacherId,
     bool? isArchived,
   }) async {
     try {
@@ -38,50 +44,52 @@ class GroupService {
         'updatedAt': FieldValue.serverTimestamp(),
       };
       if (name != null) data['name'] = name;
+      if (color != null) data['color'] = color;
+      if (teacherId != null) data['teacherId'] = teacherId;
       if (isArchived != null) data['isArchived'] = isArchived;
 
       await _firestore
-          .collection(AppConstants.groupsCollection)
-          .doc(groupId)
+          .collection(AppConstants.subjectsCollection)
+          .doc(subjectId)
           .update(data);
     } catch (e) {
       rethrow;
     }
   }
 
-  Future<void> deleteGroup(String groupId) async {
+  Future<void> deleteSubject(String subjectId) async {
     try {
-      // Delete all group members
-      final membersSnapshot = await _firestore
-          .collection(AppConstants.groupMembersCollection)
-          .where('groupId', isEqualTo: groupId)
+      // Delete teacher assignments for this subject
+      final taSnapshot = await _firestore
+          .collection(AppConstants.teacherAssignmentsCollection)
+          .where('subjectId', isEqualTo: subjectId)
           .get();
 
       final batch = _firestore.batch();
-      for (final doc in membersSnapshot.docs) {
+      for (final doc in taSnapshot.docs) {
         batch.delete(doc.reference);
       }
       batch.delete(
-          _firestore.collection(AppConstants.groupsCollection).doc(groupId));
+          _firestore.collection(AppConstants.subjectsCollection).doc(subjectId));
       await batch.commit();
     } catch (e) {
       rethrow;
     }
   }
 
-  Stream<QuerySnapshot> getGroupsByClassStream(String classId) {
+  Stream<QuerySnapshot> getSubjectsByClassStream(String classId) {
     return _firestore
-        .collection(AppConstants.groupsCollection)
+        .collection(AppConstants.subjectsCollection)
         .where('classId', isEqualTo: classId)
         .where('isArchived', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
-  Future<List<Map<String, dynamic>>> getGroupsByClass(String classId) async {
+  Future<List<Map<String, dynamic>>> getSubjectsByClass(String classId) async {
     try {
       final snapshot = await _firestore
-          .collection(AppConstants.groupsCollection)
+          .collection(AppConstants.subjectsCollection)
           .where('classId', isEqualTo: classId)
           .where('isArchived', isEqualTo: false)
           .orderBy('createdAt', descending: true)
@@ -90,5 +98,15 @@ class GroupService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  /// Get subjects assigned to a specific teacher
+  Stream<QuerySnapshot> getSubjectsByTeacherStream(String teacherId) {
+    return _firestore
+        .collection(AppConstants.subjectsCollection)
+        .where('teacherId', isEqualTo: teacherId)
+        .where('isArchived', isEqualTo: false)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
   }
 }

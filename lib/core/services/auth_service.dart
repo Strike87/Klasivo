@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'firebase_service.dart';
+import 'organization_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -16,30 +17,46 @@ class AuthService {
     return digest.toString();
   }
 
-  // ─── Teacher Registration ────────────────────────────────────────────────
+  // ─── Owner Registration (auto-creates organization) ─────────────────────
 
-  Future<Map<String, dynamic>> registerTeacher({
+  Future<Map<String, dynamic>> registerOwner({
     required String email,
     required String password,
     required String fullName,
+    required String organizationName,
   }) async {
     try {
       final userCredential =
           await FirebaseService.registerWithEmail(email, password);
       final user = userCredential.user!;
 
-      await _firestore.collection(AppConstants.usersCollection).doc(user.uid).set({
-        'id': user.uid,
-        'role': AppConstants.roleTeacher,
+      // Create organization
+      final orgService = OrganizationService();
+      final orgId = await orgService.createOrganization(
+        ownerId: user.uid,
+        name: organizationName,
+      );
+
+      // Create user document with owner role
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': orgId,
+        'role': AppConstants.roleOwner,
         'fullName': fullName,
         'email': email,
-        'institutionId': AppConstants.defaultInstitutionId,
+        'photoUrl': null,
+        'phoneNumber': null,
+        'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return {
         'id': user.uid,
-        'role': AppConstants.roleTeacher,
+        'organizationId': orgId,
+        'role': AppConstants.roleOwner,
         'fullName': fullName,
         'email': email,
       };
@@ -65,23 +82,29 @@ class AuthService {
           .get();
 
       if (!userDoc.exists) {
-        throw Exception('User data not found. Please register again.');
+        throw Exception('User data not found. Please contact your administrator.');
       }
 
       final userData = userDoc.data()!;
       final role = userData['role'] as String?;
+      final isActive = userData['isActive'] as bool? ?? true;
 
-      if (role != AppConstants.roleTeacher) {
+      if (!isActive) {
         await _auth.signOut();
-        throw Exception('This account is not a teacher account.');
+        throw Exception('Your account has been deactivated. Contact your administrator.');
+      }
+
+      if (role != AppConstants.roleOwner && role != AppConstants.roleTeacher) {
+        await _auth.signOut();
+        throw Exception('This account does not have teacher access.');
       }
 
       return {
         'id': user.uid,
+        'organizationId': userData['organizationId'] ?? '',
         'role': role ?? AppConstants.roleTeacher,
         'fullName': userData['fullName'] ?? 'Teacher',
         'email': userData['email'] ?? email,
-        'institutionId': userData['institutionId'] ?? AppConstants.defaultInstitutionId,
       };
     } catch (e) {
       rethrow;
@@ -95,9 +118,11 @@ class AuthService {
     required String password,
   }) async {
     try {
+      // Find user by studentCode
       final snapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: studentCode)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .limit(1)
           .get();
 
@@ -105,8 +130,8 @@ class AuthService {
         throw Exception('Student not found. Please check your student code.');
       }
 
-      final studentDoc = snapshot.docs.first;
-      final student = studentDoc.data();
+      final userDoc = snapshot.docs.first;
+      final student = userDoc.data();
 
       // Support both hashed and plaintext passwords for migration period
       final storedPasswordHash = student['passwordHash'] as String?;
@@ -115,16 +140,14 @@ class AuthService {
 
       bool passwordMatches = false;
       if (storedPasswordHash != null && storedPasswordHash.isNotEmpty) {
-        // New system: compare hashes
         passwordMatches = inputHash == storedPasswordHash;
       } else if (storedPlaintext != null) {
-        // Legacy: compare plaintext
         passwordMatches = password == storedPlaintext;
         // Migrate to hash on successful login
         if (passwordMatches) {
           await _firestore
-              .collection(AppConstants.studentsCollection)
-              .doc(studentDoc.id)
+              .collection(AppConstants.usersCollection)
+              .doc(userDoc.id)
               .update({'passwordHash': inputHash});
         }
       }
@@ -133,18 +156,87 @@ class AuthService {
         throw Exception('Invalid password. Please try again.');
       }
 
+      final isActive = student['isActive'] as bool? ?? true;
+      if (!isActive) {
+        throw Exception('Your account has been deactivated.');
+      }
+
       return {
-        'id': studentDoc.id,
+        'id': userDoc.id,
+        'organizationId': student['organizationId'] ?? '',
         'role': AppConstants.roleStudent,
         'fullName': student['fullName'] ?? 'Student',
         'studentCode': student['studentCode'],
-        'className': student['className'],
         'classId': student['classId'],
-        'teacherId': student['teacherId'],
-        'stageId': student['stageId'],
-        'gradeId': student['gradeId'],
-        'groupId': student['groupId'],
-        'institutionId': student['institutionId'] ?? AppConstants.defaultInstitutionId,
+      };
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Register Teacher via Invite Code ─────────────────────────────────────
+
+  Future<Map<String, dynamic>> registerTeacherWithInvite({
+    required String email,
+    required String password,
+    required String fullName,
+    required String inviteCode,
+  }) async {
+    try {
+      // Validate invite code
+      final codeSnapshot = await _firestore
+          .collection(AppConstants.inviteCodesCollection)
+          .where('code', isEqualTo: inviteCode)
+          .where('type', isEqualTo: AppConstants.inviteTypeTeacher)
+          .where('isUsed', isEqualTo: false)
+          .limit(1)
+          .get();
+
+      if (codeSnapshot.docs.isEmpty) {
+        throw Exception('Invalid or expired invite code.');
+      }
+
+      final codeDoc = codeSnapshot.docs.first;
+      final codeData = codeDoc.data();
+      final organizationId = codeData['organizationId'] as String;
+
+      // Create Firebase Auth account
+      final userCredential =
+          await FirebaseService.registerWithEmail(email, password);
+      final user = userCredential.user!;
+
+      // Create user document with teacher role
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': organizationId,
+        'role': AppConstants.roleTeacher,
+        'fullName': fullName,
+        'email': email,
+        'photoUrl': null,
+        'phoneNumber': null,
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Mark invite code as used
+      await _firestore
+          .collection(AppConstants.inviteCodesCollection)
+          .doc(codeDoc.id)
+          .update({
+        'isUsed': true,
+        'usedBy': user.uid,
+        'usedAt': FieldValue.serverTimestamp(),
+      });
+
+      return {
+        'id': user.uid,
+        'organizationId': organizationId,
+        'role': AppConstants.roleTeacher,
+        'fullName': fullName,
+        'email': email,
       };
     } catch (e) {
       rethrow;

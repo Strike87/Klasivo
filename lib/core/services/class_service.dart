@@ -5,25 +5,25 @@ class ClassService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<String> createClass({
-    required String teacherId,
+    required String organizationId,
+    required String stageId,
     required String name,
-    String? grade,
-    String? gradeId,
-    String? stageId,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String? academicYear,
+    String createdBy = '',
   }) async {
     try {
       final docRef = await _firestore
           .collection(AppConstants.classesCollection)
           .add({
-        'teacherId': teacherId,
-        'name': name,
-        'grade': grade,
-        'gradeId': gradeId,
+        'organizationId': organizationId,
         'stageId': stageId,
+        'name': name,
+        'academicYear': academicYear,
         'studentCount': 0,
-        'institutionId': institutionId,
+        'createdBy': createdBy,
+        'isArchived': false,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
     } catch (e) {
@@ -33,18 +33,19 @@ class ClassService {
 
   Future<void> updateClass({
     required String classId,
-    required String name,
-    String? grade,
-    String? gradeId,
+    String? name,
     String? stageId,
+    String? academicYear,
+    bool? isArchived,
   }) async {
     try {
       final data = <String, dynamic>{
-        'name': name,
-        'grade': grade,
+        'updatedAt': FieldValue.serverTimestamp(),
       };
-      if (gradeId != null) data['gradeId'] = gradeId;
+      if (name != null) data['name'] = name;
       if (stageId != null) data['stageId'] = stageId;
+      if (academicYear != null) data['academicYear'] = academicYear;
+      if (isArchived != null) data['isArchived'] = isArchived;
 
       await _firestore
           .collection(AppConstants.classesCollection)
@@ -57,8 +58,28 @@ class ClassService {
 
   Future<void> deleteClass(String classId) async {
     try {
+      // Delete students in this class
       final studentsSnapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
+          .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
+          .get();
+
+      // Delete subjects in this class
+      final subjectsSnapshot = await _firestore
+          .collection(AppConstants.subjectsCollection)
+          .where('classId', isEqualTo: classId)
+          .get();
+
+      // Delete groups in this class
+      final groupsSnapshot = await _firestore
+          .collection(AppConstants.groupsCollection)
+          .where('classId', isEqualTo: classId)
+          .get();
+
+      // Delete teacher assignments for this class
+      final taSnapshot = await _firestore
+          .collection(AppConstants.teacherAssignmentsCollection)
           .where('classId', isEqualTo: classId)
           .get();
 
@@ -66,9 +87,17 @@ class ClassService {
       for (final doc in studentsSnapshot.docs) {
         batch.delete(doc.reference);
       }
+      for (final doc in subjectsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      for (final doc in groupsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      for (final doc in taSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
       batch.delete(
-        _firestore.collection(AppConstants.classesCollection).doc(classId),
-      );
+          _firestore.collection(AppConstants.classesCollection).doc(classId));
       await batch.commit();
     } catch (e) {
       rethrow;
@@ -81,33 +110,36 @@ class ClassService {
           .collection(AppConstants.classesCollection)
           .doc(classId)
           .get();
-      return doc.data();
+      return doc.exists ? {'id': doc.id, ...doc.data()!} : null;
     } catch (e) {
       rethrow;
     }
   }
 
-  Stream<QuerySnapshot> getClassesStream(String teacherId) {
+  Stream<QuerySnapshot> getClassesByStageStream(String stageId) {
     return _firestore
         .collection(AppConstants.classesCollection)
-        .where('teacherId', isEqualTo: teacherId)
+        .where('stageId', isEqualTo: stageId)
+        .where('isArchived', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
-  Future<QuerySnapshot> getClasses(String teacherId) async {
-    return await _firestore
+  Stream<QuerySnapshot> getClassesByOrganizationStream(String organizationId) {
+    return _firestore
         .collection(AppConstants.classesCollection)
-        .where('teacherId', isEqualTo: teacherId)
+        .where('organizationId', isEqualTo: organizationId)
+        .where('isArchived', isEqualTo: false)
         .orderBy('createdAt', descending: true)
-        .get();
+        .snapshots();
   }
 
   Future<int> getStudentCount(String classId) async {
     try {
       final snapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .count()
           .get();
       return snapshot.count ?? 0;

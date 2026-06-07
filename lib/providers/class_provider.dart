@@ -4,23 +4,37 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/class_service.dart';
 import 'auth_provider.dart';
+import 'organization_provider.dart';
 
 final classServiceProvider = Provider<ClassService>((ref) => ClassService());
 
-final classesStreamProvider = StreamProvider<QuerySnapshot>((ref) {
-  final teacherId = ref.watch(userIdProvider);
-  if (teacherId == null || teacherId.isEmpty) {
-    return const Stream.empty();
-  }
-  return ref.read(classServiceProvider).getClassesStream(teacherId);
+final classesByStageProvider =
+    StreamProvider.family<QuerySnapshot, String>((ref, stageId) {
+  return ref.read(classServiceProvider).getClassesByStageStream(stageId);
+});
+
+final classesByOrgProvider = StreamProvider<QuerySnapshot>((ref) {
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null) return const Stream.empty();
+  return ref.read(classServiceProvider).getClassesByOrganizationStream(orgId);
 });
 
 final classesProvider = Provider<List<ClassData>>((ref) {
-  final asyncClasses = ref.watch(classesStreamProvider);
+  final asyncClasses = ref.watch(classesByOrgProvider);
   return asyncClasses.when(
-    data: (snapshot) => snapshot.docs
-        .map((doc) => ClassData.fromFirestore(doc))
-        .toList(),
+    data: (snapshot) =>
+        snapshot.docs.map((doc) => ClassData.fromFirestore(doc)).toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+final classesByStageListProvider =
+    Provider.family<List<ClassData>, String>((ref, stageId) {
+  final asyncClasses = ref.watch(classesByStageProvider(stageId));
+  return asyncClasses.when(
+    data: (snapshot) =>
+        snapshot.docs.map((doc) => ClassData.fromFirestore(doc)).toList(),
     loading: () => [],
     error: (_, __) => [],
   );
@@ -32,53 +46,54 @@ final totalClassesProvider = Provider<int>((ref) {
 
 class ClassData {
   final String id;
-  final String teacherId;
+  final String organizationId;
+  final String stageId;
   final String name;
-  final String? grade;
-  final String? gradeId;
-  final String? stageId;
+  final String? academicYear;
   final int studentCount;
-  final String institutionId;
+  final String createdBy;
+  final bool isArchived;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   ClassData({
     required this.id,
-    required this.teacherId,
+    required this.organizationId,
+    required this.stageId,
     required this.name,
-    this.grade,
-    this.gradeId,
-    this.stageId,
+    this.academicYear,
     this.studentCount = 0,
-    this.institutionId = AppConstants.defaultInstitutionId,
+    this.createdBy = '',
+    this.isArchived = false,
     this.createdAt,
+    this.updatedAt,
   });
 
   factory ClassData.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return ClassData(
       id: doc.id,
-      teacherId: data['teacherId'] ?? '',
+      organizationId: data['organizationId'] ?? '',
+      stageId: data['stageId'] ?? '',
       name: data['name'] ?? '',
-      grade: data['grade'],
-      gradeId: data['gradeId'],
-      stageId: data['stageId'],
+      academicYear: data['academicYear'],
       studentCount: data['studentCount'] ?? 0,
-      institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      createdBy: data['createdBy'] ?? '',
+      isArchived: data['isArchived'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'teacherId': teacherId,
-      'name': name,
-      'grade': grade,
-      'gradeId': gradeId,
+      'organizationId': organizationId,
       'stageId': stageId,
+      'name': name,
+      'academicYear': academicYear,
       'studentCount': studentCount,
-      'institutionId': institutionId,
-      'createdAt': createdAt,
+      'isArchived': isArchived,
     };
   }
 }

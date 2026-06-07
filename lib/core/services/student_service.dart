@@ -15,7 +15,7 @@ class StudentService {
     return digest.toString();
   }
 
-  Future<String> generateStudentCode(String teacherId) async {
+  Future<String> generateStudentCode(String organizationId) async {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     String code;
     bool exists;
@@ -26,7 +26,7 @@ class StudentService {
         code += chars[_random.nextInt(chars.length)];
       }
       final snapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: code)
           .limit(1)
           .get();
@@ -36,44 +36,44 @@ class StudentService {
     return code;
   }
 
+  /// Add a student to the users collection
   Future<String> addStudent({
-    required String teacherId,
+    required String organizationId,
     required String classId,
-    required String className,
     required String fullName,
     required String password,
-    String? grade,
-    String? stageId,
-    String? gradeId,
-    String? groupId,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String? email,
+    String? phone,
+    String createdBy = '',
   }) async {
     try {
-      final studentCode = await generateStudentCode(teacherId);
+      final studentCode = await generateStudentCode(organizationId);
       final passwordHash = hashPassword(password);
 
       final docRef = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .add({
-        'teacherId': teacherId,
-        'classId': classId,
-        'className': className,
+        'organizationId': organizationId,
+        'role': AppConstants.roleStudent,
         'fullName': fullName,
         'studentCode': studentCode,
         'password': password,
         'passwordHash': passwordHash,
-        'grade': grade,
-        'stageId': stageId,
-        'gradeId': gradeId,
-        'groupId': groupId,
-        'institutionId': institutionId,
+        'classId': classId,
+        'email': email,
+        'phone': phone,
+        'photoUrl': null,
+        'isActive': true,
+        'createdBy': createdBy,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // Update student count in class
       final countSnapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .count()
           .get();
 
@@ -90,27 +90,29 @@ class StudentService {
 
   Future<void> updateStudent({
     required String studentId,
-    required String fullName,
-    String? grade,
+    String? fullName,
+    String? classId,
+    String? email,
+    String? phone,
     String? password,
-    String? stageId,
-    String? gradeId,
-    String? groupId,
+    bool? isActive,
   }) async {
     try {
       final data = <String, dynamic>{
-        'fullName': fullName,
-        'grade': grade,
+        'updatedAt': FieldValue.serverTimestamp(),
       };
-      if (stageId != null) data['stageId'] = stageId;
-      if (gradeId != null) data['gradeId'] = gradeId;
-      if (groupId != null) data['groupId'] = groupId;
+      if (fullName != null) data['fullName'] = fullName;
+      if (classId != null) data['classId'] = classId;
+      if (email != null) data['email'] = email;
+      if (phone != null) data['phone'] = phone;
+      if (isActive != null) data['isActive'] = isActive;
       if (password != null && password.isNotEmpty) {
         data['password'] = password;
         data['passwordHash'] = hashPassword(password);
       }
+
       await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .doc(studentId)
           .update(data);
     } catch (e) {
@@ -121,13 +123,15 @@ class StudentService {
   Future<void> deleteStudent(String studentId, String classId) async {
     try {
       await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .doc(studentId)
           .delete();
 
+      // Update student count
       final countSnapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .count()
           .get();
 
@@ -142,25 +146,30 @@ class StudentService {
 
   Stream<QuerySnapshot> getStudentsByClassStream(String classId) {
     return _firestore
-        .collection(AppConstants.studentsCollection)
+        .collection(AppConstants.usersCollection)
         .where('classId', isEqualTo: classId)
+        .where('role', isEqualTo: AppConstants.roleStudent)
+        .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
-  Stream<QuerySnapshot> getStudentsByTeacherStream(String teacherId) {
+  Stream<QuerySnapshot> getStudentsByOrganizationStream(String organizationId) {
     return _firestore
-        .collection(AppConstants.studentsCollection)
-        .where('teacherId', isEqualTo: teacherId)
+        .collection(AppConstants.usersCollection)
+        .where('organizationId', isEqualTo: organizationId)
+        .where('role', isEqualTo: AppConstants.roleStudent)
+        .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
-  Future<int> getTotalStudentCount(String teacherId) async {
+  Future<int> getTotalStudentCount(String organizationId) async {
     try {
       final snapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
-          .where('teacherId', isEqualTo: teacherId)
+          .collection(AppConstants.usersCollection)
+          .where('organizationId', isEqualTo: organizationId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .count()
           .get();
       return snapshot.count ?? 0;
@@ -170,49 +179,49 @@ class StudentService {
   }
 
   Future<List<String>> bulkAddStudents({
-    required String teacherId,
+    required String organizationId,
     required String classId,
-    required String className,
     required List<Map<String, String>> students,
-    String? stageId,
-    String? gradeId,
-    String? groupId,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String createdBy = '',
   }) async {
     try {
       final List<String> createdIds = [];
       final batch = _firestore.batch();
 
       for (final student in students) {
-        final studentCode = await generateStudentCode(teacherId);
-        final password = student['password'] ?? AppConstants.defaultStudentPassword;
+        final studentCode = await generateStudentCode(organizationId);
+        final password =
+            student['password'] ?? AppConstants.defaultStudentPassword;
         final passwordHash = hashPassword(password);
         final docRef =
-            _firestore.collection(AppConstants.studentsCollection).doc();
+            _firestore.collection(AppConstants.usersCollection).doc();
 
         batch.set(docRef, {
-          'teacherId': teacherId,
-          'classId': classId,
-          'className': className,
+          'organizationId': organizationId,
+          'role': AppConstants.roleStudent,
           'fullName': student['fullName']!,
           'studentCode': studentCode,
           'password': password,
           'passwordHash': passwordHash,
-          'grade': student['grade'],
-          'stageId': stageId,
-          'gradeId': gradeId,
-          'groupId': groupId,
-          'institutionId': institutionId,
+          'classId': classId,
+          'email': student['email'],
+          'phone': student['phone'],
+          'photoUrl': null,
+          'isActive': true,
+          'createdBy': createdBy,
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
         createdIds.add(docRef.id);
       }
 
       await batch.commit();
 
+      // Update student count
       final countSnapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .count()
           .get();
 

@@ -1,26 +1,26 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/config/app_constants.dart';
 import '../core/services/student_service.dart';
-import 'auth_provider.dart';
+import 'organization_provider.dart';
 
-final studentServiceProvider = Provider<StudentService>((ref) => StudentService());
+final studentServiceProvider =
+    Provider<StudentService>((ref) => StudentService());
 
 final studentsByClassProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, classId) {
   return ref.read(studentServiceProvider).getStudentsByClassStream(classId);
 });
 
-final allStudentsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
-  final teacherId = ref.watch(userIdProvider);
-  if (teacherId == null || teacherId.isEmpty) {
-    return const Stream.empty();
-  }
-  return ref.read(studentServiceProvider).getStudentsByTeacherStream(teacherId);
+final studentsByOrgProvider = StreamProvider<QuerySnapshot>((ref) {
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null) return const Stream.empty();
+  return ref.read(studentServiceProvider).getStudentsByOrganizationStream(orgId);
 });
 
 final allStudentsProvider = Provider<List<StudentData>>((ref) {
-  final asyncStudents = ref.watch(allStudentsStreamProvider);
+  final asyncStudents = ref.watch(studentsByOrgProvider);
   return asyncStudents.when(
     data: (snapshot) => snapshot.docs
         .map((doc) => StudentData.fromFirestore(doc))
@@ -46,40 +46,28 @@ final totalStudentsProvider = Provider<int>((ref) {
   return ref.watch(allStudentsProvider).length;
 });
 
-final selectedClassIdProvider = StateProvider<String?>((ref) => null);
-
 class StudentData {
   final String id;
-  final String teacherId;
+  final String organizationId;
   final String classId;
-  final String className;
   final String fullName;
   final String studentCode;
-  final String? grade;
-  final String? stageId;
-  final String? gradeId;
-  final String? groupId;
-  final String? phone;
   final String? email;
-  final String? parentPhone;
-  final String institutionId;
+  final String? phone;
+  final String? photoUrl;
+  final bool isActive;
   final DateTime? createdAt;
 
   StudentData({
     required this.id,
-    required this.teacherId,
+    required this.organizationId,
     required this.classId,
-    required this.className,
     required this.fullName,
     required this.studentCode,
-    this.grade,
-    this.stageId,
-    this.gradeId,
-    this.groupId,
-    this.phone,
     this.email,
-    this.parentPhone,
-    this.institutionId = 'default',
+    this.phone,
+    this.photoUrl,
+    this.isActive = true,
     this.createdAt,
   });
 
@@ -87,19 +75,14 @@ class StudentData {
     final data = doc.data() as Map<String, dynamic>;
     return StudentData(
       id: doc.id,
-      teacherId: data['teacherId'] ?? '',
+      organizationId: data['organizationId'] ?? '',
       classId: data['classId'] ?? '',
-      className: data['className'] ?? '',
       fullName: data['fullName'] ?? '',
       studentCode: data['studentCode'] ?? '',
-      grade: data['grade'],
-      stageId: data['stageId'],
-      gradeId: data['gradeId'],
-      groupId: data['groupId'],
-      phone: data['phone'],
       email: data['email'],
-      parentPhone: data['parentPhone'],
-      institutionId: data['institutionId'] ?? 'default',
+      phone: data['phone'],
+      photoUrl: data['photoUrl'],
+      isActive: data['isActive'] ?? true,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -107,20 +90,13 @@ class StudentData {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'teacherId': teacherId,
+      'organizationId': organizationId,
       'classId': classId,
-      'className': className,
       'fullName': fullName,
       'studentCode': studentCode,
-      'grade': grade,
-      'stageId': stageId,
-      'gradeId': gradeId,
-      'groupId': groupId,
-      'phone': phone,
       'email': email,
-      'parentPhone': parentPhone,
-      'institutionId': institutionId,
-      'createdAt': createdAt,
+      'phone': phone,
+      'isActive': isActive,
     };
   }
 }
