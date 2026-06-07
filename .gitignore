@@ -94,3 +94,7 @@ GoogleService-Info.plist
 # Generated files
 .dart_tool/
 pubspec.lock
+
+# Cloud Functions
+functions/node_modules/
+functions/.runtimeconfig.json
