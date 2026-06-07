@@ -16,6 +16,7 @@ import 'features/auth/pages/teacher_login_screen.dart';
 import 'features/auth/pages/teacher_registration_screen.dart';
 import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
+import 'features/auth/pages/forgot_password_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
 import 'features/dashboard/owner_dashboard.dart';
@@ -39,12 +40,18 @@ import 'features/grades/pages/grade_list_screen.dart';
 import 'features/groups/pages/group_list_screen.dart';
 import 'features/question_bank/pages/question_bank_screen.dart';
 import 'features/notifications/pages/notification_center_screen.dart';
+import 'features/notifications/pages/notification_detail_screen.dart';
 import 'features/excel_import/pages/excel_import_screen.dart';
 import 'features/qr/pages/qr_generate_screen.dart';
 import 'features/qr/pages/qr_scan_screen.dart';
 import 'features/analytics/pages/teacher_analytics_dashboard.dart';
 import 'features/reports/pages/report_generation_screen.dart';
 import 'features/integrity/pages/exam_integrity_dashboard.dart';
+import 'features/settings/pages/settings_screen.dart';
+import 'features/settings/pages/organization_settings_screen.dart';
+import 'features/settings/pages/profile_settings_screen.dart';
+import 'features/settings/pages/student_settings_screen.dart';
+import 'features/exam_instances/pages/exam_instances_screen.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
@@ -257,6 +264,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'student-login',
             builder: (context, state) => const StudentLoginScreen(),
           ),
+          GoRoute(
+            path: 'forgot-password',
+            builder: (context, state) => const ForgotPasswordScreen(),
+          ),
         ],
       ),
 
@@ -301,7 +312,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'notifications/:id',
                 builder: (context, state) {
                   final notificationId = state.pathParameters['id']!;
-                  return _NotificationDetailScreen(notificationId: notificationId);
+                  return NotificationDetailScreen(notificationId: notificationId);
                 },
               ),
               GoRoute(
@@ -314,9 +325,29 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Settings
           GoRoute(
             path: '/settings',
-            builder: (context, state) => const _SettingsPlaceholder(),
+            builder: (context, state) => const SettingsScreen(),
+            routes: [
+              GoRoute(
+                path: 'organization',
+                builder: (context, state) => const OrganizationSettingsScreen(),
+              ),
+              GoRoute(
+                path: 'profile',
+                builder: (context, state) => const ProfileSettingsScreen(),
+              ),
+            ],
           ),
         ],
+      ),
+
+      // ─── Settings (outside shell for full-screen) ────────────────────
+      GoRoute(
+        path: '/settings/organization',
+        builder: (context, state) => const OrganizationSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/profile',
+        builder: (context, state) => const ProfileSettingsScreen(),
       ),
 
       // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
@@ -426,6 +457,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return ExamResultsScreen(examId: examId);
                     },
                   ),
+                  GoRoute(
+                    path: 'instances',
+                    builder: (context, state) {
+                      final examId = state.pathParameters['examId']!;
+                      return ExamInstancesScreen(examId: examId);
+                    },
+                  ),
                 ],
               ),
             ],
@@ -512,203 +550,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/student/notifications',
         builder: (context, state) => const NotificationCenterScreen(),
       ),
+      GoRoute(
+        path: '/student/settings',
+        builder: (context, state) => const StudentSettingsScreen(),
+      ),
     ],
   );
 });
-
-// ─── Placeholder Screens (will be replaced with full implementations) ────────
-
-class _NotificationDetailScreen extends ConsumerWidget {
-  final String notificationId;
-  const _NotificationDetailScreen({required this.notificationId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Notification')),
-      body: Center(child: Text('Notification: $notificationId')),
-    );
-  }
-}
-
-class _SettingsPlaceholder extends ConsumerWidget {
-  const _SettingsPlaceholder();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final userName = ref.watch(userNameProvider) ?? 'User';
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          // Profile Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(KlasivoSpacing.lg),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: KlasivoColors.primary.withOpacity(0.1),
-                    child: Text(
-                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                      style: KlasivoTypography.headlineSmall.copyWith(
-                        color: KlasivoColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: KlasivoSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(userName, style: KlasivoTypography.titleLarge),
-                        const SizedBox(height: KlasivoSpacing.xs),
-                        Text(
-                          ref.watch(userIdProvider) ?? '',
-                          style: KlasivoTypography.bodySmall.copyWith(
-                            color: isDark
-                                ? KlasivoColors.darkTextTertiary
-                                : KlasivoColors.lightTextTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Settings Items
-          _SettingsTile(
-            icon: Icons.business_outlined,
-            title: 'Organization',
-            subtitle: 'Manage workspace settings',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.person_outline_rounded,
-            title: 'Profile',
-            subtitle: 'Edit your profile information',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.vpn_key_outlined,
-            title: 'Invite Codes',
-            subtitle: 'Generate and manage invite codes',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.palette_outlined,
-            title: 'Appearance',
-            subtitle: 'Light and dark theme',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Manage notification preferences',
-            onTap: () {},
-          ),
-
-          const Divider(),
-
-          _SettingsTile(
-            icon: Icons.help_outline_rounded,
-            title: 'Help & Support',
-            subtitle: AppConstants.supportEmail,
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.info_outline_rounded,
-            title: 'About Klasivo',
-            subtitle: 'Version 1.6.0',
-            onTap: () {},
-          ),
-
-          const Divider(),
-
-          // Logout
-          _SettingsTile(
-            icon: Icons.logout_rounded,
-            title: 'Logout',
-            subtitle: 'Sign out of your account',
-            isDestructive: true,
-            onTap: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      style: TextButton.styleFrom(
-                        foregroundColor: KlasivoColors.error,
-                      ),
-                      child: const Text('Logout'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true && context.mounted) {
-                await clearAuthData();
-                if (context.mounted) context.go('/auth');
-              }
-            },
-          ),
-
-          const SizedBox(height: KlasivoSpacing.xxxl),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isDestructive;
-  final VoidCallback onTap;
-
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.isDestructive = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDestructive
-        ? KlasivoColors.error
-        : (isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary);
-
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(title, style: KlasivoTypography.titleMedium.copyWith(color: color)),
-      subtitle: Text(
-        subtitle,
-        style: KlasivoTypography.bodySmall.copyWith(
-          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-        ),
-      ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
-        color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-        size: 20,
-      ),
-      onTap: onTap,
-    );
-  }
-}

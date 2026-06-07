@@ -204,9 +204,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      // TODO: Navigate to forgot password screen
-                    },
+                    onPressed: () => context.go('/auth/forgot-password'),
                     child: const Text('Forgot password?'),
                   ),
                 ),
