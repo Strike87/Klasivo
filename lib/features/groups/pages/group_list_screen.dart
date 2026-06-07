@@ -5,6 +5,8 @@ import '../../../providers/group_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_components.dart';
 
 class GroupListScreen extends ConsumerWidget {
   final String classId;
@@ -17,23 +19,41 @@ class GroupListScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Groups'), centerTitle: true),
       body: groups.isEmpty
-          ? const EmptyState(
+          ? const KlasivoEmptyState(
               icon: Icons.group_work_outlined,
               title: 'No Groups Yet',
               subtitle: 'Create groups within this class',
+              iconColor: KlasivoColors.secondary,
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
               itemCount: groups.length,
               itemBuilder: (context, index) {
                 final group = groups[index];
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                  ),
                   child: ListTile(
-                    leading: const Icon(Icons.group_work_outlined, color: Colors.teal),
-                    title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    leading: Container(
+                      padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
+                      decoration: BoxDecoration(
+                        color: KlasivoColors.secondarySurface,
+                        borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                      ),
+                      child: const Icon(Icons.group_work_outlined, color: KlasivoColors.secondary, size: 24),
+                    ),
+                    title: Text(
+                      group.name,
+                      style: KlasivoTypography.titleMedium.copyWith(
+                        color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+                      ),
+                    ),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      icon: const Icon(Icons.delete_outline, color: KlasivoColors.error),
                       onPressed: () async {
                         final confirmed = await showConfirmationDialog(
                           context: context,
@@ -65,16 +85,25 @@ class GroupListScreen extends ConsumerWidget {
 
   void _showAddGroupDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Group'),
+        title: Text(
+          'Add Group',
+          style: KlasivoTypography.titleLarge.copyWith(
+            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+          ),
+        ),
         content: TextField(
           controller: nameController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Group Name',
             hintText: 'e.g. Group A',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+            ),
           ),
           autofocus: true,
         ),

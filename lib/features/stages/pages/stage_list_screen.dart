@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../providers/stage_provider.dart';
 import '../../../providers/grade_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_components.dart';
 
 class StageListScreen extends ConsumerWidget {
   const StageListScreen({Key? key}) : super(key: key);
@@ -14,21 +15,21 @@ class StageListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stages = ref.watch(stagesProvider);
-    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Stages'), centerTitle: true),
       body: stages.isEmpty
-          ? const EmptyState(
+          ? KlasivoEmptyState(
               icon: Icons.school_outlined,
               title: 'No Stages Yet',
               subtitle: 'Create stages to organize your educational hierarchy',
               actionLabel: 'Add Stage',
+              iconColor: KlasivoColors.primary,
             )
           : RefreshIndicator(
               onRefresh: () async => ref.invalidate(stagesStreamProvider),
               child: ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(KlasivoSpacing.lg),
                 itemCount: stages.length,
                 itemBuilder: (context, index) {
                   final stage = stages[index];
@@ -46,16 +47,25 @@ class StageListScreen extends ConsumerWidget {
 
   void _showAddStageDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Stage'),
+        title: Text(
+          'Add Stage',
+          style: KlasivoTypography.titleLarge.copyWith(
+            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+          ),
+        ),
         content: TextField(
           controller: nameController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Stage Name',
             hintText: 'e.g. Secondary Stage',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+            ),
           ),
           autofocus: true,
         ),
@@ -95,22 +105,35 @@ class _StageCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final gradesAsync = ref.watch(gradesByStageListProvider(stage.id));
     final gradeCount = gradesAsync.length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: KlasivoSpacing.md),
       elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(KlasivoRadius.md),
+      ),
       child: ListTile(
         leading: Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
           decoration: BoxDecoration(
-            color: Colors.indigo.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
+            color: KlasivoColors.primarySurface,
+            borderRadius: BorderRadius.circular(KlasivoRadius.sm),
           ),
-          child: const Icon(Icons.school_outlined, color: Colors.indigo, size: 28),
+          child: const Icon(Icons.school_outlined, color: KlasivoColors.primary, size: 28),
         ),
-        title: Text(stage.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text('$gradeCount grade${gradeCount != 1 ? 's' : ''}'),
+        title: Text(
+          stage.name,
+          style: KlasivoTypography.titleMedium.copyWith(
+            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+          ),
+        ),
+        subtitle: Text(
+          '$gradeCount grade${gradeCount != 1 ? 's' : ''}',
+          style: KlasivoTypography.bodySmall.copyWith(
+            color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+          ),
+        ),
         trailing: PopupMenuButton<String>(
           onSelected: (value) async {
             if (value == 'delete') {
@@ -132,7 +155,15 @@ class _StageCard extends ConsumerWidget {
             }
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+            PopupMenuItem(
+              value: 'delete',
+              child: Text(
+                'Delete',
+                style: KlasivoTypography.bodyMedium.copyWith(
+                  color: KlasivoColors.error,
+                ),
+              ),
+            ),
           ],
         ),
       ),

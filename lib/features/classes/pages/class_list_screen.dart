@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/class_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_components.dart';
 
 class ClassListScreen extends ConsumerWidget {
   const ClassListScreen({Key? key}) : super(key: key);
@@ -18,8 +20,8 @@ class ClassListScreen extends ConsumerWidget {
         centerTitle: true,
       ),
       body: classesAsync.when(
-        loading: () => const LoadingIndicator(message: 'Loading classes...'),
-        error: (error, stack) => ErrorWidgetCustom(
+        loading: () => const KlasivoLoading(message: 'Loading classes...'),
+        error: (error, stack) => _KlasivoErrorWidget(
           message: 'Failed to load classes: $error',
           onRetry: () => ref.invalidate(classesStreamProvider),
         ),
@@ -29,12 +31,13 @@ class ClassListScreen extends ConsumerWidget {
               .toList();
 
           if (classes.isEmpty) {
-            return EmptyState(
+            return KlasivoEmptyState(
               icon: Icons.class_outlined,
               title: 'No Classes Yet',
               subtitle: 'Create your first class to start adding students',
               actionLabel: 'Create Class',
               onAction: () => context.go('/teacher/classes/create'),
+              iconColor: KlasivoColors.primary,
             );
           }
 
@@ -43,7 +46,7 @@ class ClassListScreen extends ConsumerWidget {
               ref.invalidate(classesStreamProvider);
             },
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
               itemCount: classes.length,
               itemBuilder: (context, index) {
                 final classData = classes[index];
@@ -101,6 +104,63 @@ class ClassListScreen extends ConsumerWidget {
   }
 }
 
+/// Klasivo-styled inline error widget replacing ErrorWidgetCustom.
+class _KlasivoErrorWidget extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _KlasivoErrorWidget({
+    required this.message,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(KlasivoSpacing.xxxl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+              decoration: const BoxDecoration(
+                color: KlasivoColors.errorSurface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: KlasivoColors.error,
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.xxl),
+            Text(
+              message,
+              style: KlasivoTypography.bodyMedium.copyWith(
+                color: isDark
+                    ? KlasivoColors.darkTextSecondary
+                    : KlasivoColors.lightTextSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: KlasivoSpacing.xxl),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ClassCard extends StatelessWidget {
   final ClassData classData;
   final VoidCallback onTap;
@@ -116,79 +176,84 @@ class _ClassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: KlasivoSpacing.md),
       elevation: 1,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(KlasivoRadius.md),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(KlasivoRadius.md),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(KlasivoSpacing.lg),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(KlasivoSpacing.md),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: KlasivoColors.primarySurface,
+                  borderRadius: BorderRadius.circular(KlasivoRadius.md),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.class_outlined,
-                  color: theme.colorScheme.primary,
+                  color: KlasivoColors.primary,
                   size: 28,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: KlasivoSpacing.lg),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       classData.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
+                      style: KlasivoTypography.titleMedium.copyWith(
                         fontWeight: FontWeight.bold,
+                        color: isDark
+                            ? KlasivoColors.darkTextPrimary
+                            : KlasivoColors.lightTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: KlasivoSpacing.xs),
                     Row(
                       children: [
                         if (classData.grade != null) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
+                              horizontal: KlasivoSpacing.sm,
+                              vertical: KlasivoSpacing.xs - 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
+                              color: KlasivoColors.accentSurface,
+                              borderRadius: BorderRadius.circular(KlasivoRadius.xs),
                             ),
                             child: Text(
                               classData.grade!,
-                              style: TextStyle(
-                                color: Colors.orange[700],
-                                fontSize: 12,
+                              style: KlasivoTypography.labelSmall.copyWith(
+                                color: KlasivoColors.accentDark,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: KlasivoSpacing.sm),
                         ],
                         Icon(
                           Icons.people_outline,
                           size: 14,
-                          color: Colors.grey[500],
+                          color: isDark
+                              ? KlasivoColors.darkTextTertiary
+                              : KlasivoColors.lightTextTertiary,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: KlasivoSpacing.xs),
                         Text(
                           '${classData.studentCount} students',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
+                          style: KlasivoTypography.bodySmall.copyWith(
+                            color: isDark
+                                ? KlasivoColors.darkTextSecondary
+                                : KlasivoColors.lightTextSecondary,
                           ),
                         ),
                       ],
@@ -211,34 +276,56 @@ class _ClassCard extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.edit_outlined, size: 20),
-                        SizedBox(width: 8),
-                        Text('Edit'),
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 20,
+                          color: isDark
+                              ? KlasivoColors.darkIconDefault
+                              : KlasivoColors.lightIconDefault,
+                        ),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        Text(
+                          'Edit',
+                          style: KlasivoTypography.bodyMedium.copyWith(
+                            color: isDark
+                                ? KlasivoColors.darkTextPrimary
+                                : KlasivoColors.lightTextPrimary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'qr',
                     child: Row(
                       children: [
-                        Icon(Icons.qr_code, size: 20, color: Colors.indigo),
-                        SizedBox(width: 8),
-                        Text('QR Enrollment Code', style: TextStyle(color: Colors.indigo)),
+                        const Icon(Icons.qr_code, size: 20, color: KlasivoColors.primary),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        Text(
+                          'QR Enrollment Code',
+                          style: KlasivoTypography.bodyMedium.copyWith(
+                            color: KlasivoColors.primary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outline,
-                            size: 20, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
+                        const Icon(Icons.delete_outline, size: 20, color: KlasivoColors.error),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        Text(
+                          'Delete',
+                          style: KlasivoTypography.bodyMedium.copyWith(
+                            color: KlasivoColors.error,
+                          ),
+                        ),
                       ],
                     ),
                   ),

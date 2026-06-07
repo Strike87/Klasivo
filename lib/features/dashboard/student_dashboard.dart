@@ -8,7 +8,9 @@ import '../../providers/exam_provider.dart';
 import '../../providers/submission_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../core/config/app_constants.dart';
+import '../../core/config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/klasivo_components.dart';
 
 class StudentDashboard extends ConsumerWidget {
   const StudentDashboard({Key? key}) : super(key: key);
@@ -19,85 +21,111 @@ class StudentDashboard extends ConsumerWidget {
     final classId = ref.watch(studentClassIdProvider);
     final stats = ref.watch(studentExamStatsProvider);
     final submissions = ref.watch(studentSubmissionsProvider);
-    final theme = Theme.of(context);
-
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final className = ref.watch(studentClassNameProvider) ?? '-';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Klasivo'),
-        actions: [
-          IconButton(
-            icon: Badge(
-              isLabelVisible: (ref.watch(unreadNotificationsProvider)) > 0,
-              label: Text('${ref.watch(unreadNotificationsProvider)}'),
-              child: const Icon(Icons.notifications_outlined),
-            ),
-            onPressed: () => context.go('/student/notifications'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () => context.go('/student/scan-qr'),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'logout') {
-                final confirmed = await showConfirmationDialog(
-                  context: context,
-                  title: 'Logout',
-                  message: 'Are you sure you want to logout?',
-                  confirmLabel: 'Logout',
-                  isDangerous: true,
-                );
-                if (confirmed == true && context.mounted) {
-                  await clearAuthData();
-                  if (context.mounted) {
-                    context.go('/auth');
-                  }
-                }
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Logout', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(examsStreamProvider);
           ref.invalidate(studentSubmissionsStreamProvider);
         },
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Welcome Section ──
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          slivers: [
+            // ── Pinned App Bar ──
+            SliverAppBar(
+              pinned: true,
+              floating: true,
+              title: Text(
+                'Klasivo',
+                style: KlasivoTypography.titleLarge.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextPrimary
+                      : KlasivoColors.lightTextPrimary,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: Badge(
+                    isLabelVisible: (ref.watch(unreadNotificationsProvider)) > 0,
+                    label: Text('${ref.watch(unreadNotificationsProvider)}'),
+                    child: Icon(
+                      Icons.notifications_outlined,
+                      color: isDark
+                          ? KlasivoColors.darkIconDefault
+                          : KlasivoColors.lightIconDefault,
+                    ),
+                  ),
+                  onPressed: () => context.go('/student/notifications'),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.qr_code_scanner,
+                    color: isDark
+                        ? KlasivoColors.darkIconDefault
+                        : KlasivoColors.lightIconDefault,
+                  ),
+                  onPressed: () => context.go('/student/scan-qr'),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    if (value == 'logout') {
+                      final confirmed = await showConfirmationDialog(
+                        context: context,
+                        title: 'Logout',
+                        message: 'Are you sure you want to logout?',
+                        confirmLabel: 'Logout',
+                        isDangerous: true,
+                      );
+                      if (confirmed == true && context.mounted) {
+                        await clearAuthData();
+                        if (context.mounted) {
+                          context.go('/auth');
+                        }
+                      }
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'logout',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.logout, color: KlasivoColors.error),
+                          const SizedBox(width: KlasivoSpacing.sm),
+                          Text(
+                            'Logout',
+                            style: KlasivoTypography.bodyMedium.copyWith(
+                              color: KlasivoColors.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── Hero Welcome Section — Emerald Gradient for Student ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.lg,
+                  0,
                 ),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(KlasivoSpacing.xl),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: LinearGradient(
+                    borderRadius:
+                        BorderRadius.circular(KlasivoRadius.lg),
+                    gradient: const LinearGradient(
                       colors: [
-                        Colors.green.shade700,
-                        Colors.green.shade500,
+                        KlasivoColors.secondary,
+                        KlasivoColors.secondaryDark,
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -108,115 +136,156 @@ class StudentDashboard extends ConsumerWidget {
                     children: [
                       Text(
                         'Hello,',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: Colors.white70,
-                        ),
+                        style: KlasivoTypography.bodyLarge
+                            .copyWith(color: Colors.white70),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: KlasivoSpacing.xs),
                       Text(
                         userName ?? 'Student',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: KlasivoTypography.headlineLarge
+                            .copyWith(color: Colors.white),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: KlasivoSpacing.sm),
                       Text(
                         'Ready for your next exam?',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.white70,
-                        ),
+                        style: KlasivoTypography.bodyMedium
+                            .copyWith(color: Colors.white70),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+            ),
 
-              // ── Stats Cards ──
-              Row(
-                children: [
-                  _StudentStatCard(
-                    title: 'Upcoming',
-                    value: '${stats.upcoming}',
-                    icon: Icons.upcoming_outlined,
-                    color: Colors.orange,
-                    onTap: () => context.go('/student/exams'),
-                  ),
-                  const SizedBox(width: 12),
-                  _StudentStatCard(
-                    title: 'Completed',
-                    value: '${stats.completed}',
-                    icon: Icons.check_circle_outline,
-                    color: Colors.green,
-                    onTap: () => context.go('/student/exams'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _StudentStatCard(
-                    title: 'Average Score',
-                    value: stats.averageScore > 0
-                        ? '${stats.averageScore.toStringAsFixed(0)}%'
-                        : '-',
-                    icon: Icons.bar_chart_outlined,
-                    color: Colors.blue,
-                    onTap: () => context.go('/student/results'),
-                  ),
-                  const SizedBox(width: 12),
-                  _StudentStatCard(
-                    title: 'My Class',
-                    value: className,
-                    icon: Icons.class_outlined,
-                    color: Colors.purple,
-                    onTap: null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // ── Active Exams Section ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Available Exams',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+            // ── Stats Analytics Cards — Row 1 ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.lg,
+                  0,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: KlasivoAnalyticsCard(
+                        value: '${stats.upcoming}',
+                        label: 'Upcoming',
+                        icon: Icons.upcoming_outlined,
+                        color: KlasivoColors.accent,
+                        onTap: () => context.go('/student/exams'),
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go('/student/exams'),
-                    child: const Text('View All'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _ActiveExamsList(classId: classId),
-              const SizedBox(height: 24),
-
-              // ── Recent Results Section ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Recent Results',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(width: KlasivoSpacing.md),
+                    Expanded(
+                      child: KlasivoAnalyticsCard(
+                        value: '${stats.completed}',
+                        label: 'Completed',
+                        icon: Icons.check_circle_outline,
+                        color: KlasivoColors.secondary,
+                        onTap: () => context.go('/student/exams'),
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go('/student/results'),
-                    child: const Text('View All'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              _RecentResultsList(submissions: submissions),
-            ],
-          ),
+            ),
+
+            // ── Stats Analytics Cards — Row 2 ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.md,
+                  KlasivoSpacing.lg,
+                  0,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: KlasivoAnalyticsCard(
+                        value: stats.averageScore > 0
+                            ? '${stats.averageScore.toStringAsFixed(0)}%'
+                            : '-',
+                        label: 'Average Score',
+                        icon: Icons.bar_chart_outlined,
+                        color: KlasivoColors.primary,
+                        onTap: () => context.go('/student/results'),
+                      ),
+                    ),
+                    const SizedBox(width: KlasivoSpacing.md),
+                    Expanded(
+                      child: KlasivoAnalyticsCard(
+                        value: className,
+                        label: 'My Class',
+                        icon: Icons.class_outlined,
+                        color: const Color(0xFF845EF7),
+                        onTap: null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Available Exams Section Header ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.xxl,
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.md,
+                ),
+                child: KlasivoSectionHeader(
+                  title: 'Available Exams',
+                  actionLabel: 'View All',
+                  onAction: () => context.go('/student/exams'),
+                ),
+              ),
+            ),
+
+            // ── Active Exams List ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: KlasivoSpacing.lg,
+                ),
+                child: _ActiveExamsList(classId: classId),
+              ),
+            ),
+
+            // ── Recent Results Section Header ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.xxl,
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.md,
+                ),
+                child: KlasivoSectionHeader(
+                  title: 'Recent Results',
+                  actionLabel: 'View All',
+                  onAction: () => context.go('/student/results'),
+                ),
+              ),
+            ),
+
+            // ── Recent Results List ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KlasivoSpacing.lg,
+                  0,
+                  KlasivoSpacing.lg,
+                  KlasivoSpacing.xxxl,
+                ),
+                child: _RecentResultsList(submissions: submissions),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -232,22 +301,17 @@ class _ActiveExamsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (classId == null || classId!.isEmpty) {
       return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-            child: Column(
-              children: [
-                Icon(Icons.quiz_outlined, size: 48, color: Colors.grey[400]),
-                const SizedBox(height: 12),
-                Text(
-                  'No class assigned',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-              ],
-            ),
-          ),
+        child: KlasivoEmptyState(
+          icon: Icons.quiz_outlined,
+          title: 'No class assigned',
+          subtitle: 'Contact your teacher to be assigned to a class',
+          iconColor: isDark
+              ? KlasivoColors.darkTextTertiary
+              : KlasivoColors.lightTextTertiary,
         ),
       );
     }
@@ -260,15 +324,14 @@ class _ActiveExamsList extends ConsumerWidget {
     return examsAsync.when(
       loading: () => const SizedBox(
         height: 80,
-        child: Center(child: CircularProgressIndicator()),
+        child: KlasivoLoading(),
       ),
       error: (_, __) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Text('Error loading exams',
-                style: TextStyle(color: Colors.grey[600])),
-          ),
+        child: KlasivoEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Error loading exams',
+          subtitle: 'Please try again later',
+          iconColor: KlasivoColors.error,
         ),
       ),
       data: (snapshot) {
@@ -288,26 +351,13 @@ class _ActiveExamsList extends ConsumerWidget {
 
         if (activeExams.isEmpty) {
           return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(Icons.event_available_outlined,
-                        size: 48, color: Colors.grey[400]),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No available exams',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your upcoming exams will appear here',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
+            child: KlasivoEmptyState(
+              icon: Icons.event_available_outlined,
+              title: 'No available exams',
+              subtitle: 'Your upcoming exams will appear here',
+              iconColor: isDark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
             ),
           );
         }
@@ -319,82 +369,92 @@ class _ActiveExamsList extends ConsumerWidget {
             final dateFormat = DateFormat('MMM dd, hh:mm a');
 
             return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+              margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
               elevation: isActive ? 2 : 0.5,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(KlasivoRadius.md),
                 side: isActive
-                    ? BorderSide(color: Colors.orange.shade300, width: 1.5)
+                    ? BorderSide(
+                        color: KlasivoColors.accentLight, width: 1.5)
                     : BorderSide.none,
               ),
               child: InkWell(
                 onTap: canStart
                     ? () => context.go('/student/exams/${exam.id}/take')
                     : null,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius:
+                    BorderRadius.circular(KlasivoRadius.md),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(KlasivoSpacing.lg),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(KlasivoSpacing.md),
                         decoration: BoxDecoration(
                           color: (isActive
-                                  ? Colors.orange
-                                  : Theme.of(context).colorScheme.primary)
+                                  ? KlasivoColors.accent
+                                  : KlasivoColors.primary)
                               .withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius:
+                              BorderRadius.circular(KlasivoRadius.sm),
                         ),
                         child: Icon(
                           isActive
                               ? Icons.play_circle_outline
                               : Icons.schedule,
                           color: isActive
-                              ? Colors.orange
-                              : Theme.of(context).colorScheme.primary,
+                              ? KlasivoColors.accent
+                              : KlasivoColors.primary,
                           size: 28,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: KlasivoSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               exam.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
+                              style: KlasivoTypography.titleMedium.copyWith(
+                                color: isDark
+                                    ? KlasivoColors.darkTextPrimary
+                                    : KlasivoColors.lightTextPrimary,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: KlasivoSpacing.xs),
                             Text(
                               '${exam.durationMinutes} min · ${exam.questionCount} Q · ${exam.totalMarks} marks',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
+                              style: KlasivoTypography.bodySmall.copyWith(
+                                color: isDark
+                                    ? KlasivoColors.darkTextSecondary
+                                    : KlasivoColors.lightTextSecondary,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: KlasivoSpacing.xs),
                             Text(
                               isActive
                                   ? 'Started · Ends ${dateFormat.format(exam.endDate)}'
                                   : 'Starts ${dateFormat.format(exam.startDate)}',
-                              style: TextStyle(
+                              style: KlasivoTypography.caption.copyWith(
                                 color: isActive
-                                    ? Colors.orange[700]
-                                    : Colors.grey[500],
-                                fontSize: 11,
+                                    ? KlasivoColors.accentDark
+                                    : (isDark
+                                        ? KlasivoColors.darkTextTertiary
+                                        : KlasivoColors.lightTextTertiary),
                               ),
                             ),
                           ],
                         ),
                       ),
                       if (canStart)
-                        Icon(Icons.chevron_right,
-                            color: Colors.grey[400]),
+                        Icon(
+                          Icons.chevron_right,
+                          color: isDark
+                              ? KlasivoColors.darkTextTertiary
+                              : KlasivoColors.lightTextTertiary,
+                        ),
                     ],
                   ),
                 ),
@@ -416,7 +476,7 @@ class _RecentResultsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final submittedSubs = submissions
         .where((s) =>
@@ -427,26 +487,13 @@ class _RecentResultsList extends ConsumerWidget {
 
     if (submittedSubs.isEmpty) {
       return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-            child: Column(
-              children: [
-                Icon(Icons.assessment_outlined,
-                    size: 48, color: Colors.grey[400]),
-                const SizedBox(height: 12),
-                Text(
-                  'No results yet',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Your exam results will appear here',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                ),
-              ],
-            ),
-          ),
+        child: KlasivoEmptyState(
+          icon: Icons.assessment_outlined,
+          title: 'No results yet',
+          subtitle: 'Your exam results will appear here',
+          iconColor: isDark
+              ? KlasivoColors.darkTextTertiary
+              : KlasivoColors.lightTextTertiary,
         ),
       );
     }
@@ -457,23 +504,24 @@ class _RecentResultsList extends ConsumerWidget {
         final dateFormat = DateFormat('MMM dd, yyyy');
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 6),
+          margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
           elevation: 0.5,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(KlasivoRadius.sm),
           ),
           child: ListTile(
             dense: true,
             leading: CircleAvatar(
               radius: 20,
               backgroundColor:
-                  (passed ? Colors.green : Colors.red).withOpacity(0.1),
+                  (passed ? KlasivoColors.secondary : KlasivoColors.error)
+                      .withOpacity(0.1),
               child: Text(
                 '${sub.percentage}%',
-                style: TextStyle(
-                  color: passed ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+                style: KlasivoTypography.labelMedium.copyWith(
+                  color: passed
+                      ? KlasivoColors.secondary
+                      : KlasivoColors.error,
                 ),
               ),
             ),
@@ -482,23 +530,29 @@ class _RecentResultsList extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     '${sub.score}/${sub.totalMarks}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: KlasivoTypography.titleSmall.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextPrimary
+                          : KlasivoColors.lightTextPrimary,
+                    ),
                   ),
                 ),
                 if (sub.isFlagged)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: KlasivoSpacing.sm,
+                      vertical: KlasivoSpacing.xs,
                     ),
-                    child: const Text(
+                    decoration: BoxDecoration(
+                      color: KlasivoColors.errorSurface,
+                      borderRadius:
+                          BorderRadius.circular(KlasivoRadius.xs),
+                    ),
+                    child: Text(
                       'Flagged',
-                      style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600),
+                      style: KlasivoTypography.labelSmall.copyWith(
+                        color: KlasivoColors.error,
+                      ),
                     ),
                   ),
               ],
@@ -506,82 +560,21 @@ class _RecentResultsList extends ConsumerWidget {
             subtitle: sub.submittedAt != null
                 ? Text(
                     dateFormat.format(sub.submittedAt!),
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: KlasivoTypography.bodySmall.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextSecondary
+                          : KlasivoColors.lightTextSecondary,
+                    ),
                   )
                 : null,
             trailing: Icon(
               passed ? Icons.check_circle : Icons.cancel,
-              color: passed ? Colors.green : Colors.red,
+              color: passed ? KlasivoColors.secondary : KlasivoColors.error,
               size: 20,
             ),
           ),
         );
       }).toList(),
-    );
-  }
-}
-
-// ─── Stat Card ───────────────────────────────────────────────────────────────
-
-class _StudentStatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _StudentStatCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

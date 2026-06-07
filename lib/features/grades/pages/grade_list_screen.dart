@@ -6,6 +6,8 @@ import '../../../providers/stage_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_components.dart';
 
 class GradeListScreen extends ConsumerWidget {
   final String stageId;
@@ -20,23 +22,41 @@ class GradeListScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Grades - $stageName'), centerTitle: true),
       body: grades.isEmpty
-          ? const EmptyState(
+          ? const KlasivoEmptyState(
               icon: Icons.grade_outlined,
               title: 'No Grades Yet',
               subtitle: 'Add grades under this stage',
+              iconColor: KlasivoColors.accent,
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
               itemCount: grades.length,
               itemBuilder: (context, index) {
                 final grade = grades[index];
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                  ),
                   child: ListTile(
-                    leading: const Icon(Icons.grade_outlined, color: Colors.orange),
-                    title: Text(grade.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    leading: Container(
+                      padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
+                      decoration: BoxDecoration(
+                        color: KlasivoColors.accentSurface,
+                        borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                      ),
+                      child: const Icon(Icons.grade_outlined, color: KlasivoColors.accent, size: 24),
+                    ),
+                    title: Text(
+                      grade.name,
+                      style: KlasivoTypography.titleMedium.copyWith(
+                        color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+                      ),
+                    ),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      icon: const Icon(Icons.delete_outline, color: KlasivoColors.error),
                       onPressed: () async {
                         final confirmed = await showConfirmationDialog(
                           context: context,
@@ -68,16 +88,25 @@ class GradeListScreen extends ConsumerWidget {
 
   void _showAddGradeDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Grade'),
+        title: Text(
+          'Add Grade',
+          style: KlasivoTypography.titleLarge.copyWith(
+            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+          ),
+        ),
         content: TextField(
           controller: nameController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Grade Name',
             hintText: 'e.g. Grade 10',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+            ),
           ),
           autofocus: true,
         ),
