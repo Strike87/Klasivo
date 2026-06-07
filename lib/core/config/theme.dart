@@ -266,7 +266,7 @@ class AppTheme {
     ),
 
     // ─── Cards — Subtle elevation, rounded corners ─────────────────────────
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: KlasivoColors.lightCard,
       surfaceTintColor: Colors.transparent,
@@ -465,7 +465,7 @@ class AppTheme {
     ),
 
     // ─── Dialog ────────────────────────────────────────────────────────────
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: KlasivoColors.lightSurface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
@@ -489,7 +489,7 @@ class AppTheme {
     ),
 
     // ─── Tab Bar ───────────────────────────────────────────────────────────
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: KlasivoColors.primary,
       unselectedLabelColor: KlasivoColors.lightTextTertiary,
       labelStyle: KlasivoTypography.labelMedium,
@@ -606,7 +606,7 @@ class AppTheme {
       systemOverlayStyle: SystemUiOverlayStyle.light,
     ),
 
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: KlasivoColors.darkCard,
       surfaceTintColor: Colors.transparent,
@@ -758,7 +758,7 @@ class AppTheme {
       space: 1,
     ),
 
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: KlasivoColors.darkSurface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(

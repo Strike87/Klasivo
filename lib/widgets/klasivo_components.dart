@@ -228,14 +228,14 @@ class KlasivoBreadcrumb extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                     horizontal: KlasivoSpacing.sm,
                   ),
-                  Icon(
+                  child: Icon(
                     Icons.chevron_right,
                     size: 16,
                     color: isDark
                         ? KlasivoColors.darkTextTertiary
                         : KlasivoColors.lightTextTertiary,
                   ),
-              ),
+                ),
               InkWell(
                 onTap: isLast ? null : () => onItemTap?.call(index),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),

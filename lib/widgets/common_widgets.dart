@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/config/theme.dart';
+import 'klasivo_components.dart';
 
 /// A reusable empty state widget with icon, title, and subtitle.
 /// Uses the KlasivoEmptyState from klasivo_components.dart for the new design.

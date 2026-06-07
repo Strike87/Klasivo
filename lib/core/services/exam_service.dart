@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
-import 'notification_service.dart';
+import 'notification_service.dart' as notif_service;
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -109,14 +109,14 @@ class ExamService {
         final classId = data['classId'] as String? ?? '';
 
         if (startDate != null) {
-          await NotificationService.scheduleExamReminders(
+          await notif_service.NotificationService.scheduleExamReminders(
             examId: examId,
             examTitle: title,
             startDate: startDate,
           );
         }
 
-        await NotificationService.notifyExamPublished(
+        await notif_service.NotificationService.notifyExamPublished(
           organizationId: data['organizationId'] as String? ?? '',
           classId: classId,
           examId: examId,
@@ -139,7 +139,7 @@ class ExamService {
         'publishedAt': FieldValue.delete(),
       });
 
-      await NotificationService.cancelExamReminders(examId);
+      await notif_service.NotificationService.cancelExamReminders(examId);
     } catch (e) {
       rethrow;
     }
@@ -147,7 +147,7 @@ class ExamService {
 
   Future<void> deleteExam(String examId) async {
     try {
-      await NotificationService.cancelExamReminders(examId);
+      await notif_service.NotificationService.cancelExamReminders(examId);
 
       final batch = _firestore.batch();
 

@@ -385,7 +385,7 @@ class OrgPortalResult {
     required this.slug,
     this.description,
     this.logoUrl,
-    this.ownerId,
+    required this.ownerId,
     this.contactEmail,
     this.contactPhone,
     this.website,

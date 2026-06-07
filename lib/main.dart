@@ -48,6 +48,7 @@ import 'features/integrity/pages/exam_integrity_dashboard.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
+import 'providers/auth_provider.dart';
 import 'core/services/notification_service.dart';
 import 'firebase_options.dart';
 

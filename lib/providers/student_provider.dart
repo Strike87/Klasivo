@@ -52,6 +52,8 @@ class StudentData {
   final String classId;
   final String fullName;
   final String studentCode;
+  final String? grade;
+  final String? teacherId;
   final String? email;
   final String? phone;
   final String? photoUrl;
@@ -64,6 +66,8 @@ class StudentData {
     required this.classId,
     required this.fullName,
     required this.studentCode,
+    this.grade,
+    this.teacherId,
     this.email,
     this.phone,
     this.photoUrl,
@@ -79,6 +83,8 @@ class StudentData {
       classId: data['classId'] ?? '',
       fullName: data['fullName'] ?? '',
       studentCode: data['studentCode'] ?? '',
+      grade: data['grade'],
+      teacherId: data['teacherId'],
       email: data['email'],
       phone: data['phone'],
       photoUrl: data['photoUrl'],
@@ -94,9 +100,14 @@ class StudentData {
       'classId': classId,
       'fullName': fullName,
       'studentCode': studentCode,
+      'grade': grade,
+      'teacherId': teacherId,
       'email': email,
       'phone': phone,
       'isActive': isActive,
     };
   }
 }
+
+// Alias for backward compatibility with screen files
+final allStudentsStreamProvider = studentsByOrgProvider;

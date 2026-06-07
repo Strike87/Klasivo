@@ -49,6 +49,8 @@ class ClassData {
   final String organizationId;
   final String stageId;
   final String name;
+  final String? grade;
+  final String? teacherId;
   final String? academicYear;
   final int studentCount;
   final String createdBy;
@@ -61,6 +63,8 @@ class ClassData {
     required this.organizationId,
     required this.stageId,
     required this.name,
+    this.grade,
+    this.teacherId,
     this.academicYear,
     this.studentCount = 0,
     this.createdBy = '',
@@ -76,6 +80,8 @@ class ClassData {
       organizationId: data['organizationId'] ?? '',
       stageId: data['stageId'] ?? '',
       name: data['name'] ?? '',
+      grade: data['grade'],
+      teacherId: data['teacherId'],
       academicYear: data['academicYear'],
       studentCount: data['studentCount'] ?? 0,
       createdBy: data['createdBy'] ?? '',
@@ -91,9 +97,14 @@ class ClassData {
       'organizationId': organizationId,
       'stageId': stageId,
       'name': name,
+      'grade': grade,
+      'teacherId': teacherId,
       'academicYear': academicYear,
       'studentCount': studentCount,
       'isArchived': isArchived,
     };
   }
 }
+
+// Alias for backward compatibility with screen files
+final classesStreamProvider = classesByOrgProvider;

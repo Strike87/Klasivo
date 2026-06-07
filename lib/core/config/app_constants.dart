@@ -7,6 +7,7 @@ class AppConstants {
   // Core
   static const String organizationsCollection = 'organizations';
   static const String usersCollection = 'users';
+  static const String studentsCollection = 'users'; // Students ARE users (same collection, role='student')
   static const String inviteCodesCollection = 'invite_codes';
 
   // Academic Structure
