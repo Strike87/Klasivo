@@ -110,7 +110,6 @@ class MyApp extends ConsumerWidget {
 
 class AuthChangeNotifier extends ChangeNotifier {
   StreamSubscription<User?>? _firebaseSub;
-  StreamSubscription? _hiveSub;
 
   AuthChangeNotifier() {
     _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(

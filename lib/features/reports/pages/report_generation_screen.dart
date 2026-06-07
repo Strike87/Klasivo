@@ -333,9 +333,7 @@ class _ReportGenerationScreenState
         .toList();
 
     // Get stats
-    final statsAsync =
-        await ref.read(examStatsDataProvider(_selectedExamId!).future);
-    final stats = statsAsync;
+    await ref.read(examStatsDataProvider(_selectedExamId!).future);
 
     // Get question analysis
     List<Map<String, dynamic>> questionAnalysis = [];
@@ -463,7 +461,6 @@ class _ReportGenerationScreenState
     // Build exam results list
     final examResults = <Map<String, dynamic>>[];
     for (final sub in studentSubs) {
-      final examsAsync = ref.read(examsStreamProvider);
       // We'll use what we have from the submission
       examResults.add({
         'examTitle': sub.examId, // Will be resolved in a full impl

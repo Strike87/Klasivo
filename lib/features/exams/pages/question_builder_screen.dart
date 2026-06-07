@@ -21,8 +21,6 @@ class QuestionBuilderScreen extends ConsumerStatefulWidget {
 }
 
 class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
-  bool _isLoading = false;
-
   @override
   Widget build(BuildContext context) {
     final questionsAsync = ref.watch(questionsStreamProvider(widget.examId));

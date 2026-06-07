@@ -36,11 +36,9 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
   bool _isSubmitting = false;
   bool _hasSubmitted = false;
   int _timeSpentSeconds = 0;
-  bool _useInstanceOrder = false;
   int _remainingSeconds = 0;
   Timer? _countdownTimer;
   Timer? _autoSaveTimer;
-  DateTime? _examStartTime;
 
   @override
   void initState() {
@@ -123,7 +121,6 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
           teacherId: teacherId,
           isRandomized: true,
         );
-        _useInstanceOrder = true;
       }
 
       // Load existing answers if any
@@ -149,7 +146,6 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
         _timeSpentSeconds = existingTimeSpent;
         _remainingSeconds = remaining > 0 ? remaining : 0;
         _isLoading = false;
-        _examStartTime = DateTime.now();
       });
 
       // Enable wakelock

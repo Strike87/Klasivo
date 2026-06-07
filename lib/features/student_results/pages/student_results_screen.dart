@@ -17,7 +17,6 @@ class StudentResultsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final submissions = ref.watch(studentSubmissionsProvider);
-    final theme = Theme.of(context);
 
     final submittedSubs = submissions
         .where((s) =>

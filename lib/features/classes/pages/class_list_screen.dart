@@ -11,7 +11,6 @@ class ClassListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final classesAsync = ref.watch(classesStreamProvider);
-    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(

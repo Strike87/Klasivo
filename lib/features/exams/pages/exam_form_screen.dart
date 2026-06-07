@@ -221,7 +221,6 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
     final classes = ref.watch(classesProvider);
     final theme = Theme.of(context);
     final dateFormat = DateFormat('MMM dd, yyyy');
-    final timeFormat = DateFormat('hh:mm a');
 
     return Scaffold(
       appBar: AppBar(

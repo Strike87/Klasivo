@@ -230,15 +230,6 @@ class _StudentExamCard extends StatelessWidget {
     final dateFormat = DateFormat('MMM dd, yyyy');
     final timeFormat = DateFormat('hh:mm a');
 
-    Color accentColor;
-    if (isActive) {
-      accentColor = Colors.orange;
-    } else if (isCompleted) {
-      accentColor = Colors.green;
-    } else {
-      accentColor = theme.colorScheme.primary;
-    }
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: isActive ? 2 : 1,
