@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../providers/class_provider.dart';
+import '../../../providers/student_provider.dart';
+import '../../../providers/exam_provider.dart';
 import '../../../widgets/klasivo_components.dart';
-
 class OwnerDashboard extends ConsumerWidget {
   const OwnerDashboard({Key? key}) : super(key: key);
 
@@ -15,12 +18,20 @@ class OwnerDashboard extends ConsumerWidget {
     final userName = ref.watch(userNameProvider) ?? 'Owner';
     final orgAsync = ref.watch(currentOrganizationProvider);
     final unreadNotifs = ref.watch(unreadNotificationsProvider);
+    final totalStudents = ref.watch(totalStudentsProvider);
+    final totalClasses = ref.watch(totalClassesProvider);
+    final examStats = ref.watch(examStatsProvider);
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(currentOrganizationProvider);
           ref.invalidate(notificationsProvider);
+          ref.invalidate(classesByOrgProvider);
+          ref.invalidate(studentsByOrgProvider);
+          ref.invalidate(examsStreamProvider);
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -46,7 +57,7 @@ class OwnerDashboard extends ConsumerWidget {
                   Text(
                     'Klasivo',
                     style: KlasivoTypography.titleLarge.copyWith(
-                      color: Theme.of(context).brightness == Brightness.dark
+                      color: isDark
                           ? KlasivoColors.darkTextPrimary
                           : KlasivoColors.lightTextPrimary,
                     ),
@@ -60,9 +71,7 @@ class OwnerDashboard extends ConsumerWidget {
                     label: Text('$unreadNotifs'),
                     child: const Icon(Icons.notifications_outlined),
                   ),
-                  onPressed: () {
-                    // Navigate to inbox
-                  },
+                  onPressed: () => context.go('/inbox'),
                 ),
               ],
             ),
@@ -99,36 +108,28 @@ class OwnerDashboard extends ConsumerWidget {
                     ),
                     const SizedBox(height: KlasivoSpacing.xxl),
 
-                    // ── Analytics Cards ──
+                    // ── Analytics Cards (Real Data) ──
                     const KlasivoSectionHeader(title: 'Overview'),
                     const SizedBox(height: KlasivoSpacing.md),
                     Row(
                       children: [
                         Expanded(
                           child: KlasivoAnalyticsCard(
-                            value: '1,245',
+                            value: '$totalStudents',
                             label: 'Students',
-                            trend: '+12%',
-                            trendPositive: true,
                             icon: Icons.people_outline_rounded,
                             color: KlasivoColors.primary,
-                            onTap: () {
-                              // Navigate to People
-                            },
+                            onTap: () => context.go('/people'),
                           ),
                         ),
                         const SizedBox(width: KlasivoSpacing.md),
                         Expanded(
                           child: KlasivoAnalyticsCard(
-                            value: '84%',
-                            label: 'Attendance',
-                            trend: '+4%',
-                            trendPositive: true,
-                            icon: Icons.how_to_reg_outlined,
+                            value: '$totalClasses',
+                            label: 'Classes',
+                            icon: Icons.class_outlined,
                             color: KlasivoColors.secondary,
-                            onTap: () {
-                              // Navigate to Attendance
-                            },
+                            onTap: () => context.go('/academic'),
                           ),
                         ),
                       ],
@@ -138,27 +139,17 @@ class OwnerDashboard extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: KlasivoAnalyticsCard(
-                            value: '23',
+                            value: '${examStats['upcoming'] ?? 0}',
                             label: 'Active Exams',
-                            trend: '+3',
-                            trendPositive: true,
                             icon: Icons.quiz_outlined,
                             color: KlasivoColors.accent,
-                            onTap: () {
-                              // Navigate to Exams
-                            },
+                            onTap: () => context.go('/academic'),
                           ),
                         ),
                         const SizedBox(width: KlasivoSpacing.md),
                         Expanded(
-                          child: KlasivoAnalyticsCard(
-                            value: '15',
-                            label: 'Teachers',
-                            icon: Icons.person_outline_rounded,
-                            color: const Color(0xFF845EF7),
-                            onTap: () {
-                              // Navigate to Teachers
-                            },
+                          child: _TeachersCountCard(
+                            onTap: () => context.go('/people'),
                           ),
                         ),
                       ],
@@ -174,33 +165,33 @@ class OwnerDashboard extends ConsumerWidget {
                           icon: Icons.add_circle_outline_rounded,
                           label: 'New Exam',
                           color: KlasivoColors.primary,
-                          onTap: () {},
+                          onTap: () => context.go('/academic'),
                         ),
                         const SizedBox(width: KlasivoSpacing.md),
                         _QuickActionChip(
                           icon: Icons.person_add_outlined,
-                          label: 'Add Teacher',
+                          label: 'Add Student',
                           color: KlasivoColors.secondary,
-                          onTap: () {},
+                          onTap: () => context.go('/people'),
                         ),
                         const SizedBox(width: KlasivoSpacing.md),
                         _QuickActionChip(
-                          icon: Icons.group_add_outlined,
-                          label: 'Add Student',
+                          icon: Icons.notifications_outlined,
+                          label: 'Inbox',
                           color: KlasivoColors.accent,
-                          onTap: () {},
+                          onTap: () => context.go('/inbox'),
                         ),
                       ],
                     ),
                     const SizedBox(height: KlasivoSpacing.xxl),
 
-                    // ── Recent Activity ──
+                    // ── Recent Notifications ──
                     const KlasivoSectionHeader(
-                      title: 'Recent Activity',
+                      title: 'Recent Notifications',
                       actionLabel: 'View All',
                     ),
                     const SizedBox(height: KlasivoSpacing.md),
-                    _RecentActivityList(),
+                    _RecentNotificationsList(),
                     const SizedBox(height: KlasivoSpacing.xxxl),
                   ],
                 ),
@@ -220,6 +211,37 @@ class OwnerDashboard extends ConsumerWidget {
   }
 }
 
+class _TeachersCountCard extends ConsumerWidget {
+  final VoidCallback onTap;
+  const _TeachersCountCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final teachersAsync = ref.watch(organizationTeachersProvider);
+    return teachersAsync.when(
+      data: (snapshot) => KlasivoAnalyticsCard(
+        value: '${snapshot.docs.length}',
+        label: 'Teachers',
+        icon: Icons.person_outline_rounded,
+        color: const Color(0xFF845EF7),
+        onTap: onTap,
+      ),
+      loading: () => KlasivoAnalyticsCard(
+        value: '-',
+        label: 'Teachers',
+        icon: Icons.person_outline_rounded,
+        color: const Color(0xFF845EF7),
+      ),
+      error: (_, __) => KlasivoAnalyticsCard(
+        value: '0',
+        label: 'Teachers',
+        icon: Icons.person_outline_rounded,
+        color: const Color(0xFF845EF7),
+      ),
+    );
+  }
+}
+
 class _QuickActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -235,8 +257,6 @@ class _QuickActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -268,22 +288,102 @@ class _QuickActionChip extends StatelessWidget {
   }
 }
 
-class _RecentActivityList extends StatelessWidget {
+class _RecentNotificationsList extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifications = ref.watch(notificationsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Placeholder — will be replaced with real data from providers
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-        child: KlasivoEmptyState(
-          icon: Icons.timeline_outlined,
-          title: 'No Recent Activity',
-          subtitle: 'Activity will appear here as you and your team use Klasivo',
-          iconColor: KlasivoColors.primary,
+    if (notifications.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+          child: KlasivoEmptyState(
+            icon: Icons.notifications_none_outlined,
+            title: 'No Notifications',
+            subtitle: 'Notifications will appear here as your organization grows',
+            iconColor: KlasivoColors.primary,
+          ),
         ),
+      );
+    }
+
+    final recent = notifications.take(5).toList();
+
+    return Card(
+      child: Column(
+        children: recent.map((n) {
+          return ListTile(
+            dense: true,
+            leading: Container(
+              padding: const EdgeInsets.all(KlasivoSpacing.sm),
+              decoration: BoxDecoration(
+                color: _typeColor(n.type).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+              ),
+              child: Icon(_typeIcon(n.type), color: _typeColor(n.type), size: 18),
+            ),
+            title: Text(
+              n.title,
+              style: KlasivoTypography.bodyMedium.copyWith(
+                fontWeight: n.isRead ? FontWeight.normal : FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              n.body,
+              style: KlasivoTypography.bodySmall.copyWith(
+                color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: !n.isRead
+                ? Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: KlasivoColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                : null,
+          );
+        }).toList(),
       ),
     );
+  }
+
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case AppConstants.notificationExamPublished:
+        return Icons.publish_outlined;
+      case AppConstants.notificationExamReminder:
+        return Icons.timer_outlined;
+      case AppConstants.notificationResultPublished:
+        return Icons.assessment_outlined;
+      case AppConstants.notificationNewMessage:
+        return Icons.message_outlined;
+      case AppConstants.notificationStudentJoined:
+        return Icons.person_add_outlined;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  Color _typeColor(String type) {
+    switch (type) {
+      case AppConstants.notificationExamPublished:
+        return KlasivoColors.primary;
+      case AppConstants.notificationExamReminder:
+        return KlasivoColors.accent;
+      case AppConstants.notificationResultPublished:
+        return KlasivoColors.secondary;
+      case AppConstants.notificationNewMessage:
+        return const Color(0xFF845EF7);
+      default:
+        return KlasivoColors.primary;
+    }
   }
 }
