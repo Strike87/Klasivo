@@ -143,7 +143,7 @@ class AllStudentsScreen extends ConsumerWidget {
                                             size: 12, color: Colors.grey[500]),
                                         const SizedBox(width: 4),
                                         Text(
-                                          student.className,
+                                          classes.where((c) => c.id == student.classId).firstOrNull?.name ?? '-',
                                           style: TextStyle(
                                             color: Colors.grey[600],
                                             fontSize: 12,

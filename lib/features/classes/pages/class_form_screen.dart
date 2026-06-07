@@ -4,16 +4,19 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class ClassFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
   final ClassData? classData;
+  final String? stageId;
 
   const ClassFormScreen({
     Key? key,
     this.isEditing = false,
     this.classData,
+    this.stageId,
   }) : super(key: key);
 
   @override
@@ -51,25 +54,24 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
       final classService = ref.read(classServiceProvider);
 
       if (widget.isEditing) {
+        final gradeValue = _gradeController.text.trim().isEmpty
+            ? null
+            : _gradeController.text.trim();
         await classService.updateClass(
           classId: widget.classData!.id,
           name: _nameController.text.trim(),
-          grade: _gradeController.text.trim().isEmpty
-              ? null
-              : _gradeController.text.trim(),
+          grade: gradeValue,
         );
         if (mounted) {
           showSnackBar(context, message: 'Class updated successfully');
           context.pop();
         }
       } else {
-        final teacherId = ref.read(userIdProvider) ?? '';
+        final orgId = ref.read(currentOrganizationIdProvider) ?? '';
         await classService.createClass(
-          teacherId: teacherId,
+          organizationId: orgId,
+          stageId: widget.stageId ?? widget.classData?.stageId ?? '',
           name: _nameController.text.trim(),
-          grade: _gradeController.text.trim().isEmpty
-              ? null
-              : _gradeController.text.trim(),
         );
         if (mounted) {
           showSnackBar(context, message: 'Class created successfully');

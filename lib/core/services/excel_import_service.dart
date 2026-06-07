@@ -133,14 +133,10 @@ class ExcelImportService {
   }
 
   Future<ExcelImportResult> importStudents({
-    required String teacherId,
+    required String organizationId,
     required String classId,
-    required String className,
     required List<MappedStudent> students,
-    String? stageId,
-    String? gradeId,
-    String? groupId,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String createdBy = '',
   }) async {
     try {
       int successCount = 0;
@@ -154,7 +150,7 @@ class ExcelImportService {
 
         for (final student in chunk) {
           try {
-            final studentCode = await _generateStudentCode(teacherId);
+            final studentCode = await _generateStudentCode(organizationId);
             final docRef = _firestore.collection(AppConstants.studentsCollection).doc();
 
             final password = student.password.isNotEmpty
@@ -163,21 +159,19 @@ class ExcelImportService {
             final passwordHash = hashPassword(password);
 
             batch.set(docRef, {
-              'teacherId': teacherId,
+              'organizationId': organizationId,
+              'role': AppConstants.roleStudent,
               'classId': classId,
-              'className': className,
               'fullName': student.name,
               'studentCode': studentCode,
               'passwordHash': passwordHash,
               'password': password,
-              'stageId': stageId,
-              'gradeId': gradeId,
-              'groupId': groupId,
               'phone': student.phone,
               'email': student.email,
-              'parentPhone': student.parentPhone,
-              'institutionId': institutionId,
+              'isActive': true,
+              'createdBy': createdBy,
               'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
             });
             successCount++;
           } catch (e) {

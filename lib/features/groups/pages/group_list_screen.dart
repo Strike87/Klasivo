@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/group_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class GroupListScreen extends ConsumerWidget {
@@ -83,11 +84,11 @@ class GroupListScreen extends ConsumerWidget {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                final teacherId = ref.read(userIdProvider) ?? '';
+                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
                 await ref.read(groupServiceProvider).createGroup(
+                      organizationId: orgId,
                       classId: classId,
                       name: nameController.text.trim(),
-                      teacherId: teacherId,
                     );
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (context.mounted) showSnackBar(context, message: 'Group created');

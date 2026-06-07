@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/excel_import_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class ExcelImportScreen extends ConsumerStatefulWidget {
@@ -98,17 +99,18 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
     setState(() => _isImporting = true);
     try {
       final teacherId = ref.read(userIdProvider) ?? '';
+      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
       final classes = ref.read(classesProvider);
       final classData = classes.firstWhere(
         (c) => c.id == widget.classId,
-        orElse: () => ClassData(id: widget.classId, teacherId: teacherId, name: 'Unknown'),
+        orElse: () => ClassData(id: widget.classId, organizationId: orgId, stageId: '', name: 'Unknown'),
       );
 
       final result = await _excelService.importStudents(
-        teacherId: teacherId,
+        organizationId: orgId,
         classId: widget.classId,
-        className: classData.name,
         students: _mappedStudents,
+        createdBy: teacherId,
       );
 
       setState(() => _isImporting = false);

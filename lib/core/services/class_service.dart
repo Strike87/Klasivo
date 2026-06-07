@@ -36,6 +36,7 @@ class ClassService {
     String? name,
     String? stageId,
     String? academicYear,
+    String? grade,
     bool? isArchived,
   }) async {
     try {
@@ -45,6 +46,7 @@ class ClassService {
       if (name != null) data['name'] = name;
       if (stageId != null) data['stageId'] = stageId;
       if (academicYear != null) data['academicYear'] = academicYear;
+      if (grade != null) data['grade'] = grade;
       if (isArchived != null) data['isArchived'] = isArchived;
 
       await _firestore

@@ -135,6 +135,7 @@ class StudentService {
     String? classId,
     String? email,
     String? phone,
+    String? grade,
     String? password,
     bool? isActive,
   }) async {
@@ -146,6 +147,7 @@ class StudentService {
       if (classId != null) data['classId'] = classId;
       if (email != null) data['email'] = email;
       if (phone != null) data['phone'] = phone;
+      if (grade != null) data['grade'] = grade;
       if (isActive != null) data['isActive'] = isActive;
       if (password != null && password.isNotEmpty) {
         data['password'] = password;

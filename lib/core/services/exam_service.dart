@@ -116,7 +116,7 @@ class ExamService {
           );
         }
 
-        await notif_service.NotificationService.notifyExamPublished(
+        await notif_service.NotificationService.notifyExamCreated(
           organizationId: data['organizationId'] as String? ?? '',
           classId: classId,
           examId: examId,

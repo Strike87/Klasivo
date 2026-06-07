@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/student_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class StudentFormScreen extends ConsumerStatefulWidget {
@@ -61,12 +62,13 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
       final studentService = ref.read(studentServiceProvider);
 
       if (widget.isEditing) {
+        final gradeValue = _gradeController.text.trim().isEmpty
+            ? null
+            : _gradeController.text.trim();
         await studentService.updateStudent(
           studentId: widget.studentData!.id,
           fullName: _nameController.text.trim(),
-          grade: _gradeController.text.trim().isEmpty
-              ? null
-              : _gradeController.text.trim(),
+          grade: gradeValue,
           password: _passwordController.text.trim().isEmpty
               ? null
               : _passwordController.text.trim(),
@@ -77,26 +79,24 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
         }
       } else {
         final teacherId = ref.read(userIdProvider) ?? '';
+        final orgId = ref.read(currentOrganizationIdProvider) ?? '';
         // Find the class name
         final classes = ref.read(classesProvider);
         final classData = classes.firstWhere(
           (c) => c.id == widget.classId,
           orElse: () => ClassData(
             id: widget.classId,
-            teacherId: teacherId,
+            organizationId: orgId,
+            stageId: '',
             name: 'Unknown Class',
           ),
         );
 
         await studentService.addStudent(
-          teacherId: teacherId,
+          organizationId: orgId,
           classId: widget.classId,
-          className: classData.name,
           fullName: _nameController.text.trim(),
           password: _passwordController.text.trim(),
-          grade: _gradeController.text.trim().isEmpty
-              ? null
-              : _gradeController.text.trim(),
         );
         if (mounted) {
           showSnackBar(context, message: 'Student added successfully');

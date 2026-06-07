@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/stage_provider.dart';
 import '../../../providers/grade_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class StageListScreen extends ConsumerWidget {
@@ -64,10 +65,13 @@ class StageListScreen extends ConsumerWidget {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                final teacherId = ref.read(userIdProvider) ?? '';
+                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+                final stages = ref.read(stagesProvider);
+                final maxOrder = stages.isEmpty ? 0 : stages.map((s) => s.order).reduce((a, b) => a > b ? a : b);
                 await ref.read(stageServiceProvider).createStage(
-                      teacherId: teacherId,
+                      organizationId: orgId,
                       name: nameController.text.trim(),
+                      order: maxOrder + 1,
                     );
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (context.mounted) showSnackBar(context, message: 'Stage created successfully');

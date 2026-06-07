@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/grade_provider.dart';
 import '../../../providers/stage_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 
 class GradeListScreen extends ConsumerWidget {
@@ -86,11 +87,11 @@ class GradeListScreen extends ConsumerWidget {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                final teacherId = ref.read(userIdProvider) ?? '';
+                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
                 await ref.read(gradeServiceProvider).createGrade(
                       stageId: stageId,
                       name: nameController.text.trim(),
-                      teacherId: teacherId,
+                      organizationId: orgId,
                     );
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (context.mounted) showSnackBar(context, message: 'Grade created');
