@@ -52,30 +52,38 @@ import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  // ─── Initialize Firebase Crashlytics ──────────────────────────────
-  // Pass all uncaught Flutter errors to Crashlytics
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  // ─── Initialize Firebase with error handling ────────────────────────
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Pass all uncaught async errors to Crashlytics
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
+    // ─── Initialize Firebase Crashlytics ──────────────────────────────
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
-  // Disable Crashlytics collection in debug mode (optional)
-  await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-    !kDebugMode,
-  );
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+      !kDebugMode,
+    );
+  } catch (e) {
+    // If Firebase init fails, log but continue — app can still work offline
+    debugPrint('Firebase initialization failed: $e');
+  }
 
   await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
 
-  // Initialize notifications
-  await NotificationService.initialize();
+  // Initialize notifications (non-blocking — don't block app startup)
+  try {
+    await NotificationService.initialize();
+  } catch (e) {
+    debugPrint('Notification initialization failed: $e');
+  }
 
   runApp(const ProviderScope(child: MyApp()));
 }
