@@ -63,6 +63,38 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
     }
   }
 
+  Future<void> _loginWithGoogle() async {
+    ref.read(authLoadingProvider.notifier).state = true;
+    ref.read(authErrorProvider.notifier).state = null;
+
+    try {
+      final authService = ref.read(authServiceProvider);
+      final result = await authService.loginWithGoogle();
+
+      await saveTeacherAuthData(
+        role: result['role'] ?? AppConstants.roleOwner,
+        name: result['fullName'] ?? 'User',
+        userId: result['id'],
+        email: result['email'] ?? '',
+        organizationId: result['organizationId'],
+        hasCompletedSetup: result['hasCompletedSetup'] ?? true,
+      );
+
+      if (mounted) {
+        final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
+        if (!hasCompletedSetup) {
+          context.go('/welcome');
+        } else {
+          context.go('/dashboard');
+        }
+      }
+    } catch (e) {
+      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+    } finally {
+      ref.read(authLoadingProvider.notifier).state = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authLoadingProvider);
@@ -224,6 +256,47 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                             ),
                           )
                         : const Text('Sign In'),
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Divider ──
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: isDark ? KlasivoColors.darkDivider : KlasivoColors.lightDivider)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.md),
+                      child: Text(
+                        'OR',
+                        style: KlasivoTypography.labelSmall.copyWith(
+                          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: isDark ? KlasivoColors.darkDivider : KlasivoColors.lightDivider)),
+                  ],
+                ),
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Google Sign-In ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: isLoading ? null : _loginWithGoogle,
+                    icon: Image.asset(
+                      'assets/images/google_logo.png',
+                      width: 20,
+                      height: 20,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 24),
+                    ),
+                    label: const Text('Continue with Google'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),

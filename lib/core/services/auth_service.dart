@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../config/app_constants.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
@@ -317,6 +318,103 @@ class AuthService {
         'email': email,
         'hasCompletedSetup': true,
       };
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Google Sign-In (for Teachers/Owners) ───────────────────────────────
+
+  /// Sign in with Google. Used by teachers and owners.
+  /// If the user already exists, logs them in.
+  /// If the user is new, creates an owner account (with hasCompletedSetup=false).
+  Future<Map<String, dynamic>> loginWithGoogle() async {
+    try {
+      // Trigger the Google Sign-In flow
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        throw Exception('Google sign-in was cancelled.');
+      }
+
+      // Obtain the auth details from the request
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with the Google credential
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user!;
+
+      // Check if user document already exists
+      final userDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        // Existing user — log them in
+        final userData = userDoc.data()!;
+        final role = userData['role'] as String?;
+        final isActive = userData['isActive'] as bool? ?? true;
+
+        if (!isActive) {
+          await _auth.signOut();
+          throw Exception('Your account has been deactivated.');
+        }
+
+        if (role != AppConstants.roleOwner && role != AppConstants.roleTeacher) {
+          await _auth.signOut();
+          throw Exception('This account does not have teacher access.');
+        }
+
+        return {
+          'id': user.uid,
+          'organizationId': userData['organizationId'] ?? '',
+          'role': role ?? AppConstants.roleOwner,
+          'fullName': userData['fullName'] ?? user.displayName ?? 'User',
+          'email': userData['email'] ?? user.email ?? '',
+          'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+        };
+      } else {
+        // New user — auto-create as owner
+        final fullName = user.displayName ?? 'User';
+        final email = user.email ?? '';
+
+        // Auto-create organization with temporary default name
+        final orgService = OrganizationService();
+        final orgId = await orgService.createOrganization(
+          ownerId: user.uid,
+          name: "$fullName's Workspace",
+        );
+
+        // Create user document with owner role
+        await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .set({
+          'organizationId': orgId,
+          'role': AppConstants.roleOwner,
+          'fullName': fullName,
+          'email': email,
+          'photoUrl': user.photoURL,
+          'phoneNumber': null,
+          'isActive': true,
+          'hasCompletedSetup': false, // Needs to name workspace
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        return {
+          'id': user.uid,
+          'organizationId': orgId,
+          'role': AppConstants.roleOwner,
+          'fullName': fullName,
+          'email': email,
+          'hasCompletedSetup': false,
+        };
+      }
     } catch (e) {
       rethrow;
     }
