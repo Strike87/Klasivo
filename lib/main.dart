@@ -15,6 +15,10 @@ import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
 import 'features/auth/pages/teacher_registration_screen.dart';
 import 'features/auth/pages/student_login_screen.dart';
+import 'features/auth/pages/welcome_screen.dart';
+import 'features/shell/teacher_shell.dart';
+import 'features/shell/student_shell.dart';
+import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
 import 'features/classes/pages/class_list_screen.dart';
@@ -30,7 +34,6 @@ import 'features/student_exams/pages/student_exam_list_screen.dart';
 import 'features/student_exams/pages/exam_taking_screen.dart';
 import 'features/student_results/pages/student_results_screen.dart';
 import 'features/teacher_results/pages/exam_results_screen.dart';
-// v1.5 imports
 import 'features/stages/pages/stage_list_screen.dart';
 import 'features/grades/pages/grade_list_screen.dart';
 import 'features/groups/pages/group_list_screen.dart';
@@ -40,9 +43,7 @@ import 'features/excel_import/pages/excel_import_screen.dart';
 import 'features/qr/pages/qr_generate_screen.dart';
 import 'features/qr/pages/qr_scan_screen.dart';
 import 'features/analytics/pages/teacher_analytics_dashboard.dart';
-// v1.5 Phase D imports
 import 'features/reports/pages/report_generation_screen.dart';
-// v1.5 Phase E imports
 import 'features/integrity/pages/exam_integrity_dashboard.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
@@ -59,7 +60,6 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // ─── Initialize Firebase Crashlytics ──────────────────────────────
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     PlatformDispatcher.instance.onError = (error, stack) {
@@ -71,14 +71,12 @@ Future<void> main() async {
       !kDebugMode,
     );
   } catch (e) {
-    // If Firebase init fails, log but continue — app can still work offline
     debugPrint('Firebase initialization failed: $e');
   }
 
   await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
 
-  // Initialize notifications (non-blocking — don't block app startup)
   try {
     await NotificationService.initialize();
   } catch (e) {
@@ -143,7 +141,7 @@ final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
   return notifier;
 });
 
-// ─── GoRouter with Auth Guards ───────────────────────────────────────────────
+// ─── GoRouter with Auth Guards & v1.6 Navigation ─────────────────────────────
 
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(authChangeNotifierProvider);
@@ -156,51 +154,92 @@ final routerProvider = Provider<GoRouter>((ref) {
       final box = Hive.box(AppConstants.authBox);
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
       final userRole = box.get('userRole', defaultValue: '') as String;
+      final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
 
       final isOnSplash = state.matchedLocation == '/';
       final isOnAuth = state.matchedLocation.startsWith('/auth');
-      final isOnDashboard =
-          state.matchedLocation.startsWith('/teacher') ||
-          state.matchedLocation.startsWith('/student');
+      final isOnWelcome = state.matchedLocation == '/welcome';
+      final isOnDashboard = state.matchedLocation.startsWith('/dashboard') ||
+          state.matchedLocation.startsWith('/academic') ||
+          state.matchedLocation.startsWith('/people') ||
+          state.matchedLocation.startsWith('/inbox') ||
+          state.matchedLocation.startsWith('/settings') ||
+          state.matchedLocation.startsWith('/teacher');
+      final isOnStudent = state.matchedLocation.startsWith('/student');
 
+      // Splash → redirect based on auth state
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == AppConstants.roleTeacher) return '/teacher';
+          // Owner hasn't completed setup → go to Welcome
+          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+            return '/welcome';
+          }
+          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+            return '/dashboard';
+          }
           if (userRole == AppConstants.roleStudent) return '/student';
         }
         return '/auth';
       }
 
+      // Welcome screen — only accessible to logged-in owners who haven't completed setup
+      if (isOnWelcome) {
+        if (!isLoggedIn) return '/auth';
+        if (userRole != AppConstants.roleOwner) return '/dashboard';
+        if (hasCompletedSetup) return '/dashboard';
+        return null; // Allow access
+      }
+
+      // Auth screens → redirect if already logged in
       if (isOnAuth) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == AppConstants.roleTeacher) return '/teacher';
+          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+            return '/welcome';
+          }
+          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+            return '/dashboard';
+          }
           if (userRole == AppConstants.roleStudent) return '/student';
         }
         return null;
       }
 
-      if (isOnDashboard) {
+      // Protected screens → require login
+      if (isOnDashboard || isOnStudent) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
-        if (userRole == AppConstants.roleTeacher &&
-            state.matchedLocation.startsWith('/teacher')) {
+
+        // Owner setup check
+        if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+          return '/welcome';
+        }
+
+        // Role-based access
+        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
+            isOnDashboard) {
           return null;
         }
-        if (userRole == AppConstants.roleStudent &&
-            state.matchedLocation.startsWith('/student')) {
+        if (userRole == AppConstants.roleStudent && isOnStudent) {
           return null;
         }
-        if (userRole == AppConstants.roleTeacher) return '/teacher';
+
+        // Redirect to correct dashboard
+        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+          return '/dashboard';
+        }
         if (userRole == AppConstants.roleStudent) return '/student';
       }
 
       return null;
     },
     routes: [
+      // ─── Splash ──────────────────────────────────────────────────────
       GoRoute(
         path: '/',
         builder: (context, state) => const SplashScreen(),
       ),
+
+      // ─── Auth Routes ─────────────────────────────────────────────────
       GoRoute(
         path: '/auth',
         builder: (context, state) => const RoleSelectionScreen(),
@@ -219,12 +258,71 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      // ─── Teacher Routes ──────────────────────────────────────────────
+
+      // ─── Welcome / Org Naming ────────────────────────────────────────
+      GoRoute(
+        path: '/welcome',
+        builder: (context, state) => const WelcomeScreen(),
+      ),
+
+      // ─── Teacher/Owner Shell Navigation ──────────────────────────────
+      ShellRoute(
+        builder: (context, state, child) => TeacherShell(child: child),
+        routes: [
+          // Dashboard
+          GoRoute(
+            path: '/dashboard',
+            builder: (context, state) => const OwnerDashboard(),
+          ),
+
+          // Academic
+          GoRoute(
+            path: '/academic',
+            builder: (context, state) => const StageListScreen(),
+          ),
+
+          // People
+          GoRoute(
+            path: '/people',
+            builder: (context, state) => const AllStudentsScreen(),
+          ),
+
+          // Inbox (Messages + Notifications + Announcements)
+          GoRoute(
+            path: '/inbox',
+            builder: (context, state) => const NotificationCenterScreen(),
+            routes: [
+              GoRoute(
+                path: 'notifications',
+                builder: (context, state) => const NotificationCenterScreen(),
+              ),
+              GoRoute(
+                path: 'notifications/:id',
+                builder: (context, state) {
+                  final notificationId = state.pathParameters['id']!;
+                  return _NotificationDetailScreen(notificationId: notificationId);
+                },
+              ),
+              GoRoute(
+                path: 'messages',
+                builder: (context, state) => const NotificationCenterScreen(),
+              ),
+            ],
+          ),
+
+          // Settings
+          GoRoute(
+            path: '/settings',
+            builder: (context, state) => const _SettingsPlaceholder(),
+          ),
+        ],
+      ),
+
+      // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
       GoRoute(
         path: '/teacher',
         builder: (context, state) => const TeacherDashboard(),
         routes: [
-          // Classes
           GoRoute(
             path: 'classes',
             builder: (context, state) => const ClassListScreen(),
@@ -262,7 +360,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return StudentFormScreen(classId: classId, isEditing: true, studentData: studentData);
                     },
                   ),
-                  // v1.5: Excel Import
                   GoRoute(
                     path: 'import',
                     builder: (context, state) {
@@ -270,7 +367,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return ExcelImportScreen(classId: classId);
                     },
                   ),
-                  // v1.5: QR Generate
                   GoRoute(
                     path: 'qr',
                     builder: (context, state) {
@@ -278,7 +374,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return QrGenerateScreen(classId: classId);
                     },
                   ),
-                  // v1.5: Groups
                   GoRoute(
                     path: 'groups',
                     builder: (context, state) {
@@ -294,7 +389,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'students',
             builder: (context, state) => const AllStudentsScreen(),
           ),
-          // Exams
           GoRoute(
             path: 'exams',
             builder: (context, state) => const ExamListScreen(),
@@ -335,7 +429,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // v1.5: Stages
           GoRoute(
             path: 'stages',
             builder: (context, state) => const StageListScreen(),
@@ -349,80 +442,272 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // v1.5: Question Bank
           GoRoute(
             path: 'question-bank',
             builder: (context, state) => const QuestionBankScreen(),
           ),
-          // v1.5: Notifications
           GoRoute(
             path: 'notifications',
             builder: (context, state) => const NotificationCenterScreen(),
           ),
-          // v1.5: Analytics
           GoRoute(
             path: 'analytics',
             builder: (context, state) => const TeacherAnalyticsDashboard(),
           ),
-          // v1.5 Phase D: Reports
           GoRoute(
             path: 'reports',
             builder: (context, state) => const ReportGenerationScreen(),
           ),
-          // v1.5 Phase E: Exam Integrity
           GoRoute(
             path: 'integrity',
             builder: (context, state) => const ExamIntegrityDashboard(),
           ),
         ],
       ),
-      // ─── Student Routes ──────────────────────────────────────────────
-      GoRoute(
-        path: '/student',
-        builder: (context, state) => const StudentDashboard(),
+
+      // ─── Student Shell Navigation ────────────────────────────────────
+      ShellRoute(
+        builder: (context, state, child) => StudentShell(child: child),
         routes: [
           GoRoute(
-            path: 'exams',
-            builder: (context, state) => const StudentExamListScreen(),
-            routes: [
-              GoRoute(
-                path: ':examId/take',
-                builder: (context, state) {
-                  final examId = state.pathParameters['examId']!;
-                  return ExamTakingScreen(examId: examId);
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'results',
-            builder: (context, state) => const StudentResultsScreen(),
-            routes: [
-              GoRoute(
-                path: ':submissionId',
-                builder: (context, state) {
-                  final submissionId =
-                      state.pathParameters['submissionId']!;
-                  return StudentResultDetailScreen(
-                    submissionId: submissionId,
-                  );
-                },
-              ),
-            ],
-          ),
-          // v1.5: QR Scan
-          GoRoute(
-            path: 'scan-qr',
-            builder: (context, state) => const QrScanScreen(),
-          ),
-          // v1.5: Notifications
-          GoRoute(
-            path: 'notifications',
-            builder: (context, state) => const NotificationCenterScreen(),
+            path: '/student',
+            builder: (context, state) => const StudentDashboard(),
           ),
         ],
+      ),
+
+      // ─── Student Deep Routes (outside shell for full-screen) ─────────
+      GoRoute(
+        path: '/student/exams',
+        builder: (context, state) => const StudentExamListScreen(),
+        routes: [
+          GoRoute(
+            path: ':examId/take',
+            builder: (context, state) {
+              final examId = state.pathParameters['examId']!;
+              return ExamTakingScreen(examId: examId);
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/student/results',
+        builder: (context, state) => const StudentResultsScreen(),
+        routes: [
+          GoRoute(
+            path: ':submissionId',
+            builder: (context, state) {
+              final submissionId = state.pathParameters['submissionId']!;
+              return StudentResultDetailScreen(submissionId: submissionId);
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/student/scan-qr',
+        builder: (context, state) => const QrScanScreen(),
+      ),
+      GoRoute(
+        path: '/student/notifications',
+        builder: (context, state) => const NotificationCenterScreen(),
       ),
     ],
   );
 });
 
+// ─── Placeholder Screens (will be replaced with full implementations) ────────
+
+class _NotificationDetailScreen extends ConsumerWidget {
+  final String notificationId;
+  const _NotificationDetailScreen({required this.notificationId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notification')),
+      body: Center(child: Text('Notification: $notificationId')),
+    );
+  }
+}
+
+class _SettingsPlaceholder extends ConsumerWidget {
+  const _SettingsPlaceholder();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final userName = ref.watch(userNameProvider) ?? 'User';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        children: [
+          // Profile Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: KlasivoColors.primary.withOpacity(0.1),
+                    child: Text(
+                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                      style: KlasivoTypography.headlineSmall.copyWith(
+                        color: KlasivoColors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(userName, style: KlasivoTypography.titleLarge),
+                        const SizedBox(height: KlasivoSpacing.xs),
+                        Text(
+                          ref.watch(userIdProvider) ?? '',
+                          style: KlasivoTypography.bodySmall.copyWith(
+                            color: isDark
+                                ? KlasivoColors.darkTextTertiary
+                                : KlasivoColors.lightTextTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Settings Items
+          _SettingsTile(
+            icon: Icons.business_outlined,
+            title: 'Organization',
+            subtitle: 'Manage workspace settings',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.person_outline_rounded,
+            title: 'Profile',
+            subtitle: 'Edit your profile information',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.vpn_key_outlined,
+            title: 'Invite Codes',
+            subtitle: 'Generate and manage invite codes',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.palette_outlined,
+            title: 'Appearance',
+            subtitle: 'Light and dark theme',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Manage notification preferences',
+            onTap: () {},
+          ),
+
+          const Divider(),
+
+          _SettingsTile(
+            icon: Icons.help_outline_rounded,
+            title: 'Help & Support',
+            subtitle: AppConstants.supportEmail,
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.info_outline_rounded,
+            title: 'About Klasivo',
+            subtitle: 'Version 1.6.0',
+            onTap: () {},
+          ),
+
+          const Divider(),
+
+          // Logout
+          _SettingsTile(
+            icon: Icons.logout_rounded,
+            title: 'Logout',
+            subtitle: 'Sign out of your account',
+            isDestructive: true,
+            onTap: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Logout'),
+                  content: const Text('Are you sure you want to logout?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: KlasivoColors.error,
+                      ),
+                      child: const Text('Logout'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true && context.mounted) {
+                await clearAuthData();
+                if (context.mounted) context.go('/auth');
+              }
+            },
+          ),
+
+          const SizedBox(height: KlasivoSpacing.xxxl),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isDestructive;
+  final VoidCallback onTap;
+
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.isDestructive = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDestructive
+        ? KlasivoColors.error
+        : (isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary);
+
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(title, style: KlasivoTypography.titleMedium.copyWith(color: color)),
+      subtitle: Text(
+        subtitle,
+        style: KlasivoTypography.bodySmall.copyWith(
+          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+        size: 20,
+      ),
+      onTap: onTap,
+    );
+  }
+}

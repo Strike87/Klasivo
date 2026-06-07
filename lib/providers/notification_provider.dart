@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -26,7 +27,7 @@ final notificationsProvider = Provider<List<NotificationData>>((ref) {
   );
 });
 
-// ─── Unread Count ────────────────────────────────────────────────────────────
+// ─── Unread Count (from stream) ──────────────────────────────────────────────
 
 final unreadNotificationsProvider = Provider<int>((ref) {
   final notifications = ref.watch(notificationsProvider);
@@ -41,6 +42,44 @@ final unreadCountProvider = FutureProvider<int>((ref) {
 
   return notif_service.NotificationService.getUnreadCount(userId);
 });
+
+// ─── Notifications by Type ────────────────────────────────────────────────────
+
+final notificationsByTypeProvider = Provider<Map<String, List<NotificationData>>>((ref) {
+  final notifications = ref.watch(notificationsProvider);
+  final Map<String, List<NotificationData>> grouped = {};
+
+  for (final n in notifications) {
+    final category = _getCategory(n.type);
+    grouped.putIfAbsent(category, () => []).add(n);
+  }
+
+  return grouped;
+});
+
+String _getCategory(String type) {
+  switch (type) {
+    case AppConstants.notificationExamPublished:
+    case AppConstants.notificationExamReminder:
+    case AppConstants.notificationResultPublished:
+    case AppConstants.notificationAssignmentPublished:
+    case AppConstants.notificationAssignmentGraded:
+      return 'academic';
+    case AppConstants.notificationNewMessage:
+      return 'messages';
+    case AppConstants.notificationAnnouncement:
+    case AppConstants.notificationOrgUpdate:
+      return 'announcements';
+    case AppConstants.notificationAttendance:
+    case AppConstants.notificationViolation:
+      return 'alerts';
+    case AppConstants.notificationTeacherInvited:
+    case AppConstants.notificationStudentJoined:
+      return 'people';
+    default:
+      return 'other';
+  }
+}
 
 // ─── Notification Data Model ─────────────────────────────────────────────────
 
@@ -103,28 +142,61 @@ class NotificationData {
     };
   }
 
-  /// Get the icon name for this notification type.
-  String get iconName {
+  /// Get the icon for this notification type.
+  IconData get icon {
     switch (type) {
       case AppConstants.notificationExamPublished:
       case AppConstants.notificationExamReminder:
-        return 'quiz';
+        return Icons.quiz_outlined;
       case AppConstants.notificationResultPublished:
-        return 'bar_chart';
+        return Icons.bar_chart_outlined;
       case AppConstants.notificationNewMessage:
-        return 'chat';
+        return Icons.chat_bubble_outline;
       case AppConstants.notificationAssignmentPublished:
-        return 'assignment';
+        return Icons.assignment_outlined;
+      case AppConstants.notificationAssignmentGraded:
+        return Icons.grading_outlined;
       case AppConstants.notificationAttendance:
-        return 'how_to_reg';
+        return Icons.how_to_reg_outlined;
       case AppConstants.notificationTeacherInvited:
-        return 'person_add';
+        return Icons.person_add_outlined;
+      case AppConstants.notificationStudentJoined:
+        return Icons.person_outline;
       case AppConstants.notificationAnnouncement:
-        return 'campaign';
+      case AppConstants.notificationOrgUpdate:
+        return Icons.campaign_outlined;
       case AppConstants.notificationViolation:
-        return 'warning';
+        return Icons.warning_amber_outlined;
       default:
-        return 'notifications';
+        return Icons.notifications_outlined;
+    }
+  }
+
+  /// Get color for this notification type.
+  int get colorValue {
+    switch (type) {
+      case AppConstants.notificationExamPublished:
+      case AppConstants.notificationExamReminder:
+        return 0xFF3B5BDB; // Indigo
+      case AppConstants.notificationResultPublished:
+        return 0xFF845EF7; // Purple
+      case AppConstants.notificationNewMessage:
+        return 0xFF12B886; // Emerald
+      case AppConstants.notificationAssignmentPublished:
+      case AppConstants.notificationAssignmentGraded:
+        return 0xFFF59F00; // Amber
+      case AppConstants.notificationAttendance:
+        return 0xFF12B886; // Emerald
+      case AppConstants.notificationAnnouncement:
+      case AppConstants.notificationOrgUpdate:
+        return 0xFF3B5BDB; // Indigo
+      case AppConstants.notificationViolation:
+        return 0xFFE03131; // Red
+      case AppConstants.notificationTeacherInvited:
+      case AppConstants.notificationStudentJoined:
+        return 0xFF5C7CFA; // Light Indigo
+      default:
+        return 0xFF495057; // Gray
     }
   }
 
@@ -134,13 +206,18 @@ class NotificationData {
 
     switch (relatedType) {
       case 'exam':
-        return '/exam/$relatedId';
+        return '${AppConstants.routeExams}/$relatedId';
       case 'assignment':
-        return '/assignments/$relatedId';
+        return '${AppConstants.routeAssignments}/$relatedId';
       case 'conversation':
-        return '/messages/$relatedId';
+        return '${AppConstants.routeConversation}'.replaceAll(':id', relatedId!);
+      case 'attendance':
+        return AppConstants.routeAttendance;
       default:
         return null;
     }
   }
+
+  /// Get category for Inbox tab grouping.
+  String get category => _getCategory(type);
 }

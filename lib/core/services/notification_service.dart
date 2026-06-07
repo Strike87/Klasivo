@@ -231,9 +231,10 @@ class NotificationService {
     required String title,
     required String body,
     String? organizationId,
-    String? relatedId,   // examId, assignmentId, conversationId, etc.
-    String? relatedType, // 'exam', 'assignment', 'conversation', etc.
+    String? relatedId,
+    String? relatedType,
     Map<String, dynamic>? data,
+    String localChannelId = 'klasivo_channel',
   }) async {
     try {
       final docRef = await _firestore
@@ -252,7 +253,11 @@ class NotificationService {
       });
 
       // Also show a local notification
-      await showNotification(title: title, body: body);
+      await showNotification(
+        title: title,
+        body: body,
+        channelId: localChannelId,
+      );
 
       return docRef.id;
     } catch (e) {
@@ -349,8 +354,23 @@ class NotificationService {
         .collection(AppConstants.notificationsCollection)
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
-        .limit(50)
+        .limit(AppConstants.notificationsPageSize)
         .snapshots();
+  }
+
+  /// Get a single notification by ID.
+  static Future<Map<String, dynamic>?> getNotification(String notificationId) async {
+    try {
+      final doc = await _firestore
+          .collection(AppConstants.notificationsCollection)
+          .doc(notificationId)
+          .get();
+
+      if (!doc.exists) return null;
+      return {'id': doc.id, ...doc.data()!};
+    } catch (e) {
+      rethrow;
+    }
   }
 
   /// Delete a notification.
@@ -427,6 +447,26 @@ class NotificationService {
     );
   }
 
+  /// Called when an assignment is graded.
+  /// Notifies the student whose assignment was graded.
+  static Future<void> notifyAssignmentGraded({
+    required String studentId,
+    required String assignmentTitle,
+    required double score,
+    String? organizationId,
+    String? assignmentId,
+  }) async {
+    await createNotification(
+      userId: studentId,
+      type: AppConstants.notificationAssignmentGraded,
+      title: 'Assignment Graded',
+      body: 'Your score for "$assignmentTitle": ${score.toStringAsFixed(1)}%',
+      organizationId: organizationId,
+      relatedId: assignmentId,
+      relatedType: 'assignment',
+    );
+  }
+
   /// Called when a message is received.
   static Future<void> notifyNewMessage({
     required String recipientId,
@@ -445,7 +485,7 @@ class NotificationService {
       organizationId: organizationId,
       relatedId: conversationId,
       relatedType: 'conversation',
-      channelId: 'klasivo_messages',
+      localChannelId: 'klasivo_messages',
     );
   }
 
@@ -466,7 +506,7 @@ class NotificationService {
         body: 'You were marked as $status on $date',
         organizationId: organizationId,
         relatedType: 'attendance',
-        channelId: 'klasivo_attendance',
+        localChannelId: 'klasivo_attendance',
       );
     }
   }
@@ -478,14 +518,29 @@ class NotificationService {
     required String organizationName,
     String? organizationId,
   }) async {
-    // This would typically be sent to the teacher being invited
-    // For now, notify the owner that an invite code was created
     await createNotification(
       userId: ownerId,
       type: AppConstants.notificationTeacherInvited,
       title: 'Invite Created',
       body: 'Invite code created for $organizationName',
       organizationId: organizationId,
+    );
+  }
+
+  /// Called when a student joins via invite code.
+  static Future<void> notifyStudentJoined({
+    required String teacherId,
+    required String studentName,
+    required String className,
+    String? organizationId,
+  }) async {
+    await createNotification(
+      userId: teacherId,
+      type: AppConstants.notificationStudentJoined,
+      title: 'New Student',
+      body: '$studentName joined $className',
+      organizationId: organizationId,
+      relatedType: 'student',
     );
   }
 
@@ -528,6 +583,24 @@ class NotificationService {
       organizationId: organizationId,
       relatedId: examId,
       relatedType: 'exam',
+      localChannelId: 'klasivo_scheduled',
+    );
+  }
+
+  /// Called when an organization update is sent.
+  static Future<void> notifyOrgUpdate({
+    required List<String> userIds,
+    required String title,
+    required String body,
+    String? organizationId,
+  }) async {
+    await createBulkNotifications(
+      userIds: userIds,
+      type: AppConstants.notificationOrgUpdate,
+      title: title,
+      body: body,
+      organizationId: organizationId,
+      relatedType: 'organization',
     );
   }
 

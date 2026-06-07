@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
+import '../../../core/config/theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -41,15 +42,17 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
 
-    // Use Hive as the SINGLE SOURCE OF TRUTH for auth state
-    // This works for BOTH teachers (Firebase Auth) AND students (code-based login)
     final box = Hive.box(AppConstants.authBox);
     final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
     final userRole = box.get('userRole', defaultValue: '') as String;
+    final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
 
     if (isLoggedIn && userRole.isNotEmpty) {
-      if (userRole == AppConstants.roleTeacher) {
-        context.go('/teacher');
+      // Owner hasn't named their workspace yet → Welcome screen
+      if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+        context.go('/welcome');
+      } else if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+        context.go('/dashboard');
       } else if (userRole == AppConstants.roleStudent) {
         context.go('/student');
       } else {
@@ -68,10 +71,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: theme.colorScheme.primary,
+      backgroundColor: KlasivoColors.primary,
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
@@ -88,35 +89,39 @@ class _SplashScreenState extends State<SplashScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(KlasivoSpacing.xxl),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(24),
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(KlasivoRadius.xl),
                 ),
                 child: const Icon(
-                  Icons.school,
-                  size: 80,
+                  Icons.school_outlined,
+                  size: 72,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: KlasivoSpacing.xxl),
               const Text(
                 'Klasivo',
                 style: TextStyle(
+                  fontFamily: KlasivoTypography.fontFamily,
                   fontSize: 36,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
+                  letterSpacing: -0.5,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: KlasivoSpacing.sm),
               const Text(
-                'Professional Exam Management System',
+                'Professional Exam Management',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontFamily: KlasivoTypography.fontFamily,
+                  fontSize: 15,
                   color: Colors.white70,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: KlasivoSpacing.hero),
               const SizedBox(
                 height: 24,
                 width: 24,

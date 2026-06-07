@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../core/config/theme.dart';
 
 /// A reusable empty state widget with icon, title, and subtitle.
+/// Uses the KlasivoEmptyState from klasivo_components.dart for the new design.
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -19,43 +21,12 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[500],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onAction,
-                icon: const Icon(Icons.add),
-                label: Text(actionLabel!),
-              ),
-            ],
-          ],
-        ),
-      ),
+    return KlasivoEmptyState(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      actionLabel: actionLabel,
+      onAction: onAction,
     );
   }
 }
@@ -68,21 +39,7 @@ class LoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              message!,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
-        ],
-      ),
-    );
+    return KlasivoLoading(message: message);
   }
 }
 
@@ -99,27 +56,41 @@ class ErrorWidgetCustom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(KlasivoSpacing.xxxl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+              decoration: BoxDecoration(
+                color: KlasivoColors.errorSurface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: KlasivoColors.error,
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.xxl),
             Text(
               message,
-              style: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 16,
+              style: KlasivoTypography.bodyMedium.copyWith(
+                color: isDark
+                    ? KlasivoColors.darkTextSecondary
+                    : KlasivoColors.lightTextSecondary,
               ),
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
+              const SizedBox(height: KlasivoSpacing.xxl),
+              OutlinedButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Retry'),
               ),
             ],
@@ -152,12 +123,12 @@ Future<bool?> showConfirmationDialog({
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(true),
           style: isDangerous
-              ? TextButton.styleFrom(foregroundColor: Colors.red)
+              ? TextButton.styleFrom(foregroundColor: KlasivoColors.error)
               : null,
           child: Text(
             confirmLabel,
             style: isDangerous
-                ? const TextStyle(color: Colors.red)
+                ? const TextStyle(color: KlasivoColors.error)
                 : null,
           ),
         ),
@@ -175,8 +146,11 @@ void showSnackBar(
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? KlasivoColors.error : KlasivoColors.secondary,
       behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(KlasivoRadius.md),
+      ),
     ),
   );
 }

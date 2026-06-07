@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/theme.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);
@@ -7,79 +8,89 @@ class RoleSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(
+            horizontal: KlasivoSpacing.xxl,
+            vertical: KlasivoSpacing.hero,
+          ),
           child: Column(
             children: [
-              const SizedBox(height: 48),
-
-              // ── Logo / App Name ──
+              // ── Logo ──
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(KlasivoSpacing.lg),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
+                  color: KlasivoColors.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                 ),
-                child: Icon(
-                  Icons.school,
-                  size: 64,
-                  color: theme.colorScheme.primary,
+                child: const Icon(
+                  Icons.school_outlined,
+                  size: 52,
+                  color: KlasivoColors.primary,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: KlasivoSpacing.xxl),
               Text(
                 'Klasivo',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+                style: KlasivoTypography.headlineLarge.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextPrimary
+                      : KlasivoColors.lightTextPrimary,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: KlasivoSpacing.sm),
               Text(
-                'Professional Exam Management System',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
+                'Professional Exam Management',
+                style: KlasivoTypography.bodyMedium.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
                 ),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: KlasivoSpacing.xxxl),
 
-              // ── Role Selection Text ──
+              // ── Role Selection ──
               Text(
                 'I am a...',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
+                style: KlasivoTypography.titleLarge.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextSecondary
+                      : KlasivoColors.lightTextSecondary,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: KlasivoSpacing.xxl),
 
               // ── Teacher Card ──
               _RoleCard(
-                icon: Icons.person_outline,
+                icon: Icons.person_outline_rounded,
                 title: 'Teacher',
                 subtitle: 'Create exams, manage classes, and grade students',
-                color: Colors.blue,
+                color: KlasivoColors.primary,
                 onTap: () => context.go('/auth/teacher-login'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: KlasivoSpacing.lg),
 
               // ── Student Card ──
               _RoleCard(
                 icon: Icons.school_outlined,
                 title: 'Student',
                 subtitle: 'Take exams, view results, and track progress',
-                color: Colors.green,
+                color: KlasivoColors.secondary,
                 onTap: () => context.go('/auth/student-login'),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: KlasivoSpacing.xxxl),
 
               // ── Footer ──
               Text(
                 'By continuing, you agree to our Terms of Service\nand Privacy Policy',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[500],
+                style: KlasivoTypography.caption.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
                 ),
               ),
             ],
@@ -107,51 +118,55 @@ class _RoleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(KlasivoRadius.md),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(KlasivoSpacing.lg),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(KlasivoSpacing.md),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(KlasivoRadius.md),
                 ),
-                child: Icon(icon, color: color, size: 32),
+                child: Icon(icon, color: color, size: 28),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: KlasivoSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      style: KlasivoTypography.titleLarge.copyWith(
+                        color: isDark
+                            ? KlasivoColors.darkTextPrimary
+                            : KlasivoColors.lightTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: KlasivoSpacing.xs),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
+                      style: KlasivoTypography.bodySmall.copyWith(
+                        color: isDark
+                            ? KlasivoColors.darkTextTertiary
+                            : KlasivoColors.lightTextTertiary,
                       ),
                     ),
                   ],
                 ),
               ),
               Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.grey[400],
-                size: 20,
+                Icons.arrow_forward_ios_rounded,
+                color: isDark
+                    ? KlasivoColors.darkTextTertiary
+                    : KlasivoColors.lightTextTertiary,
+                size: 18,
               ),
             ],
           ),

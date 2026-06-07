@@ -1,278 +1,262 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../../providers/auth_provider.dart';
+import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../providers/auth_provider.dart';
 
 class StudentLoginScreen extends ConsumerStatefulWidget {
   const StudentLoginScreen({Key? key}) : super(key: key);
 
   @override
-  ConsumerState<StudentLoginScreen> createState() =>
-      _StudentLoginScreenState();
+  ConsumerState<StudentLoginScreen> createState() => _StudentLoginScreenState();
 }
 
 class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _studentCodeController = TextEditingController();
+  final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _isLoading = false;
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _studentCodeController.dispose();
+    _codeController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    ref.read(authLoadingProvider.notifier).state = true;
     ref.read(authErrorProvider.notifier).state = null;
 
     try {
-      // IMPORTANT: Sign out any existing Firebase Auth session
-      // Students don't use Firebase Auth — they use code-based login
-      // If a teacher session exists, it must be cleared first
-      try {
-        await FirebaseAuth.instance.signOut();
-      } catch (_) {}
-
       final authService = ref.read(authServiceProvider);
-      final userData = await authService.loginStudent(
-        studentCode: _studentCodeController.text.trim(),
+      final result = await authService.loginStudent(
+        studentCode: _codeController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Save student auth data using the new helper
       await saveStudentAuthData(
-        name: userData['fullName'] as String,
-        userId: userData['id'] as String,
-        classId: userData['classId'] as String?,
-        teacherId: userData['teacherId'] as String?,
-        studentCode: userData['studentCode'] as String?,
-        className: userData['className'] as String?,
+        name: result['fullName'],
+        userId: result['id'],
+        classId: result['classId'],
+        studentCode: result['studentCode'],
+        organizationId: result['organizationId'],
       );
 
-      // Update Riverpod providers
-      ref.read(isLoggedInProvider.notifier).state = true;
-      ref.read(userRoleProvider.notifier).state = AppConstants.roleStudent;
-      ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
-      ref.read(userIdProvider.notifier).state = userData['id'] as String;
-      ref.read(studentClassIdProvider.notifier).state = userData['classId'] as String?;
-      ref.read(studentTeacherIdProvider.notifier).state = userData['teacherId'] as String?;
-      ref.read(studentCodeProvider.notifier).state = userData['studentCode'] as String?;
-      ref.read(studentClassNameProvider.notifier).state = userData['className'] as String?;
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful!'),
-            backgroundColor: Colors.green,
-          ),
-        );
         context.go('/student');
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
-  }
-
-  String? _validateStudentCode(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Student code is required';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Password is required';
-    }
-    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isLoading = ref.watch(authLoadingProvider);
+    final error = ref.watch(authErrorProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Student Login'),
-        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => context.go('/auth'),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.xxl),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Header ──
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: KlasivoColors.secondary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(KlasivoRadius.lg),
+                    ),
+                    child: const Icon(
+                      Icons.school_outlined,
+                      size: 48,
+                      color: KlasivoColors.secondary,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.person_outline,
-                    size: 48,
-                    color: Colors.green.shade800,
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+                Center(
+                  child: Text(
+                    'Student Login',
+                    style: KlasivoTypography.headlineLarge.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextPrimary
+                          : KlasivoColors.lightTextPrimary,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Student Login',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: KlasivoSpacing.sm),
+                Center(
+                  child: Text(
+                    'Enter your student code and password',
+                    style: KlasivoTypography.bodyMedium.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextTertiary
+                          : KlasivoColors.lightTextTertiary,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Enter your credentials to access exams',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
+                const SizedBox(height: KlasivoSpacing.xxxl),
+
+                // ── Student Code ──
+                Text(
+                  'Student Code',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _studentCodeController,
-                      decoration: InputDecoration(
-                        labelText: 'Student Code',
-                        hintText: 'Enter your student code',
-                        prefixIcon: const Icon(Icons.badge),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _codeController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    hintText: 'STU-XXXXXX',
+                    prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Student code is required';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Password ──
+                Text(
+                  'Password',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your password',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 20,
                       ),
-                      validator: _validateStudentCode,
-                      enabled: !_isLoading,
-                      textCapitalization: TextCapitalization.characters,
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(() =>
-                                _obscurePassword = !_obscurePassword);
-                          },
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      obscureText: _obscurePassword,
-                      validator: _validatePassword,
-                      enabled: !_isLoading,
-                      autofillHints: const [AutofillHints.password],
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Password is required';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Error Message ──
+                if (error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(KlasivoSpacing.md),
+                    decoration: BoxDecoration(
+                      color: KlasivoColors.errorSurface,
+                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                      border: Border.all(color: KlasivoColors.error.withOpacity(0.3)),
                     ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Login',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Ask your teacher for your student code and password',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    // ── OR divider ──
-                    Row(
+                    child: Row(
                       children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('OR', style: TextStyle(color: Colors.grey[600])),
+                        const Icon(Icons.error_outline_rounded,
+                            color: KlasivoColors.error, size: 20),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            error,
+                            style: KlasivoTypography.bodySmall.copyWith(
+                              color: KlasivoColors.error,
+                            ),
+                          ),
                         ),
-                        const Expanded(child: Divider()),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // ── QR Scan Button (Phase C) ──
-                    OutlinedButton.icon(
-                      onPressed: () => context.go('/student/scan-qr'),
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Scan QR Code to Enroll'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.green.shade400),
-                        foregroundColor: Colors.green.shade700,
-                      ),
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
+
+                // ── Login Button ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: KlasivoColors.secondary,
                     ),
-                  ],
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Sign In'),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Help Text ──
+                Container(
+                  padding: const EdgeInsets.all(KlasivoSpacing.md),
+                  decoration: BoxDecoration(
+                    color: KlasivoColors.infoSurface,
+                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded,
+                          color: KlasivoColors.primary, size: 20),
+                      const SizedBox(width: KlasivoSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Your student code and password are provided by your teacher. Contact them if you need help.',
+                          style: KlasivoTypography.bodySmall.copyWith(
+                            color: KlasivoColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

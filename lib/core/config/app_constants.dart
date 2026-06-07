@@ -53,6 +53,71 @@ class AppConstants {
   static const String roleTeacher = 'teacher';
   static const String roleStudent = 'student';
 
+  // ─── Navigation Tabs ─────────────────────────────────────────────────────
+  // Dashboard / Academic / People / Inbox / Settings
+
+  static const int tabDashboard = 0;
+  static const int tabAcademic = 1;
+  static const int tabPeople = 2;
+  static const int tabInbox = 3;
+  static const int tabSettings = 4;
+
+  // ─── App Route Paths ─────────────────────────────────────────────────────
+
+  // Auth
+  static const String routeSplash = '/';
+  static const String routeAuth = '/auth';
+  static const String routeTeacherLogin = '/auth/teacher-login';
+  static const String routeTeacherRegister = '/auth/teacher-register';
+  static const String routeStudentLogin = '/auth/student-login';
+  static const String routeWelcome = '/welcome'; // Post-login org naming
+
+  // Owner/Teacher Shell
+  static const String routeDashboard = '/dashboard';
+  static const String routeAcademic = '/academic';
+  static const String routePeople = '/people';
+  static const String routeInbox = '/inbox';
+  static const String routeSettings = '/settings';
+
+  // Academic sub-routes
+  static const String routeStages = '/academic/stages';
+  static const String routeClasses = '/academic/classes';
+  static const String routeSubjects = '/academic/subjects';
+  static const String routeExams = '/academic/exams';
+  static const String routeAssignments = '/academic/assignments';
+  static const String routeAttendance = '/academic/attendance';
+
+  // Inbox sub-routes (Messages + Notifications + Announcements)
+  static const String routeNotifications = '/inbox/notifications';
+  static const String routeNotificationDetail = '/inbox/notifications/:id';
+  static const String routeMessages = '/inbox/messages';
+  static const String routeConversation = '/inbox/messages/:id';
+  static const String routeAnnouncements = '/inbox/announcements';
+
+  // People sub-routes
+  static const String routeTeachers = '/people/teachers';
+  static const String routeStudents = '/people/students';
+  static const String routeInviteCodes = '/people/invites';
+
+  // Settings sub-routes
+  static const String routeOrganization = '/settings/organization';
+  static const String routeProfile = '/settings/profile';
+
+  // Student Shell
+  static const String routeStudentHome = '/student';
+  static const String routeStudentExams = '/student/exams';
+  static const String routeStudentResults = '/student/results';
+  static const String routeStudentInbox = '/student/inbox';
+  static const String routeStudentSettings = '/student/settings';
+
+  // Deep link routes
+  static const String routeJoin = '/join';
+  static const String routeExamDeep = '/exam';
+  static const String routeResultDeep = '/result';
+  static const String routeOrgPortal = '/org';
+  static const String routeReset = '/reset';
+  static const String routeVerify = '/verify';
+
   // ─── Exam Status ─────────────────────────────────────────────────────────
 
   static const String statusDraft = 'draft';
@@ -118,8 +183,11 @@ class AppConstants {
   static const String notificationViolation = 'violation';
   static const String notificationNewMessage = 'new_message';
   static const String notificationAssignmentPublished = 'assignment_published';
+  static const String notificationAssignmentGraded = 'assignment_graded';
   static const String notificationAttendance = 'attendance';
   static const String notificationTeacherInvited = 'teacher_invited';
+  static const String notificationStudentJoined = 'student_joined';
+  static const String notificationOrgUpdate = 'org_update';
 
   // ─── Analytics Types ──────────────────────────────────────────────────────
 
@@ -135,12 +203,14 @@ class AppConstants {
   static const String apiBaseUrl = 'https://api.klasivo.app/v1';
 
   // Deep link paths
-  static const String pathJoin = '/join';         // /join/{code}        → Teacher/Student invite
-  static const String pathExam = '/exam';          // /exam/{examId}      → Open exam screen
-  static const String pathResult = '/result';      // /result/{code}      → Student result page
-  static const String pathOrg = '/org';            // /org/{slug}         → Public org portal
-  static const String pathReset = '/reset';        // /reset              → Password reset
-  static const String pathVerify = '/verify';      // /verify             → Email verification
+  static const String pathJoin = '/join';         // /join/{code}
+  static const String pathExam = '/exam';          // /exam/{examId}
+  static const String pathResult = '/result';      // /result/{code}
+  static const String pathOrg = '/org';            // /org/{slug}
+  static const String pathReset = '/reset';        // /reset
+  static const String pathVerify = '/verify';      // /verify
+  static const String pathNotifications = '/notifications'; // /notifications
+  static const String pathNotification = '/notification';   // /notification/{id}
 
   // Professional email addresses
   static const String supportEmail = 'support@klasivo.app';
@@ -156,33 +226,22 @@ class AppConstants {
   static const String paramSlug = 'slug';
   static const String paramInviteCode = 'inviteCode';
   static const String paramRole = 'role';
+  static const String paramNotificationId = 'notificationId';
 
   // Firebase Dynamic Links / App Links configuration
   static const String androidPackageName = 'com.klasivo.app';
   static const String iosBundleId = 'com.klasivo.app';
-  static const String dynamicLinkDomain = 'klasivo.page.link'; // Firebase Dynamic Links domain
-  static const String deepLinkScheme = 'klasivo';              // Custom URI scheme: klasivo://
+  static const String dynamicLinkDomain = 'klasivo.page.link';
+  static const String deepLinkScheme = 'klasivo';
 
   // ─── Config ──────────────────────────────────────────────────────────────
 
-  // Auto-save interval (seconds)
   static const int autoSaveInterval = 5;
-
-  // Violation threshold
   static const int violationThreshold = 3;
-
-  // Default student password (before hashing)
   static const String defaultStudentPassword = '123456';
-
-  // Messaging
   static const int maxMessageLength = 2000;
-
-  // Analytics cache duration (hours)
   static const int analyticsCacheDurationHours = 1;
-
-  // Invite code length (characters after T-/S- prefix)
   static const int inviteCodeLength = 8;
-
-  // Organization slug max length
   static const int maxSlugLength = 40;
+  static const int notificationsPageSize = 50;
 }

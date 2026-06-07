@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
-
+import '../../../core/config/theme.dart';
+import '../../../core/config/app_constants.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 
 class TeacherRegistrationScreen extends ConsumerStatefulWidget {
@@ -16,324 +17,403 @@ class TeacherRegistrationScreen extends ConsumerStatefulWidget {
 class _TeacherRegistrationScreenState
     extends ConsumerState<TeacherRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _fullNameController = TextEditingController();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _isLoading = false;
+  final _inviteCodeController = TextEditingController();
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+  bool _isOwnerFlow = true; // true = Owner (no invite code), false = Teacher (needs invite code)
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
+    _inviteCodeController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleRegistration() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    ref.read(authLoadingProvider.notifier).state = true;
     ref.read(authErrorProvider.notifier).state = null;
 
     try {
       final authService = ref.read(authServiceProvider);
-      final userData = await authService.registerTeacher(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        fullName: _fullNameController.text.trim(),
-      );
 
-      // Save auth data locally for role-based navigation
-      await saveTeacherAuthData(
-        email: _emailController.text.trim(),
-        role: userData['role'] as String,
-        name: userData['fullName'] as String,
-        userId: userData['id'] as String,
-      );
-
-      // Update providers
-      ref.read(isLoggedInProvider.notifier).state = true;
-      ref.read(userRoleProvider.notifier).state = userData['role'] as String;
-      ref.read(userNameProvider.notifier).state = userData['fullName'] as String;
-      ref.read(userIdProvider.notifier).state = userData['id'] as String;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Registration successful!'),
-            backgroundColor: Colors.green,
-          ),
+      if (_isOwnerFlow) {
+        // Owner registration — no org name asked here
+        final result = await authService.registerOwner(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          fullName: _nameController.text.trim(),
         );
-        context.go('/teacher');
-      }
-    } on FirebaseAuthException catch (e) {
-      String message = 'Registration failed';
-      if (e.code == 'email-already-in-use') {
-        message = 'This email is already registered';
-      } else if (e.code == 'weak-password') {
-        message = 'Password is too weak';
-      } else if (e.code == 'invalid-email') {
-        message = 'Invalid email address';
+
+        await saveTeacherAuthData(
+          role: AppConstants.roleOwner,
+          name: result['fullName'],
+          userId: result['id'],
+          email: result['email'],
+          organizationId: result['organizationId'],
+          hasCompletedSetup: false, // Owner hasn't named workspace yet
+        );
+
+        if (mounted) {
+          // Redirect to Welcome screen to name workspace
+          context.go('/welcome');
+        }
       } else {
-        message = e.message ?? 'Registration failed';
-      }
-      ref.read(authErrorProvider.notifier).state = message;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-          ),
+        // Teacher registration — needs invite code
+        final result = await authService.registerTeacherWithInvite(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          fullName: _nameController.text.trim(),
+          inviteCode: _inviteCodeController.text.trim(),
         );
+
+        await saveTeacherAuthData(
+          role: AppConstants.roleTeacher,
+          name: result['fullName'],
+          userId: result['id'],
+          email: result['email'],
+          organizationId: result['organizationId'],
+          hasCompletedSetup: true, // Teachers join existing org
+        );
+
+        if (mounted) {
+          context.go('/dashboard');
+        }
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
-  }
-
-  String? _validateEmail(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Email is required';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-        .hasMatch(value!)) {
-      return 'Please enter a valid email';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Password is required';
-    }
-    if (value!.length < 6) {
-      return 'Password must be at least 6 characters';
-    }
-    return null;
-  }
-
-  String? _validateConfirmPassword(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Please confirm your password';
-    }
-    if (value != _passwordController.text) {
-      return 'Passwords do not match';
-    }
-    return null;
-  }
-
-  String? _validateFullName(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Full name is required';
-    }
-    if (value!.length < 3) {
-      return 'Name must be at least 3 characters';
-    }
-    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = ref.watch(authLoadingProvider);
+    final error = ref.watch(authErrorProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Teacher Registration'),
-        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/auth/teacher-login'),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () => context.go('/auth'),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.xxl),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Header ──
+                Text(
+                  'Create your account',
+                  style: KlasivoTypography.headlineLarge.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextPrimary
+                        : KlasivoColors.lightTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                Text(
+                  'Start managing exams with Klasivo',
+                  style: KlasivoTypography.bodyMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Role Toggle ──
+                Container(
+                  padding: const EdgeInsets.all(KlasivoSpacing.xs),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
-                    borderRadius: BorderRadius.circular(12),
+                    color: isDark
+                        ? KlasivoColors.darkSurface
+                        : KlasivoColors.lightBackground,
+                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                    border: Border.all(
+                      color: isDark
+                          ? KlasivoColors.darkBorder
+                          : KlasivoColors.lightBorder,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.school,
-                    size: 48,
-                    color: Colors.blue.shade800,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _ToggleOption(
+                          label: 'Organization Owner',
+                          subtitle: 'Create new workspace',
+                          isSelected: _isOwnerFlow,
+                          onTap: () => setState(() => _isOwnerFlow = true),
+                        ),
+                      ),
+                      const SizedBox(width: KlasivoSpacing.xs),
+                      Expanded(
+                        child: _ToggleOption(
+                          label: 'Teacher',
+                          subtitle: 'Join with invite code',
+                          isSelected: !_isOwnerFlow,
+                          onTap: () => setState(() => _isOwnerFlow = false),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Create Your Account',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Full Name ──
+                Text(
+                  'Full Name',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Join Klasivo as a teacher',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter your full name',
+                    prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return 'Name is required';
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 32),
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _fullNameController,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name',
-                        hintText: 'Enter your full name',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Email ──
+                Text(
+                  'Email',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    hintText: 'you@example.com',
+                    prefixIcon: Icon(Icons.email_outlined, size: 20),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Email is required';
+                    if (!value.contains('@')) return 'Enter a valid email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Password ──
+                Text(
+                  'Password',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'At least 6 characters',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 20,
                       ),
-                      validator: _validateFullName,
-                      enabled: !_isLoading,
-                      textCapitalization: TextCapitalization.words,
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'Enter your email',
-                        prefixIcon: const Icon(Icons.email),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: _validateEmail,
-                      enabled: !_isLoading,
-                      autofillHints: const [AutofillHints.email],
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Password is required';
+                    if (value.length < 6) return 'Password must be at least 6 characters';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: KlasivoSpacing.lg),
+
+                // ── Invite Code (Teacher flow only) ──
+                if (!_isOwnerFlow) ...[
+                  Text(
+                    'Invite Code',
+                    style: KlasivoTypography.labelMedium.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextSecondary
+                          : KlasivoColors.lightTextSecondary,
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(() =>
-                                _obscurePassword = !_obscurePassword);
-                          },
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      obscureText: _obscurePassword,
-                      validator: _validatePassword,
-                      enabled: !_isLoading,
-                      autofillHints: const [AutofillHints.newPassword],
+                  ),
+                  const SizedBox(height: KlasivoSpacing.sm),
+                  TextFormField(
+                    controller: _inviteCodeController,
+                    decoration: const InputDecoration(
+                      hintText: 'T-XXXXXXXX or klasivo.app/join/XXXXXXX',
+                      prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      decoration: InputDecoration(
-                        labelText: 'Confirm Password',
-                        hintText: 'Confirm your password',
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirmPassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(() => _obscureConfirmPassword =
-                                !_obscureConfirmPassword);
-                          },
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      obscureText: _obscureConfirmPassword,
-                      validator: _validateConfirmPassword,
-                      enabled: !_isLoading,
+                    validator: (value) {
+                      if (!_isOwnerFlow && (value == null || value.trim().isEmpty)) {
+                        return 'Invite code is required for teachers';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
+
+                // ── Error Message ──
+                if (error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(KlasivoSpacing.md),
+                    decoration: BoxDecoration(
+                      color: KlasivoColors.errorSurface,
+                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                      border: Border.all(color: KlasivoColors.error.withOpacity(0.3)),
                     ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleRegistration,
-                        style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text(
-                                'Register',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Row(
                       children: [
-                        Text(
-                          'Already have an account? ',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                        TextButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () => context.go('/auth/teacher-login'),
-                          child: const Text('Login'),
+                        const Icon(Icons.error_outline_rounded,
+                            color: KlasivoColors.error, size: 20),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            error,
+                            style: KlasivoTypography.bodySmall.copyWith(
+                              color: KlasivoColors.error,
+                            ),
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
+
+                // ── Register Button ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: isLoading ? null : _register,
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(_isOwnerFlow ? 'Create Workspace' : 'Join Organization'),
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Login Link ──
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Already have an account? ',
+                      style: KlasivoTypography.bodyMedium.copyWith(
+                        color: isDark
+                            ? KlasivoColors.darkTextTertiary
+                            : KlasivoColors.lightTextTertiary,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.go('/auth/teacher-login'),
+                      child: const Text('Sign in'),
+                    ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleOption extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ToggleOption({
+    required this.label,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(KlasivoRadius.sm + 2),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(
+          horizontal: KlasivoSpacing.md,
+          vertical: KlasivoSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected ? KlasivoColors.primary.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(KlasivoRadius.sm + 2),
+          border: isSelected
+              ? Border.all(color: KlasivoColors.primary.withOpacity(0.3))
+              : Border.all(color: Colors.transparent),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: KlasivoTypography.labelMedium.copyWith(
+                color: isSelected
+                    ? KlasivoColors.primary
+                    : (isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary),
+              ),
+            ),
+            Text(
+              subtitle,
+              style: KlasivoTypography.caption.copyWith(
+                color: isSelected
+                    ? KlasivoColors.primaryLight
+                    : (isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary),
+              ),
+            ),
+          ],
         ),
       ),
     );

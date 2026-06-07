@@ -18,10 +18,12 @@ class AuthService {
     return digest.toString();
   }
 
-  // ─── Owner Registration (auto-creates workspace) ────────────────────────
+  // ─── Owner Registration (NO org name — post-login naming) ──────────────
 
-  /// Register a new owner. Organization is auto-created with a default name.
-  /// The owner will be prompted to name their workspace after first login.
+  /// Register a new owner. No organization name is asked here.
+  /// Organization is auto-created with a temporary default name.
+  /// After login, the owner is redirected to the Welcome/Org Naming screen
+  /// where they choose their workspace name (with auto-suggest).
   Future<Map<String, dynamic>> registerOwner({
     required String email,
     required String password,
@@ -32,8 +34,8 @@ class AuthService {
           await FirebaseService.registerWithEmail(email, password);
       final user = userCredential.user!;
 
-      // Auto-create organization with default name
-      // Owner will rename it in the post-registration onboarding screen
+      // Auto-create organization with a temporary default name
+      // The owner will rename it in the post-login onboarding screen
       final orgService = OrganizationService();
       final orgId = await orgService.createOrganization(
         ownerId: user.uid,
@@ -41,6 +43,7 @@ class AuthService {
       );
 
       // Create user document with owner role
+      // hasCompletedSetup = false → triggers Welcome screen redirect
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -68,6 +71,54 @@ class AuthService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // ─── Complete Owner Setup — Name the workspace ─────────────────────────
+
+  /// Called after first login when owner has NOT completed setup.
+  /// The Welcome screen shows auto-suggest based on the owner's name.
+  /// The owner picks or types a workspace name, then this method saves it.
+  Future<void> completeOwnerSetup({
+    required String userId,
+    required String organizationId,
+    required String workspaceName,
+  }) async {
+    try {
+      // Update the organization name
+      await _firestore
+          .collection(AppConstants.organizationsCollection)
+          .doc(organizationId)
+          .update({
+        'name': workspaceName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Mark user setup as complete
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(userId)
+          .update({
+        'hasCompletedSetup': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Generate workspace name auto-suggest ───────────────────────────────
+
+  /// Returns a list of suggested workspace names based on the owner's name.
+  /// Example: "Mohamed" → ["Mohamed Academy", "Mohamed's Classroom", "Mohamed Learning Center"]
+  List<String> generateWorkspaceSuggestions(String fullName) {
+    final firstName = fullName.split(' ').first;
+    return [
+      '$firstName Academy',
+      '$firstName\'s Classroom',
+      '$firstName Learning Center',
+      '$firstName Education',
+      '$firstName Institute',
+    ];
   }
 
   // ─── Teacher/Owner Login ────────────────────────────────────────────────
@@ -120,7 +171,7 @@ class AuthService {
   // ─── Student Login (Firebase Auth backed, code-based UX) ───────────────
 
   /// Student login using student code + password.
-  /// UX: Student enters code + password (simple).
+  /// UX: Student enters code + password (simple, familiar).
   /// Backend: Internally maps to Firebase Auth for push notifications,
   /// multi-device, password reset, security rules, and analytics.
   Future<Map<String, dynamic>> loginStudent({
@@ -174,15 +225,14 @@ class AuthService {
       // Step 3: Sign in via Firebase Auth using the student's internal email
       // This gives students push notifications, multi-device, security rules, etc.
       final internalEmail = student['authEmail'] as String?;
-      if (internalEmail != null) {
+      if (internalEmail != null && internalEmail.isNotEmpty) {
         try {
-          // Try Firebase Auth sign-in with the internal email
           await _auth.signInWithEmailAndPassword(
             email: internalEmail,
             password: password,
           );
         } catch (authError) {
-          // If Firebase Auth fails, still allow login via Hive (graceful fallback)
+          // If Firebase Auth fails, still allow login (graceful fallback)
           // This handles cases where Firebase Auth account wasn't created yet
           // (e.g., students created before this update)
         }
@@ -195,6 +245,7 @@ class AuthService {
         'fullName': student['fullName'] ?? 'Student',
         'studentCode': student['studentCode'],
         'classId': student['classId'],
+        'hasCompletedSetup': true, // Students don't need workspace naming
       };
     } catch (e) {
       rethrow;
@@ -230,6 +281,7 @@ class AuthService {
       final user = userCredential.user!;
 
       // Create user document with teacher role
+      // Teachers always have hasCompletedSetup = true (they join an existing org)
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -308,6 +360,37 @@ class AuthService {
       );
     } catch (e) {
       rethrow;
+    }
+  }
+
+  // ─── Check if current user needs setup ───────────────────────────────────
+
+  /// Returns true if the logged-in user has NOT completed setup
+  /// (i.e., needs to name their workspace)
+  Future<bool> needsSetup() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final userDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) return false;
+
+      final data = userDoc.data()!;
+      final role = data['role'] as String?;
+      final hasCompletedSetup = data['hasCompletedSetup'] as bool? ?? true;
+
+      // Only owners need setup (workspace naming)
+      if (role == AppConstants.roleOwner && !hasCompletedSetup) {
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      return false;
     }
   }
 }
