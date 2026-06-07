@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -150,23 +151,40 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       final user = userCredential.user!;
 
-      // Check if user exists in Firestore
-      final authService = ref.read(authServiceProvider);
+      // Check if user exists in Firestore by looking up their document directly
+      final firestore = FirebaseFirestore.instance;
+      final userDoc = await firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
 
-      // Try to fetch existing user data from Firestore
       Map<String, dynamic> userData;
-      try {
-        userData = await authService.loginTeacher(
-          email: user.email!,
-          password: '', // Won't be used for Google sign-in
-        );
-      } catch (e) {
-        // User doesn't exist in Firestore yet — create their profile
-        await authService.registerTeacher(
-          email: user.email!,
-          password: 'google_${user.uid}', // Placeholder password for Google users
-          fullName: user.displayName ?? 'Teacher',
-        );
+      if (userDoc.exists) {
+        // Existing user — fetch their data
+        final data = userDoc.data()!;
+        final role = data['role'] as String?;
+        if (role != AppConstants.roleTeacher) {
+          await FirebaseAuth.instance.signOut();
+          final googleSignIn = GoogleSignIn();
+          await googleSignIn.signOut();
+          throw Exception('This account is not a teacher account.');
+        }
+        userData = {
+          'id': user.uid,
+          'role': role ?? AppConstants.roleTeacher,
+          'fullName': data['fullName'] ?? 'Teacher',
+          'email': data['email'] ?? user.email!,
+        };
+      } else {
+        // New Google user — create their Firestore profile
+        await firestore.collection(AppConstants.usersCollection).doc(user.uid).set({
+          'id': user.uid,
+          'role': AppConstants.roleTeacher,
+          'fullName': user.displayName ?? 'Teacher',
+          'email': user.email!,
+          'institutionId': AppConstants.defaultInstitutionId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
         userData = {
           'id': user.uid,
           'role': AppConstants.roleTeacher,
