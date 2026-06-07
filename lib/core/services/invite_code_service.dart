@@ -1,19 +1,31 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'deep_link_service.dart';
 
 class InviteCodeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Random _random = Random();
+  final DeepLinkService _deepLinkService = DeepLinkService();
 
-  /// Generate a unique invite code
+  /// Generate a unique invite code string
   String _generateCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    return List.generate(
+      AppConstants.inviteCodeLength,
+      (_) => chars[_random.nextInt(chars.length)],
+    ).join();
+  }
+
+  /// Generate a URL-friendly code (no prefix, for join links)
+  String _generateUrlCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I,O,0,1 to avoid confusion
     return List.generate(8, (_) => chars[_random.nextInt(chars.length)]).join();
   }
 
-  /// Create an invite code for a teacher
-  Future<String> createTeacherInviteCode({
+  /// Create an invite code for a teacher.
+  /// Returns both the code (T-XXXXXXXX) and the shareable join URL.
+  Future<InviteCodeResult> createTeacherInviteCode({
     required String organizationId,
     required String createdBy,
     int maxUses = 1,
@@ -32,10 +44,27 @@ class InviteCodeService {
         exists = snapshot.docs.isNotEmpty;
       } while (exists);
 
+      // Generate URL-friendly code for join links
+      String urlCode;
+      bool urlExists;
+      do {
+        urlCode = _generateUrlCode();
+        final snapshot = await _firestore
+            .collection(AppConstants.inviteCodesCollection)
+            .where('urlCode', isEqualTo: urlCode)
+            .limit(1)
+            .get();
+        urlExists = snapshot.docs.isNotEmpty;
+      } while (urlExists);
+
+      final joinUrl = _deepLinkService.generateJoinLink(urlCode);
+
       final docRef = await _firestore
           .collection(AppConstants.inviteCodesCollection)
           .add({
         'code': code,
+        'urlCode': urlCode,
+        'joinUrl': joinUrl,
         'type': AppConstants.inviteTypeTeacher,
         'organizationId': organizationId,
         'createdBy': createdBy,
@@ -48,14 +77,22 @@ class InviteCodeService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      return code;
+      return InviteCodeResult(
+        id: docRef.id,
+        code: code,
+        urlCode: urlCode,
+        joinUrl: joinUrl,
+        type: AppConstants.inviteTypeTeacher,
+        organizationId: organizationId,
+      );
     } catch (e) {
       rethrow;
     }
   }
 
-  /// Create an invite code for a student
-  Future<String> createStudentInviteCode({
+  /// Create an invite code for a student.
+  /// Returns both the code (S-XXXXXXXX) and the shareable join URL.
+  Future<InviteCodeResult> createStudentInviteCode({
     required String organizationId,
     required String classId,
     required String createdBy,
@@ -74,10 +111,27 @@ class InviteCodeService {
         exists = snapshot.docs.isNotEmpty;
       } while (exists);
 
+      // Generate URL-friendly code for join links
+      String urlCode;
+      bool urlExists;
+      do {
+        urlCode = _generateUrlCode();
+        final snapshot = await _firestore
+            .collection(AppConstants.inviteCodesCollection)
+            .where('urlCode', isEqualTo: urlCode)
+            .limit(1)
+            .get();
+        urlExists = snapshot.docs.isNotEmpty;
+      } while (urlExists);
+
+      final joinUrl = _deepLinkService.generateJoinLink(urlCode);
+
       final docRef = await _firestore
           .collection(AppConstants.inviteCodesCollection)
           .add({
         'code': code,
+        'urlCode': urlCode,
+        'joinUrl': joinUrl,
         'type': AppConstants.inviteTypeStudent,
         'organizationId': organizationId,
         'classId': classId,
@@ -91,21 +145,40 @@ class InviteCodeService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      return code;
+      return InviteCodeResult(
+        id: docRef.id,
+        code: code,
+        urlCode: urlCode,
+        joinUrl: joinUrl,
+        type: AppConstants.inviteTypeStudent,
+        organizationId: organizationId,
+        classId: classId,
+      );
     } catch (e) {
       rethrow;
     }
   }
 
-  /// Validate an invite code
+  /// Validate an invite code (supports both T-XXXXXXXX format and URL code).
   Future<Map<String, dynamic>?> validateInviteCode(String code) async {
     try {
-      final snapshot = await _firestore
+      // Try exact code match first (T-XXXXXXXX or S-XXXXXXXX)
+      var snapshot = await _firestore
           .collection(AppConstants.inviteCodesCollection)
           .where('code', isEqualTo: code)
           .where('isUsed', isEqualTo: false)
           .limit(1)
           .get();
+
+      // If not found, try URL code match (from join link)
+      if (snapshot.docs.isEmpty) {
+        snapshot = await _firestore
+            .collection(AppConstants.inviteCodesCollection)
+            .where('urlCode', isEqualTo: code)
+            .where('isUsed', isEqualTo: false)
+            .limit(1)
+            .get();
+      }
 
       if (snapshot.docs.isEmpty) return null;
 
@@ -163,4 +236,37 @@ class InviteCodeService {
       rethrow;
     }
   }
+
+  /// Generate a shareable text for an invite code
+  String generateShareText({
+    required String organizationName,
+    required String joinUrl,
+    required String type,
+  }) {
+    final roleLabel = type == AppConstants.inviteTypeTeacher ? 'teacher' : 'student';
+    return 'Join $organizationName on Klasivo as a $roleLabel!\n\n'
+        '$joinUrl\n\n'
+        'Or enter code in the Klasivo app.';
+  }
+}
+
+/// Result of creating an invite code, including the shareable URL.
+class InviteCodeResult {
+  final String id;
+  final String code;          // T-XXXXXXXX or S-XXXXXXXX
+  final String urlCode;       // XXXXXXXX (URL-friendly, no prefix)
+  final String joinUrl;       // https://klasivo.app/join/XXXXXXXX
+  final String type;
+  final String organizationId;
+  final String? classId;
+
+  InviteCodeResult({
+    required this.id,
+    required this.code,
+    required this.urlCode,
+    required this.joinUrl,
+    required this.type,
+    required this.organizationId,
+    this.classId,
+  });
 }

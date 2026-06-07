@@ -5,21 +5,33 @@ class OrganizationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Create a new organization. Called automatically when a user registers.
+  /// Auto-generates a slug from the organization name.
   Future<String> createOrganization({
     required String ownerId,
     required String name,
     String? description,
     String? logoUrl,
+    String? contactEmail,
+    String? contactPhone,
+    String? website,
   }) async {
     try {
+      // Generate a unique slug from the name
+      final slug = await _generateUniqueSlug(name);
+
       final docRef = await _firestore
           .collection(AppConstants.organizationsCollection)
           .add({
         'ownerId': ownerId,
         'name': name,
+        'slug': slug,
         'description': description,
         'logoUrl': logoUrl,
+        'contactEmail': contactEmail,
+        'contactPhone': contactPhone,
+        'website': website,
         'isActive': true,
+        'isPortalEnabled': false, // Portal disabled by default
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -33,9 +45,14 @@ class OrganizationService {
   Future<void> updateOrganization({
     required String organizationId,
     String? name,
+    String? slug,
     String? description,
     String? logoUrl,
     bool? isActive,
+    bool? isPortalEnabled,
+    String? contactEmail,
+    String? contactPhone,
+    String? website,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -45,6 +62,19 @@ class OrganizationService {
       if (description != null) data['description'] = description;
       if (logoUrl != null) data['logoUrl'] = logoUrl;
       if (isActive != null) data['isActive'] = isActive;
+      if (isPortalEnabled != null) data['isPortalEnabled'] = isPortalEnabled;
+      if (contactEmail != null) data['contactEmail'] = contactEmail;
+      if (contactPhone != null) data['contactPhone'] = contactPhone;
+      if (website != null) data['website'] = website;
+
+      // If slug is being updated, validate uniqueness
+      if (slug != null) {
+        final isUnique = await _isSlugUnique(slug, excludeOrgId: organizationId);
+        if (!isUnique) {
+          throw Exception('This URL is already taken. Please choose a different one.');
+        }
+        data['slug'] = slug;
+      }
 
       await _firestore
           .collection(AppConstants.organizationsCollection)
@@ -275,5 +305,83 @@ class OrganizationService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // ─── Slug Utilities ──────────────────────────────────────────────────────
+
+  /// Convert an organization name to a URL-friendly slug.
+  /// Examples:
+  ///   "Ahmed Academy" → "ahmed-academy"
+  ///   "Math Center (Cairo)" → "math-center-cairo"
+  ///   "Al-Noor School 2024" → "al-noor-school-2024"
+  String _slugify(String name) {
+    return name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s-]'), '') // Remove special chars
+        .replaceAll(RegExp(r'\s+'), '-')      // Spaces to hyphens
+        .replaceAll(RegExp(r'-+'), '-')        // Multiple hyphens to single
+        .replaceAll(RegExp(r'^-|-$'), '')      // Trim hyphens
+        .substring(0, name.length > AppConstants.maxSlugLength
+            ? AppConstants.maxSlugLength
+            : name.length);
+  }
+
+  /// Generate a unique slug by checking Firestore for collisions.
+  /// If "ahmed-academy" exists, tries "ahmed-academy-2", "ahmed-academy-3", etc.
+  Future<String> _generateUniqueSlug(String name) async {
+    final baseSlug = _slugify(name);
+    String slug = baseSlug;
+    int suffix = 2;
+
+    while (!await _isSlugUnique(slug)) {
+      slug = '$baseSlug-$suffix';
+      suffix++;
+    }
+
+    return slug;
+  }
+
+  /// Check if a slug is unique in the organizations collection.
+  Future<bool> _isSlugUnique(String slug, {String? excludeOrgId}) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.organizationsCollection)
+          .where('slug', isEqualTo: slug)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return true;
+
+      // If we're updating an existing org, the slug might belong to it
+      if (excludeOrgId != null && snapshot.docs.first.id == excludeOrgId) {
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Get organization by slug (for public portal pages).
+  Future<Map<String, dynamic>?> getOrganizationBySlug(String slug) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.organizationsCollection)
+          .where('slug', isEqualTo: slug)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+      return {'id': snapshot.docs.first.id, ...snapshot.docs.first.data()};
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Generate the public portal URL for an organization.
+  String getOrgPortalUrl(String slug) {
+    return '${AppConstants.appBaseUrl}${AppConstants.pathOrg}/$slug';
   }
 }

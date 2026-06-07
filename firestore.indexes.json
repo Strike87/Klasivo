@@ -1,5 +1,8 @@
 {
   "indexes": [
+    { "collectionGroup": "organizations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "slug", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
+    { "collectionGroup": "organizations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "ownerId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
+
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
@@ -7,6 +10,7 @@
 
     { "collectionGroup": "invite_codes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "invite_codes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "code", "order": "ASCENDING" }, { "fieldPath": "isUsed", "order": "ASCENDING" }] },
+    { "collectionGroup": "invite_codes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "urlCode", "order": "ASCENDING" }, { "fieldPath": "isUsed", "order": "ASCENDING" }] },
 
     { "collectionGroup": "stages", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isArchived", "order": "ASCENDING" }, { "fieldPath": "order", "order": "ASCENDING" }] },
 

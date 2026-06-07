@@ -124,6 +124,42 @@ class AppConstants {
   static const String analyticsTypeClass = 'class';
   static const String analyticsTypeTeacher = 'teacher';
 
+  // ─── Domain & Deep Links ──────────────────────────────────────────────────
+
+  static const String appDomain = 'klasivo.app';
+  static const String appBaseUrl = 'https://klasivo.app';
+  static const String apiSubdomain = 'api.klasivo.app';
+  static const String apiBaseUrl = 'https://api.klasivo.app/v1';
+
+  // Deep link paths
+  static const String pathJoin = '/join';         // /join/{code}        → Teacher/Student invite
+  static const String pathExam = '/exam';          // /exam/{examId}      → Open exam screen
+  static const String pathResult = '/result';      // /result/{code}      → Student result page
+  static const String pathOrg = '/org';            // /org/{slug}         → Public org portal
+  static const String pathReset = '/reset';        // /reset              → Password reset
+  static const String pathVerify = '/verify';      // /verify             → Email verification
+
+  // Professional email addresses
+  static const String supportEmail = 'support@klasivo.app';
+  static const String adminEmail = 'admin@klasivo.app';
+  static const String accountsEmail = 'accounts@klasivo.app';
+  static const String helloEmail = 'hello@klasivo.app';
+
+  // Deep link parameter keys
+  static const String paramCode = 'code';
+  static const String paramOrgId = 'orgId';
+  static const String paramExamId = 'examId';
+  static const String paramResultId = 'resultId';
+  static const String paramSlug = 'slug';
+  static const String paramInviteCode = 'inviteCode';
+  static const String paramRole = 'role';
+
+  // Firebase Dynamic Links / App Links configuration
+  static const String androidPackageName = 'com.klasivo.app';
+  static const String iosBundleId = 'com.klasivo.app';
+  static const String dynamicLinkDomain = 'klasivo.page.link'; // Firebase Dynamic Links domain
+  static const String deepLinkScheme = 'klasivo';              // Custom URI scheme: klasivo://
+
   // ─── Config ──────────────────────────────────────────────────────────────
 
   // Auto-save interval (seconds)
@@ -140,4 +176,10 @@ class AppConstants {
 
   // Analytics cache duration (hours)
   static const int analyticsCacheDurationHours = 1;
+
+  // Invite code length (characters after T-/S- prefix)
+  static const int inviteCodeLength = 8;
+
+  // Organization slug max length
+  static const int maxSlugLength = 40;
 }

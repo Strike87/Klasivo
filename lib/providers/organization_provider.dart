@@ -57,9 +57,14 @@ class OrganizationData {
   final String id;
   final String ownerId;
   final String name;
+  final String? slug;
   final String? description;
   final String? logoUrl;
+  final String? contactEmail;
+  final String? contactPhone;
+  final String? website;
   final bool isActive;
+  final bool isPortalEnabled;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -67,12 +72,22 @@ class OrganizationData {
     required this.id,
     required this.ownerId,
     required this.name,
+    this.slug,
     this.description,
     this.logoUrl,
+    this.contactEmail,
+    this.contactPhone,
+    this.website,
     this.isActive = true,
+    this.isPortalEnabled = false,
     this.createdAt,
     this.updatedAt,
   });
+
+  /// Get the public portal URL for this organization.
+  String get portalUrl => slug != null
+      ? '${AppConstants.appBaseUrl}${AppConstants.pathOrg}/$slug'
+      : '';
 
   factory OrganizationData.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -80,9 +95,14 @@ class OrganizationData {
       id: doc.id,
       ownerId: data['ownerId'] ?? '',
       name: data['name'] ?? '',
+      slug: data['slug'],
       description: data['description'],
       logoUrl: data['logoUrl'],
+      contactEmail: data['contactEmail'],
+      contactPhone: data['contactPhone'],
+      website: data['website'],
       isActive: data['isActive'] ?? true,
+      isPortalEnabled: data['isPortalEnabled'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -93,9 +113,14 @@ class OrganizationData {
       id: map['id'] ?? '',
       ownerId: map['ownerId'] ?? '',
       name: map['name'] ?? '',
+      slug: map['slug'],
       description: map['description'],
       logoUrl: map['logoUrl'],
+      contactEmail: map['contactEmail'],
+      contactPhone: map['contactPhone'],
+      website: map['website'],
       isActive: map['isActive'] ?? true,
+      isPortalEnabled: map['isPortalEnabled'] ?? false,
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : null,
@@ -110,9 +135,14 @@ class OrganizationData {
       'id': id,
       'ownerId': ownerId,
       'name': name,
+      'slug': slug,
       'description': description,
       'logoUrl': logoUrl,
+      'contactEmail': contactEmail,
+      'contactPhone': contactPhone,
+      'website': website,
       'isActive': isActive,
+      'isPortalEnabled': isPortalEnabled,
     };
   }
 }
