@@ -235,12 +235,43 @@ class OrganizationService {
         batch.delete(doc.reference);
       }
 
+      // Delete all attendance records
+      final attSnapshot = await _firestore
+          .collection(AppConstants.attendanceCollection)
+          .where('organizationId', isEqualTo: organizationId)
+          .get();
+      for (final doc in attSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete all conversations
+      final convsSnapshot = await _firestore
+          .collection(AppConstants.conversationsCollection)
+          .where('organizationId', isEqualTo: organizationId)
+          .get();
+      for (final doc in convsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete all analytics cache
+      final analyticsSnapshot = await _firestore
+          .collection(AppConstants.analyticsCacheCollection)
+          .where('organizationId', isEqualTo: organizationId)
+          .get();
+      for (final doc in analyticsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
       // Delete the organization document itself
       batch.delete(_firestore
           .collection(AppConstants.organizationsCollection)
           .doc(organizationId));
 
       await batch.commit();
+
+      // Messages don't have organizationId directly - delete via conversations
+      // This requires a separate step since conversations were already deleted above
+      // The Cloud Function handles this more thoroughly
     } catch (e) {
       rethrow;
     }

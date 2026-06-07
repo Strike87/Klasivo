@@ -34,6 +34,16 @@ class AppConstants {
   static const String assignmentsCollection = 'assignments';
   static const String assignmentSubmissionsCollection = 'assignment_submissions';
 
+  // Attendance
+  static const String attendanceCollection = 'attendance';
+
+  // Messaging
+  static const String conversationsCollection = 'conversations';
+  static const String messagesCollection = 'messages';
+
+  // Analytics
+  static const String analyticsCacheCollection = 'analytics_cache';
+
   // Communication
   static const String notificationsCollection = 'notifications';
 
@@ -92,6 +102,13 @@ class AppConstants {
   static const String violationBackNavigation = 'back_navigation';
   static const String violationIdleTimeout = 'idle_timeout';
 
+  // ─── Attendance Status ────────────────────────────────────────────────────
+
+  static const String attendanceStatusPresent = 'present';
+  static const String attendanceStatusAbsent = 'absent';
+  static const String attendanceStatusLate = 'late';
+  static const String attendanceStatusExcused = 'excused';
+
   // ─── Notification Types ──────────────────────────────────────────────────
 
   static const String notificationExamPublished = 'exam_published';
@@ -99,6 +116,13 @@ class AppConstants {
   static const String notificationResultPublished = 'result_published';
   static const String notificationAnnouncement = 'announcement';
   static const String notificationViolation = 'violation';
+  static const String notificationNewMessage = 'new_message';
+
+  // ─── Analytics Types ──────────────────────────────────────────────────────
+
+  static const String analyticsTypeStudent = 'student';
+  static const String analyticsTypeClass = 'class';
+  static const String analyticsTypeTeacher = 'teacher';
 
   // ─── Config ──────────────────────────────────────────────────────────────
 
@@ -110,4 +134,10 @@ class AppConstants {
 
   // Default student password (before hashing)
   static const String defaultStudentPassword = '123456';
+
+  // Messaging
+  static const int maxMessageLength = 2000;
+
+  // Analytics cache duration (hours)
+  static const int analyticsCacheDurationHours = 1;
 }

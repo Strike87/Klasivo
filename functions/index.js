@@ -63,6 +63,10 @@ async function deleteOrganizationData(orgId) {
     'invite_codes',
     'assignments',
     'assignment_submissions',
+    'attendance',
+    'conversations',
+    'messages',
+    'analytics_cache',
     'notifications',
   ];
 
@@ -105,6 +109,25 @@ async function deleteOrganizationData(orgId) {
         totalDeleted += await deleteSnapshot(snapshot);
       }
       if (totalDeleted > 0) console.log(`Deleted ${totalDeleted} from assignment_submissions for org ${orgId}`);
+      continue;
+    }
+
+    if (collectionName === 'messages') {
+      // Delete messages by finding conversations in this org
+      const convsSnapshot = await db.collection('conversations')
+        .where('organizationId', '==', orgId)
+        .get();
+      const convIds = convsSnapshot.docs.map(doc => doc.id);
+
+      let totalDeleted = 0;
+      for (let i = 0; i < convIds.length; i += 30) {
+        const chunk = convIds.slice(i, i + 30);
+        const snapshot = await db.collection('messages')
+          .where('conversationId', 'in', chunk)
+          .get();
+        totalDeleted += await deleteSnapshot(snapshot);
+      }
+      if (totalDeleted > 0) console.log(`Deleted ${totalDeleted} from messages for org ${orgId}`);
       continue;
     }
 
@@ -205,6 +228,45 @@ async function cleanupUserReferences(uid) {
     await deleteSnapshot(codeSnapshot);
     console.log(`Deleted ${codeSnapshot.size} invite_codes for user ${uid}`);
   }
+
+  // Delete attendance records for this student
+  const attSnapshot = await db.collection('attendance')
+    .where('studentId', '==', uid)
+    .get();
+  if (!attSnapshot.empty) {
+    await deleteSnapshot(attSnapshot);
+    console.log(`Deleted ${attSnapshot.size} attendance records for user ${uid}`);
+  }
+
+  // Remove user from conversations (remove from participantIds)
+  const convSnapshot = await db.collection('conversations')
+    .where('participantIds', 'array-contains', uid)
+    .get();
+  if (!convSnapshot.empty) {
+    const batch = db.batch();
+    for (const doc of convSnapshot.docs) {
+      const participants = doc.data()['participantIds'] || [];
+      const updated = participants.filter(id => id !== uid);
+      if (updated.length === 0) {
+        // No participants left - delete the conversation
+        batch.delete(doc.ref);
+      } else {
+        batch.update(doc.ref, { 'participantIds': updated, 'updatedAt': admin.firestore.FieldValue.serverTimestamp() });
+      }
+    }
+    await batch.commit();
+    console.log(`Updated/removed ${convSnapshot.size} conversations for user ${uid}`);
+  }
+
+  // Delete analytics cache for this user
+  const studentCacheDoc = db.collection('analytics_cache').doc(`student_${uid}`);
+  const teacherCacheDoc = db.collection('analytics_cache').doc(`teacher_${uid}`);
+  const batch = db.batch();
+  const studentCache = await studentCacheDoc.get();
+  const teacherCache = await teacherCacheDoc.get();
+  if (studentCache.exists) batch.delete(studentCacheDoc);
+  if (teacherCache.exists) batch.delete(teacherCacheDoc);
+  await batch.commit();
 }
 
 /**
