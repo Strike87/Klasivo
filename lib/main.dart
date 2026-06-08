@@ -19,6 +19,7 @@ import 'features/auth/pages/welcome_screen.dart';
 import 'features/auth/pages/forgot_password_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
+import 'features/shell/parent_shell.dart';
 import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
@@ -52,6 +53,15 @@ import 'features/settings/pages/organization_settings_screen.dart';
 import 'features/settings/pages/profile_settings_screen.dart';
 import 'features/settings/pages/student_settings_screen.dart';
 import 'features/exam_instances/pages/exam_instances_screen.dart';
+// ─── v1.7 Imports ─────────────────────────────────────────────────────────────
+import 'features/assignments/pages/assignment_list_screen.dart';
+import 'features/assignments/pages/assignment_form_screen.dart';
+import 'features/assignments/pages/assignment_detail_screen.dart';
+import 'features/gradebook/pages/gradebook_screen.dart';
+import 'features/attendance/pages/attendance_screen.dart';
+import 'features/parent/pages/parent_login_screen.dart';
+import 'features/parent/pages/parent_link_screen.dart';
+import 'features/parent/pages/parent_dashboard.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
@@ -149,7 +159,7 @@ final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
   return notifier;
 });
 
-// ─── GoRouter with Auth Guards & v1.6 Navigation ─────────────────────────────
+// ─── GoRouter with Auth Guards & v1.7 Navigation ─────────────────────────────
 
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(authChangeNotifierProvider);
@@ -174,11 +184,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation.startsWith('/settings') ||
           state.matchedLocation.startsWith('/teacher');
       final isOnStudent = state.matchedLocation.startsWith('/student');
+      final isOnParent = state.matchedLocation.startsWith('/parent');
 
       // Splash → redirect based on auth state
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          // Owner hasn't completed setup → go to Welcome
           if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
@@ -186,6 +196,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return '/auth';
       }
@@ -195,7 +206,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!isLoggedIn) return '/auth';
         if (userRole != AppConstants.roleOwner) return '/dashboard';
         if (hasCompletedSetup) return '/dashboard';
-        return null; // Allow access
+        return null;
       }
 
       // Auth screens → redirect if already logged in
@@ -208,12 +219,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return null;
       }
 
       // Protected screens → require login
-      if (isOnDashboard || isOnStudent) {
+      if (isOnDashboard || isOnStudent || isOnParent) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
 
@@ -230,12 +242,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (userRole == AppConstants.roleStudent && isOnStudent) {
           return null;
         }
+        if (userRole == AppConstants.roleParent && isOnParent) {
+          return null;
+        }
 
         // Redirect to correct dashboard
         if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
           return '/dashboard';
         }
         if (userRole == AppConstants.roleStudent) return '/student';
+        if (userRole == AppConstants.roleParent) return '/parent';
       }
 
       return null;
@@ -263,6 +279,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'student-login',
             builder: (context, state) => const StudentLoginScreen(),
+          ),
+          GoRoute(
+            path: 'parent-login',
+            builder: (context, state) => const ParentLoginScreen(),
+          ),
+          GoRoute(
+            path: 'parent-link',
+            builder: (context, state) => const ParentLinkScreen(),
           ),
           GoRoute(
             path: 'forgot-password',
@@ -485,6 +509,35 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'question-bank',
             builder: (context, state) => const QuestionBankScreen(),
           ),
+
+          // ─── v1.7 New Routes ──────────────────────────────────────────
+          GoRoute(
+            path: 'assignments',
+            builder: (context, state) => const AssignmentListScreen(),
+            routes: [
+              GoRoute(
+                path: 'create',
+                builder: (context, state) => const AssignmentFormScreen(isEditing: false),
+              ),
+              GoRoute(
+                path: ':assignmentId',
+                builder: (context, state) {
+                  final assignmentId = state.pathParameters['assignmentId']!;
+                  return AssignmentDetailScreen(assignmentId: assignmentId);
+                },
+              ),
+            ],
+          ),
+          GoRoute(
+            path: 'gradebook',
+            builder: (context, state) => const GradebookScreen(),
+          ),
+          GoRoute(
+            path: 'attendance',
+            builder: (context, state) => const AttendanceScreen(),
+          ),
+
+          // ─── Existing v1.6 Routes ────────────────────────────────────
           GoRoute(
             path: 'notifications',
             builder: (context, state) => const NotificationCenterScreen(),
@@ -553,6 +606,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/student/settings',
         builder: (context, state) => const StudentSettingsScreen(),
+      ),
+
+      // ─── v1.7 Parent Shell Navigation ────────────────────────────────
+      ShellRoute(
+        builder: (context, state, child) => ParentShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/parent',
+            builder: (context, state) => const ParentDashboard(),
+          ),
+        ],
       ),
     ],
   );

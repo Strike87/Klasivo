@@ -7,17 +7,36 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Helper: Check if user is a teacher
-    function isTeacher() {
+    // Helper: Check if user is a teacher or owner
+    function isTeacherOrOwner() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
     }
 
     // Helper: Get user role
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
+
+    // Helper: Check if user is a parent
+    function isParent() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+    }
+
+    // Helper: Check if parent has approved link to a student
+    function parentHasAccessToStudent(studentId) {
+      return isParent() &&
+        exists(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)) &&
+        get(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)).data.status == 'approved';
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.6 Core Collections
+    // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Users Collection ======
     match /users/{userId} {
@@ -27,73 +46,71 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ====== Students Collection ======
-    match /students/{studentId} {
-      allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
-    }
+    // ====== Students (stored in users with role='student') ======
+    // No separate students collection — students ARE users
 
     // ====== Classes Collection ======
     match /classes/{classId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Stages Collection ======
     match /stages/{stageId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Grades Collection ======
     match /grades/{gradeId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Groups Collection ======
     match /groups/{groupId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Exams Collection ======
     match /exams/{examId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Questions Collection ======
     match /questions/{questionId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Question Bank Collection ======
-    match /question_bank/{questionId} {
+    match /question_banks/{questionId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ====== Submissions Collection ======
     match /submissions/{submissionId} {
-      allow read: if isAuth();
+      // Teachers and owners can read all; parents can read their linked student's submissions
+      allow read: if isTeacherOrOwner() ||
+        (isParent() && resource.data.studentId != null &&
+         parentHasAccessToStudent(resource.data.studentId));
       allow create: if isAuth();
       allow update: if isAuth();
       allow delete: if false;
@@ -118,8 +135,8 @@ service cloud.firestore {
     // ====== Exam Stats Collection ======
     match /exam_stats/{statId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
-      allow update: if isTeacher();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
       allow delete: if false;
     }
 
@@ -127,16 +144,154 @@ service cloud.firestore {
     match /violations/{violationId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isTeacher();
+      allow update: if isTeacherOrOwner();
       allow delete: if false;
     }
 
     // ====== Notifications Collection ======
     match /notifications/{notificationId} {
       allow read: if isAuth();
-      allow create: if isTeacher();
+      allow create: if isTeacherOrOwner();
       allow update: if isAuth();
       allow delete: if false;
+    }
+
+    // ====== Organizations Collection ======
+    match /organizations/{orgId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isTeacherOrOwner();
+      allow delete: if false;
+    }
+
+    // ====== Invite Codes Collection ======
+    match /invite_codes/{codeId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Subjects Collection ======
+    match /subjects/{subjectId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Group Members Collection ======
+    match /group_members/{memberId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Teacher Assignments Collection ======
+    match /teacher_assignments/{assignmentId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Conversations Collection ======
+    match /conversations/{conversationId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if false;
+    }
+
+    // ====== Messages Collection ======
+    match /messages/{messageId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if false;
+    }
+
+    // ====== Analytics Cache Collection ======
+    match /analytics_cache/{cacheId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.7 New Collections
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Assignments Collection ======
+    match /assignments/{assignmentId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Assignment Submissions Collection ======
+    match /assignment_submissions/{submissionId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Attendance Collection ======
+    match /attendance/{attendanceId} {
+      // Teachers/owners: full access; Parents: read own linked student's records
+      allow read: if isTeacherOrOwner() ||
+        (isParent() && resource.data.studentId != null &&
+         parentHasAccessToStudent(resource.data.studentId));
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Gradebook Collection ======
+    match /gradebook/{gradebookId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Gradebook Categories Collection ======
+    match /gradebook_categories/{categoryId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Gradebook Entries Collection ======
+    match /gradebook_entries/{entryId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Parent Links Collection ======
+    match /parent_links/{linkId} {
+      // Anyone authenticated can read (for code lookup); only teachers create; parents update on link
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isAuth() &&
+        (isTeacherOrOwner() ||
+         (isParent() && resource.data.parentId == request.auth.uid));
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Exam Templates Collection ======
+    match /exam_templates/{templateId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
   }
 }

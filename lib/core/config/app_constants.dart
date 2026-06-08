@@ -38,6 +38,17 @@ class AppConstants {
   // Attendance
   static const String attendanceCollection = 'attendance';
 
+  // Gradebook
+  static const String gradebookCollection = 'gradebook';
+  static const String gradebookCategoriesCollection = 'gradebook_categories';
+  static const String gradebookEntriesCollection = 'gradebook_entries';
+
+  // Parent Links
+  static const String parentLinksCollection = 'parent_links';
+
+  // Exam Templates
+  static const String examTemplatesCollection = 'exam_templates';
+
   // Messaging
   static const String conversationsCollection = 'conversations';
   static const String messagesCollection = 'messages';
@@ -53,6 +64,7 @@ class AppConstants {
   static const String roleOwner = 'owner';
   static const String roleTeacher = 'teacher';
   static const String roleStudent = 'student';
+  static const String roleParent = 'parent';
 
   // ─── Navigation Tabs ─────────────────────────────────────────────────────
   // Dashboard / Academic / People / Inbox / Settings
@@ -137,6 +149,21 @@ class AppConstants {
   static const String difficultyEasy = 'easy';
   static const String difficultyMedium = 'medium';
   static const String difficultyHard = 'hard';
+
+  // ─── Gradebook Category Types ────────────────────────────────────────────
+
+  static const String categoryExam = 'exam';
+  static const String categoryHomework = 'homework';
+  static const String categoryQuiz = 'quiz';
+  static const String categoryParticipation = 'participation';
+  static const String categoryProject = 'project';
+  static const String categoryFinal = 'final';
+
+  // ─── Parent Link Status ────────────────────────────────────────────────────
+
+  static const String parentLinkPending = 'pending';
+  static const String parentLinkApproved = 'approved';
+  static const String parentLinkRevoked = 'revoked';
 
   // ─── Submission Status ───────────────────────────────────────────────────
 
@@ -253,4 +280,13 @@ class AppConstants {
   // ─── Extra Collections (referenced by services) ─────────────────────────
 
   static const String examInstancesCollection = 'exam_instances';
+
+  // ─── Parent Route Paths ──────────────────────────────────────────────────
+
+  static const String routeParentHome = '/parent';
+  static const String routeParentResults = '/parent/results';
+  static const String routeParentAttendance = '/parent/attendance';
+  static const String routeParentProfile = '/parent/profile';
+  static const String routeParentLogin = '/auth/parent-login';
+  static const String routeParentLink = '/auth/parent-link';
 }
