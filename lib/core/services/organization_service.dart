@@ -315,15 +315,17 @@ class OrganizationService {
   ///   "Math Center (Cairo)" → "math-center-cairo"
   ///   "Al-Noor School 2024" → "al-noor-school-2024"
   String _slugify(String name) {
-    return name
+    final slug = name
         .toLowerCase()
         .replaceAll(RegExp(r'[^\w\s-]'), '') // Remove special chars
         .replaceAll(RegExp(r'\s+'), '-')      // Spaces to hyphens
         .replaceAll(RegExp(r'-+'), '-')        // Multiple hyphens to single
-        .replaceAll(RegExp(r'^-|-$'), '')      // Trim hyphens
-        .substring(0, name.length > AppConstants.maxSlugLength
-            ? AppConstants.maxSlugLength
-            : name.length);
+        .replaceAll(RegExp(r'^-|-$'), '');     // Trim hyphens
+
+    // Use slug.length (not name.length) since slugification shortens the string
+    return slug.length > AppConstants.maxSlugLength
+        ? slug.substring(0, AppConstants.maxSlugLength)
+        : slug;
   }
 
   /// Generate a unique slug by checking Firestore for collisions.
