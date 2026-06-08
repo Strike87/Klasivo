@@ -1,26 +1,44 @@
 {
   "project_info": {
-    "project_number": "1024604033166",
-    "project_id": "smart-exam-pro-3d1cf",
-    "storage_bucket": "smart-exam-pro-3d1cf.firebasestorage.app"
+    "project_number": "952580193002",
+    "project_id": "klasivo-prod",
+    "storage_bucket": "klasivo-prod.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1024604033166:android:703804057597d96705f9df",
+        "mobilesdk_app_id": "1:952580193002:android:f21194c3de1b0064ac3593",
         "android_client_info": {
           "package_name": "com.klasivo.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "952580193002-e9gki7n9ufeh3sl1pt5sg6h7m8d5afvp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.klasivo.app",
+            "certificate_hash": "b15b0e7849d5fc880c072a9cd7f0e498e8634150"
+          }
+        },
+        {
+          "client_id": "952580193002-bgpt98njck1s9pmg8dav6gsvm1uha045.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyCsKzPJuXgM7tyVrdGLj26EGkUlCe4mzsQ"
+          "current_key": "AIzaSyDfdIVXkqtfzA93CtJTrFsYEoSIc8CYTaw"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "952580193002-bgpt98njck1s9pmg8dav6gsvm1uha045.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

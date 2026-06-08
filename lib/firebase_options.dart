@@ -43,10 +43,10 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCsKzPJuXgM7tyVrdGLj26EGkUlCe4mzsQ',
-    appId: '1:1024604033166:android:703804057597d96705f9df',
-    messagingSenderId: '1024604033166',
-    projectId: 'smart-exam-pro-3d1cf',
-    storageBucket: 'smart-exam-pro-3d1cf.firebasestorage.app',
+    apiKey: 'AIzaSyDfdIVXkqtfzA93CtJTrFsYEoSIc8CYTaw',
+    appId: '1:952580193002:android:f21194c3de1b0064ac3593',
+    messagingSenderId: '952580193002',
+    projectId: 'klasivo-prod',
+    storageBucket: 'klasivo-prod.firebasestorage.app',
   );
 }
