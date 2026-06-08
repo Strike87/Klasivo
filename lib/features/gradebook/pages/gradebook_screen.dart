@@ -1638,7 +1638,7 @@ class _GradeCell extends StatelessWidget {
         ),
         decoration: hasData
             ? BoxDecoration(
-                color: color.withValues(alpha: 0.08),
+                color: color?.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),
               )
             : null,

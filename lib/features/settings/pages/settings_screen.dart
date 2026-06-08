@@ -9,6 +9,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../widgets/klasivo_components.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 
@@ -746,7 +747,7 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _codes.isEmpty
-                  ? const KlasivoEmptyState(
+                  ? KlasivoEmptyState(
                       icon: Icons.vpn_key_outlined,
                       title: 'No Invite Codes',
                       subtitle: 'Generate a code to invite teachers to your workspace',

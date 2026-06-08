@@ -12,6 +12,7 @@ import '../../../providers/group_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_components.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ASSIGNMENT FORM SCREEN — Klasivo v1.7

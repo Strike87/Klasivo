@@ -103,20 +103,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
                 : KlasivoColors.lightTextTertiary,
           );
         }),
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(
-              color: KlasivoColors.secondary,
-              size: 24,
-            );
-          }
-          return IconThemeData(
-            color: isDark
-                ? KlasivoColors.darkTextTertiary
-                : KlasivoColors.lightTextTertiary,
-            size: 24,
-          );
-        }),
+
         destinations: _destinations
             .map((dest) => NavigationDestination(
                   icon: Icon(dest.icon),

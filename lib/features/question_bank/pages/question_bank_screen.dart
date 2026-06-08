@@ -5,8 +5,8 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/question_bank_provider.dart';
 import '../../../providers/auth_provider.dart';
-import '../../widgets/klasivo_components.dart';
-import '../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/common_widgets.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // QUESTION BANK SCREEN v1.7 — Klasivo Design Token System

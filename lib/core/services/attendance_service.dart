@@ -299,7 +299,7 @@ class AttendanceService {
       int excused = 0;
 
       for (final doc in snapshot.docs) {
-        final status = doc.data()['status'] as String? ?? '';
+        final status = (doc.data() as Map<String, dynamic>)['status'] as String? ?? '';
         switch (status) {
           case 'present':
             present++;
@@ -360,7 +360,7 @@ class AttendanceService {
       int excused = 0;
 
       for (final doc in snapshot.docs) {
-        final status = doc.data()['status'] as String? ?? '';
+        final status = (doc.data() as Map<String, dynamic>)['status'] as String? ?? '';
         switch (status) {
           case 'present':
             present++;

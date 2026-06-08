@@ -217,7 +217,7 @@ class GradebookService {
       // Group entries by category
       final entriesByCategory = <String, List<QueryDocumentSnapshot>>{};
       for (final doc in entriesSnapshot.docs) {
-        final categoryId = doc.data()['categoryId'] as String? ?? '';
+        final categoryId = (doc.data() as Map<String, dynamic>)['categoryId'] as String? ?? '';
         entriesByCategory.putIfAbsent(categoryId, () => []).add(doc);
       }
 
@@ -228,7 +228,7 @@ class GradebookService {
       int totalEntries = entriesSnapshot.docs.length;
 
       for (final catDoc in categoriesSnapshot.docs) {
-        final catData = catDoc.data();
+        final catData = catDoc.data() as Map<String, dynamic>;
         final catId = catDoc.id;
         final catName = catData['name'] as String? ?? '';
         final catWeight = (catData['weight'] as num?)?.toDouble() ?? 0.0;
@@ -238,7 +238,7 @@ class GradebookService {
         double catSum = 0.0;
         double catMaxSum = 0.0;
         for (final entryDoc in catEntries) {
-          final entryData = entryDoc.data();
+          final entryData = entryDoc.data() as Map<String, dynamic>;
           catSum += (entryData['score'] as num?)?.toDouble() ?? 0.0;
           catMaxSum += (entryData['maxScore'] as num?)?.toDouble() ?? 0.0;
         }
@@ -273,7 +273,7 @@ class GradebookService {
       // Group all entries by student
       final allEntriesByStudent = <String, List<QueryDocumentSnapshot>>{};
       for (final doc in allEntriesSnapshot.docs) {
-        final sId = doc.data()['studentId'] as String? ?? '';
+        final sId = (doc.data() as Map<String, dynamic>)['studentId'] as String? ?? '';
         allEntriesByStudent.putIfAbsent(sId, () => []).add(doc);
       }
 
@@ -286,7 +286,7 @@ class GradebookService {
         // Group this student's entries by category
         final sEntriesByCategory = <String, List<QueryDocumentSnapshot>>{};
         for (final doc in sDocs) {
-          final cId = doc.data()['categoryId'] as String? ?? '';
+          final cId = (doc.data() as Map<String, dynamic>)['categoryId'] as String? ?? '';
           sEntriesByCategory.putIfAbsent(cId, () => []).add(doc);
         }
 
@@ -294,16 +294,16 @@ class GradebookService {
         double sTotalWeight = 0.0;
 
         for (final catDoc in categoriesSnapshot.docs) {
-          final catData = catDoc.data();
+          final catData2 = catDoc.data() as Map<String, dynamic>;
           final catId = catDoc.id;
-          final catWeight = (catData['weight'] as num?)?.toDouble() ?? 0.0;
+          final catWeight = (catData2['weight'] as num?)?.toDouble() ?? 0.0;
 
           final sCatEntries = sEntriesByCategory[catId] ?? [];
 
           double sCatSum = 0.0;
           double sCatMaxSum = 0.0;
           for (final entryDoc in sCatEntries) {
-            final entryData = entryDoc.data();
+            final entryData = entryDoc.data() as Map<String, dynamic>;
             sCatSum += (entryData['score'] as num?)?.toDouble() ?? 0.0;
             sCatMaxSum += (entryData['maxScore'] as num?)?.toDouble() ?? 0.0;
           }

@@ -23,7 +23,7 @@ class ExamInstancesScreen extends ConsumerWidget {
       body: instancesAsync.when(
         data: (snapshot) {
           final instances = snapshot.docs
-              .map((doc) => ExamInstanceData.fromFirestore(doc.data() as Map<String, dynamic>))
+              .map((doc) => ExamInstanceData.fromFirestore(doc))
               .toList();
 
           if (instances.isEmpty) {
