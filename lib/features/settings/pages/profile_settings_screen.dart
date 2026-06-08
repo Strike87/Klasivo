@@ -136,7 +136,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                       children: [
                         CircleAvatar(
                           radius: 50,
-                          backgroundColor: KlasivoColors.primary.withOpacity(0.1),
+                          backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
                           child: Text(
                             userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                             style: KlasivoTypography.displayMedium.copyWith(

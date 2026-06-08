@@ -492,7 +492,7 @@ class _QuestionsList extends ConsumerWidget {
                 dense: true,
                 leading: CircleAvatar(
                   radius: 14,
-                  backgroundColor: q.typeColor.withOpacity(0.1),
+                  backgroundColor: q.typeColor.withValues(alpha: 0.1),
                   child: Text(
                     '${index + 1}',
                     style: TextStyle(
@@ -548,7 +548,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -590,7 +590,7 @@ class _InfoCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),

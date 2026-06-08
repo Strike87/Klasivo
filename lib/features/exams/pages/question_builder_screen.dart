@@ -49,7 +49,7 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
-                color: theme.colorScheme.primary.withOpacity(0.05),
+                color: theme.colorScheme.primary.withValues(alpha: 0.05),
                 child: Row(
                   children: [
                     Icon(Icons.quiz_outlined, color: theme.colorScheme.primary),
@@ -135,7 +135,7 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, -2),
                     ),
@@ -292,7 +292,7 @@ class _QuestionCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: question.typeColor.withOpacity(0.1),
+                  backgroundColor: question.typeColor.withValues(alpha: 0.1),
                   child: Text(
                     '$questionNumber',
                     style: TextStyle(
@@ -307,7 +307,7 @@ class _QuestionCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: question.typeColor.withOpacity(0.1),
+                    color: question.typeColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -366,7 +366,7 @@ class _QuestionCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: opt == question.correctAnswer
-                              ? Colors.green.withOpacity(0.1)
+                              ? Colors.green.withValues(alpha: 0.1)
                               : Colors.transparent,
                           border: Border.all(
                             color: opt == question.correctAnswer
@@ -408,7 +408,7 @@ class _QuestionCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.05),
+                  color: Colors.green.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -454,7 +454,7 @@ class _AddQuestionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -852,7 +852,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
                             ? (selected) =>
                                 setState(() => _tfCorrectAnswer = true)
                             : null,
-                        selectedColor: Colors.green.withOpacity(0.2),
+                        selectedColor: Colors.green.withValues(alpha: 0.2),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -864,7 +864,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
                             ? (selected) =>
                                 setState(() => _tfCorrectAnswer = false)
                             : null,
-                        selectedColor: Colors.red.withOpacity(0.2),
+                        selectedColor: Colors.red.withValues(alpha: 0.2),
                       ),
                     ),
                   ],
@@ -984,7 +984,7 @@ class _OptionField extends StatelessWidget {
             height: 28,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isSelected ? Colors.green.withOpacity(0.1) : Colors.transparent,
+              color: isSelected ? Colors.green.withValues(alpha: 0.1) : Colors.transparent,
               border: Border.all(
                 color: isSelected ? Colors.green : Colors.grey[400]!,
                 width: isSelected ? 2 : 1,

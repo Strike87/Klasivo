@@ -358,7 +358,7 @@ class _ClassPerformanceCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8)),
                   child: const Icon(Icons.class_outlined,
                       color: Colors.blue, size: 20),
@@ -483,7 +483,7 @@ class _ClassPerformanceCard extends ConsumerWidget {
                               ),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: Colors.blue.withOpacity(0.1),
+                                color: Colors.blue.withValues(alpha: 0.1),
                               ),
                             ),
                             // Pass Rate line
@@ -706,7 +706,7 @@ class _ExamQuestionAnalysisCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8)),
                   child: const Icon(Icons.quiz_outlined,
                       color: Colors.orange, size: 20),
@@ -936,7 +936,7 @@ class _StatCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: color, size: 24),
               ),

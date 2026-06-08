@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -29,7 +30,7 @@ final gradebookCategoriesListProvider =
         .map((doc) => GradebookCategoryData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
@@ -52,7 +53,7 @@ final gradebookEntriesByStudentProvider =
         .map((doc) => GradebookEntryData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 

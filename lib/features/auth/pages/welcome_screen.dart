@@ -97,7 +97,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.xxl),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withOpacity(0.08),
+                      color: KlasivoColors.primary.withValues(alpha: 0.08),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(

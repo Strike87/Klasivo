@@ -119,7 +119,7 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                       width: 80,
                       height: 80,
                       decoration: BoxDecoration(
-                        color: KlasivoColors.primary.withOpacity(0.1),
+                        color: KlasivoColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                       ),
                       child: const Icon(
@@ -222,7 +222,7 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                       title: Text('Delete Workspace', style: KlasivoTypography.titleMedium.copyWith(color: KlasivoColors.error)),
                       subtitle: Text(
                         'Permanently delete this workspace and all its data. This action cannot be undone.',
-                        style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.error.withOpacity(0.7)),
+                        style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.error.withValues(alpha: 0.7)),
                       ),
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(

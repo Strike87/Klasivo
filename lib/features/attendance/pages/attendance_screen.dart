@@ -577,7 +577,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         onPressed: () => _markAllPresent(students),
         backgroundColor: KlasivoColors.secondarySurface,
         side: BorderSide(
-          color: KlasivoColors.secondary.withOpacity(0.3),
+          color: KlasivoColors.secondary.withValues(alpha: 0.3),
         ),
         labelStyle: KlasivoTypography.labelMedium.copyWith(
           color: KlasivoColors.secondary,
@@ -670,7 +670,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               backgroundColor: KlasivoColors.primary,
               foregroundColor: Colors.white,
               disabledBackgroundColor:
-                  KlasivoColors.primary.withOpacity(0.5),
+                  KlasivoColors.primary.withValues(alpha: 0.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(KlasivoRadius.md),
               ),
@@ -849,7 +849,7 @@ class _StudentAttendanceRow extends StatelessWidget {
         color: KlasivoColors.primarySurface,
         shape: BoxShape.circle,
         border: Border.all(
-          color: KlasivoColors.primary.withOpacity(0.2),
+          color: KlasivoColors.primary.withValues(alpha: 0.2),
           width: 1,
         ),
       ),

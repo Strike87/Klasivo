@@ -21,7 +21,7 @@ class ViolationService {
     String? ipAddress,
     int? questionIndex,
     int? timeElapsedSeconds,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String organizationId = AppConstants.defaultInstitutionId,
   }) async {
     try {
       final docRef =
@@ -36,7 +36,7 @@ class ViolationService {
         'ipAddress': ipAddress,
         'questionIndex': questionIndex,
         'timeElapsedSeconds': timeElapsedSeconds,
-        'institutionId': institutionId,
+        'organizationId': organizationId,
         'severity': _calculateSeverity(type),
         'isReviewed': false,
         'reviewedBy': null,
@@ -312,7 +312,7 @@ class ViolationData {
   final String? ipAddress;
   final int? questionIndex;
   final int? timeElapsedSeconds;
-  final String institutionId;
+  final String organizationId;
   final String severity;
   final bool isReviewed;
   final String? reviewedBy;
@@ -332,7 +332,7 @@ class ViolationData {
     this.ipAddress,
     this.questionIndex,
     this.timeElapsedSeconds,
-    this.institutionId = AppConstants.defaultInstitutionId,
+    this.organizationId = AppConstants.defaultInstitutionId,
     this.severity = 'medium',
     this.isReviewed = false,
     this.reviewedBy,
@@ -355,8 +355,8 @@ class ViolationData {
       ipAddress: data['ipAddress'],
       questionIndex: data['questionIndex'] as int?,
       timeElapsedSeconds: data['timeElapsedSeconds'] as int?,
-      institutionId:
-          data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      organizationId:
+          data['organizationId'] ?? data['institutionId'] ?? AppConstants.defaultInstitutionId,
       severity: data['severity'] ?? 'medium',
       isReviewed: data['isReviewed'] as bool? ?? false,
       reviewedBy: data['reviewedBy'],
@@ -427,7 +427,7 @@ class ViolationData {
       'details': details,
       'severity': severity,
       'isReviewed': isReviewed,
-      'institutionId': institutionId,
+      'organizationId': organizationId,
     };
   }
 }

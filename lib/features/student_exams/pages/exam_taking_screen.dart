@@ -422,10 +422,10 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: _remainingSeconds <= 60
-                        ? Colors.red.withOpacity(0.1)
+                        ? Colors.red.withValues(alpha: 0.1)
                         : _remainingSeconds <= 300
-                            ? Colors.orange.withOpacity(0.1)
-                            : theme.colorScheme.primary.withOpacity(0.1),
+                            ? Colors.orange.withValues(alpha: 0.1)
+                            : theme.colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -483,7 +483,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
-                        color: theme.colorScheme.primary.withOpacity(0.05),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.05),
                         child: Row(
                           children: [
                             Text(
@@ -517,7 +517,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                                     horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: currentQuestion.typeColor
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -556,7 +556,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                           color: Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, -2),
                             ),
@@ -610,7 +610,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                                                         _answers[questions[i].id]!
                                                             .isNotEmpty
                                                     ? Colors.green
-                                                        .withOpacity(0.2)
+                                                        .withValues(alpha: 0.2)
                                                     : Colors.grey[200],
                                             border: i == _currentQuestionIndex
                                                 ? null
@@ -731,7 +731,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                     ? Theme.of(context)
                         .colorScheme
                         .primary
-                        .withOpacity(0.05)
+                        .withValues(alpha: 0.05)
                     : null,
               ),
               child: Row(
@@ -798,7 +798,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                   width: currentAnswer == 'True' ? 2 : 1,
                 ),
                 color: currentAnswer == 'True'
-                    ? Colors.green.withOpacity(0.05)
+                    ? Colors.green.withValues(alpha: 0.05)
                     : null,
               ),
               child: Row(
@@ -845,7 +845,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                   width: currentAnswer == 'False' ? 2 : 1,
                 ),
                 color: currentAnswer == 'False'
-                    ? Colors.red.withOpacity(0.05)
+                    ? Colors.red.withValues(alpha: 0.05)
                     : null,
               ),
               child: Row(

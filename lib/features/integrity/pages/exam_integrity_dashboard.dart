@@ -109,7 +109,7 @@ class _ExamIntegrityContent extends ConsumerWidget {
 
         if (violations.isEmpty) {
           return Card(
-            color: Colors.green.withOpacity(0.05),
+            color: Colors.green.withValues(alpha: 0.05),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
@@ -341,7 +341,7 @@ class _ExamIntegrityContent extends ConsumerWidget {
                           CircleAvatar(
                             radius: 16,
                             backgroundColor:
-                                item.count >= 3 ? Colors.red.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                                item.count >= 3 ? Colors.red.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
                             child: Text('${item.count}',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold,
@@ -361,8 +361,8 @@ class _ExamIntegrityContent extends ConsumerWidget {
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color: item.count >= 3
-                                  ? Colors.red.withOpacity(0.1)
-                                  : Colors.orange.withOpacity(0.1),
+                                  ? Colors.red.withValues(alpha: 0.1)
+                                  : Colors.orange.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -549,7 +549,7 @@ class _ViolationTile extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: violation.severityColor.withOpacity(0.1),
+            color: violation.severityColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(violation.typeIcon,
@@ -565,7 +565,7 @@ class _ViolationTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: violation.severityColor.withOpacity(0.1),
+                color: violation.severityColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(violation.severity.toUpperCase(),

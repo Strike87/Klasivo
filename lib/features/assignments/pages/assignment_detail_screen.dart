@@ -220,7 +220,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                                 : isDark
                                     ? KlasivoColors.darkSurface
                                     : KlasivoColors.primarySurface)
-                            .withOpacity(isDark ? 0.15 : 1.0),
+                            .withValues(alpha: isDark ? 0.15 : 1.0),
                         borderRadius: BorderRadius.circular(KlasivoRadius.md),
                       ),
                       child: Row(
@@ -611,7 +611,7 @@ class _SubmissionCard extends StatelessWidget {
               // Avatar
               CircleAvatar(
                 radius: 20,
-                backgroundColor: statusColor.withOpacity(0.1),
+                backgroundColor: statusColor.withValues(alpha: 0.1),
                 child: Text(
                   studentName.isNotEmpty ? studentName[0].toUpperCase() : '?',
                   style: KlasivoTypography.titleMedium.copyWith(

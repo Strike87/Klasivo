@@ -59,7 +59,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => context.go('/auth/teacher-login'),
+          onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(
@@ -77,7 +77,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.xxl),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withOpacity(0.08),
+                      color: KlasivoColors.primary.withValues(alpha: 0.08),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(

@@ -10,19 +10,19 @@ final examInstanceServiceProvider = Provider<ExamInstanceService>((ref) {
 });
 
 /// Stream exam instances for a specific exam
-final examInstancesStreamProvider = StreamProvider.family<QuerySnapshot, String>((ref, examId) {
+final examInstancesStreamProvider = StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, examId) {
   return ref.read(examInstanceServiceProvider).getExamInstancesStream(examId);
 });
 
 /// Stream exam instances for a specific student
-final studentInstancesStreamProvider = StreamProvider.family<QuerySnapshot, String>((ref, studentId) {
+final studentInstancesStreamProvider = StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, studentId) {
   return ref.read(examInstanceServiceProvider).getStudentInstancesStream(studentId);
 });
 
 /// Exam instance data model
 class ExamInstanceData {
   final String id;
-  final String? institutionId;
+  final String? organizationId;
   final String examId;
   final String studentId;
   final String? classId;
@@ -35,7 +35,7 @@ class ExamInstanceData {
 
   ExamInstanceData({
     required this.id,
-    this.institutionId,
+    this.organizationId,
     required this.examId,
     required this.studentId,
     this.classId,
@@ -47,10 +47,11 @@ class ExamInstanceData {
     this.submissionId,
   });
 
-  factory ExamInstanceData.fromFirestore(Map<String, dynamic> data) {
+  factory ExamInstanceData.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
     return ExamInstanceData(
-      id: data['id'] as String? ?? '',
-      institutionId: data['institutionId'] as String?,
+      id: doc.id,
+      organizationId: data['organizationId'] as String? ?? data['institutionId'] as String?,
       examId: data['examId'] as String? ?? '',
       studentId: data['studentId'] as String? ?? '',
       classId: data['classId'] as String?,

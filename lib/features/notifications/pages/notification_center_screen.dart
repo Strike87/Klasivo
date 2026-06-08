@@ -65,7 +65,7 @@ class _NotificationCard extends ConsumerWidget {
 
     return Card(
       elevation: notification.isRead ? 0 : 1,
-      color: notification.isRead ? null : theme.colorScheme.primary.withOpacity(0.03),
+      color: notification.isRead ? null : theme.colorScheme.primary.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
         onTap: () async {
@@ -85,7 +85,7 @@ class _NotificationCard extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _typeColor.withOpacity(0.1),
+                  color: _typeColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(_typeIcon, color: _typeColor, size: 20),

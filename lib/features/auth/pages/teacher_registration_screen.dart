@@ -326,7 +326,7 @@ class _TeacherRegistrationScreenState
                     decoration: BoxDecoration(
                       color: KlasivoColors.errorSurface,
                       borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      border: Border.all(color: KlasivoColors.error.withOpacity(0.3)),
+                      border: Border.all(color: KlasivoColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -462,10 +462,10 @@ class _ToggleOption extends StatelessWidget {
           vertical: KlasivoSpacing.md,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? KlasivoColors.primary.withOpacity(0.1) : Colors.transparent,
+          color: isSelected ? KlasivoColors.primary.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(KlasivoRadius.sm + 2),
           border: isSelected
-              ? Border.all(color: KlasivoColors.primary.withOpacity(0.3))
+              ? Border.all(color: KlasivoColors.primary.withValues(alpha: 0.3))
               : Border.all(color: Colors.transparent),
         ),
         child: Column(

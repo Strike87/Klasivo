@@ -68,19 +68,30 @@ class StudentService {
       // This enables push notifications, security rules, etc.
       String? authUid;
       try {
+        // Save the current user so we can restore after student creation
+        final currentUser = _auth.currentUser;
+        final currentUserEmail = currentUser?.email;
+        final currentUserPassword = ''; // Cannot retrieve password - will use re-auth
+
         final userCredential = await _auth.createUserWithEmailAndPassword(
           email: authEmail,
           password: password,
         );
         authUid = userCredential.user?.uid;
 
-        // Sign out immediately — the owner/teacher is the one creating the student
+        // Sign out the student account immediately
         await _auth.signOut();
+
+        // Restore the original teacher/owner session
+        if (currentUserEmail != null) {
+          // Note: We cannot re-sign-in the teacher automatically because
+          // we don't have their password. The teacher will need to sign in again.
+          // This is handled gracefully by the auth state listener.
+        }
       } catch (authError) {
         // If Firebase Auth creation fails (e.g., email already exists),
         // the student can still function without Firebase Auth initially.
-        // The login flow has graceful fallback for this case.
-        print('Firebase Auth creation for student failed: $authError');
+        debugPrint('Firebase Auth creation for student failed: $authError');
       }
 
       // If Firebase Auth account was created, use its UID as the document ID
@@ -97,7 +108,6 @@ class StudentService {
         'authEmail': authEmail, // Internal email for Firebase Auth
         'email': email,         // User's real email (optional)
         'phone': phone,
-        'password': password,
         'passwordHash': passwordHash,
         'classId': classId,
         'photoUrl': null,
@@ -118,7 +128,7 @@ class StudentService {
       await _firestore
           .collection(AppConstants.classesCollection)
           .doc(classId)
-          .update({'studentCount': countSnapshot.count});
+          .update({'studentCount': countSnapshot.count ?? 0});
 
       // Re-sign in the creator (owner/teacher) since we signed out above
       // This is handled by the calling code — the auth state will be restored
@@ -150,7 +160,6 @@ class StudentService {
       if (grade != null) data['grade'] = grade;
       if (isActive != null) data['isActive'] = isActive;
       if (password != null && password.isNotEmpty) {
-        data['password'] = password;
         data['passwordHash'] = hashPassword(password);
 
         // Also update Firebase Auth password if the student has an auth account
@@ -205,7 +214,7 @@ class StudentService {
       await _firestore
           .collection(AppConstants.classesCollection)
           .doc(classId)
-          .update({'studentCount': countSnapshot.count});
+          .update({'studentCount': countSnapshot.count ?? 0});
     } catch (e) {
       rethrow;
     }
@@ -276,7 +285,6 @@ class StudentService {
           'authEmail': authEmail,
           'email': student['email'],
           'phone': student['phone'],
-          'password': password,
           'passwordHash': passwordHash,
           'classId': classId,
           'photoUrl': null,
@@ -301,7 +309,7 @@ class StudentService {
       await _firestore
           .collection(AppConstants.classesCollection)
           .doc(classId)
-          .update({'studentCount': countSnapshot.count});
+          .update({'studentCount': countSnapshot.count ?? 0});
 
       return createdIds;
     } catch (e) {
@@ -353,7 +361,7 @@ class StudentService {
 
       return true;
     } catch (e) {
-      print('Failed to create Firebase Auth account for student: $e');
+      debugPrint('Failed to create Firebase Auth account for student: $e');
       return false;
     }
   }

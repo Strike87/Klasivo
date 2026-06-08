@@ -53,6 +53,20 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
     ),
   ];
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncIndexWithRoute();
+  }
+
+  void _syncIndexWithRoute() {
+    final location = GoRouterState.of(context).matchedLocation;
+    final newIndex = _destinations.indexWhere((d) => location.startsWith(d.route));
+    if (newIndex != -1 && newIndex != _currentIndex) {
+      setState(() => _currentIndex = newIndex);
+    }
+  }
+
   void _onTabTap(int index) {
     if (index == _currentIndex) return;
     setState(() => _currentIndex = index);

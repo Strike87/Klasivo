@@ -117,7 +117,7 @@ final teacherAnalyticsProvider =
 final currentUserAnalyticsProvider = FutureProvider<Map<String, dynamic>>((ref) {
   final orgId = ref.watch(currentOrganizationIdProvider);
   final userId = ref.watch(currentUserIdProvider);
-  final role = ref.watch(currentUserRoleProvider);
+  final role = ref.watch(userRoleProvider);
 
   if (orgId == null || userId == null) {
     return {};

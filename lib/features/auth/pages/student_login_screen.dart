@@ -86,7 +86,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.lg),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.secondary.withOpacity(0.08),
+                      color: KlasivoColors.secondary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                     ),
                     child: const Icon(
@@ -188,7 +188,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
                     decoration: BoxDecoration(
                       color: KlasivoColors.errorSurface,
                       borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      border: Border.all(color: KlasivoColors.error.withOpacity(0.3)),
+                      border: Border.all(color: KlasivoColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [

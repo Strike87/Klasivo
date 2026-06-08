@@ -77,7 +77,7 @@ class NotificationDetailScreen extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.md),
                       decoration: BoxDecoration(
-                        color: _typeColor(type).withOpacity(0.1),
+                        color: _typeColor(type).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.md),
                       ),
                       child: Icon(_typeIcon(type), color: _typeColor(type), size: 28),
@@ -93,7 +93,7 @@ class NotificationDetailScreen extends ConsumerWidget {
                               vertical: KlasivoSpacing.xs,
                             ),
                             decoration: BoxDecoration(
-                              color: _typeColor(type).withOpacity(0.1),
+                              color: _typeColor(type).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                             ),
                             child: Text(

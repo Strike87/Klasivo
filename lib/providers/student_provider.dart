@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -26,7 +27,7 @@ final allStudentsProvider = Provider<List<StudentData>>((ref) {
         .map((doc) => StudentData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
@@ -38,7 +39,7 @@ final studentsByClassListProvider =
         .map((doc) => StudentData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 

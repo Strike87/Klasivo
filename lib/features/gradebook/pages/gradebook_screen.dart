@@ -391,7 +391,7 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
                 decoration: BoxDecoration(
-                  color: _categoryTypeColor(cat.type).withOpacity(0.1),
+                  color: _categoryTypeColor(cat.type).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                 ),
                 child: Icon(
@@ -651,8 +651,8 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     final bgColor = rowIndex.isEven
         ? Colors.transparent
         : (isDark
-            ? KlasivoColors.darkSurface.withOpacity(0.3)
-            : KlasivoColors.lightBackground.withOpacity(0.5));
+            ? KlasivoColors.darkSurface.withValues(alpha: 0.3)
+            : KlasivoColors.lightBackground.withValues(alpha: 0.5));
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1086,7 +1086,7 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
                           dense: true,
                           selected: isSelected,
                           selectedTileColor:
-                              KlasivoColors.primarySurface.withOpacity(0.3),
+                              KlasivoColors.primarySurface.withValues(alpha: 0.3),
                           leading: Icon(
                             isSelected
                                 ? Icons.radio_button_checked
@@ -1638,7 +1638,7 @@ class _GradeCell extends StatelessWidget {
         ),
         decoration: hasData
             ? BoxDecoration(
-                color: color.withOpacity(0.08),
+                color: color.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),
               )
             : null,
@@ -1704,7 +1704,7 @@ class _WeightedAverageCell extends StatelessWidget {
         vertical: KlasivoSpacing.xs + 2,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(KlasivoRadius.pill),
       ),
       child: Text(

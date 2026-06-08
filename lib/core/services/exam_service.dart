@@ -17,7 +17,7 @@ class ExamService {
     required int passingScore,
     bool isRandomized = false,
     bool allowRetake = false,
-    String institutionId = AppConstants.defaultInstitutionId,
+    String organizationId = AppConstants.defaultInstitutionId,
   }) async {
     try {
       final docRef =
@@ -35,7 +35,7 @@ class ExamService {
         'questionCount': 0,
         'isRandomized': isRandomized,
         'allowRetake': allowRetake,
-        'institutionId': institutionId,
+        'organizationId': organizationId,
         'createdAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
@@ -267,7 +267,9 @@ class ExamService {
       }
 
       // Create submission
-      final classId = questions.isNotEmpty ? (questions.first['examData']?['classId'] ?? '') : '';
+      // Get classId from the exam document
+      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
+      final classId = examDoc.data()?['classId'] as String? ?? '';
       final submissionRef = await _firestore.collection(AppConstants.submissionsCollection).add({
         'examId': examId,
         'studentId': studentId,
@@ -286,7 +288,9 @@ class ExamService {
       final docRef = await _firestore.collection(AppConstants.examInstancesCollection).add({
         'examId': examId,
         'studentId': studentId,
-        'randomizedQuestions': processedQuestions,
+        'classId': classId,
+        'isRandomized': randomizeQuestions,
+        'randomizedQuestionIds': processedQuestions.map((q) => q['id'] ?? '').toList(),
         'startedAt': FieldValue.serverTimestamp(),
         'submissionId': submissionRef.id,
       });
@@ -360,7 +364,10 @@ class ExamService {
             if (score < lowestScore) lowestScore = score;
           }
 
-          if (percentage >= passingScore) passCount++;
+          // Compare percentage (0-100) against passRate threshold
+          final totalMarks = (examDoc.data()?['totalMarks'] as int?) ?? 0;
+          final passThreshold = totalMarks > 0 ? (passingScore / totalMarks * 100) : passingScore.toDouble();
+          if (percentage >= passThreshold) passCount++;
         }
       }
 
@@ -402,10 +409,14 @@ class ExamService {
     }
   }
 
-  Stream<QuerySnapshot> getExamsStream(String teacherId) {
-    return _firestore
+  Stream<QuerySnapshot> getExamsStream(String teacherId, {String? organizationId}) {
+    var query = _firestore
         .collection(AppConstants.examsCollection)
-        .where('teacherId', isEqualTo: teacherId)
+        .where('teacherId', isEqualTo: teacherId);
+    if (organizationId != null) {
+      query = query.where('organizationId', isEqualTo: organizationId);
+    }
+    return query
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
@@ -425,7 +436,8 @@ class ExamService {
           .collection(AppConstants.examsCollection)
           .doc(examId)
           .get();
-      return doc.data();
+      if (!doc.exists) return null;
+      return {'id': doc.id, ...doc.data()!};
     } catch (e) {
       rethrow;
     }

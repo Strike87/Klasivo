@@ -45,7 +45,7 @@ class KlasivoAnalyticsCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.sm),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -334,7 +334,7 @@ class _KlasivoExpandableCardState extends State<KlasivoExpandableCard> {
                   Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
                     decoration: BoxDecoration(
-                      color: widget.color.withOpacity(0.1),
+                      color: widget.color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                     ),
                     child: Icon(widget.icon, color: widget.color, size: 22),
@@ -435,7 +435,7 @@ class KlasivoSubjectCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                 ),
                 child: Icon(Icons.menu_book_outlined, color: color, size: 20),
@@ -497,7 +497,7 @@ class KlasivoAttendanceButton extends StatelessWidget {
           vertical: KlasivoSpacing.sm + 2,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
+          color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(KlasivoRadius.md),
           border: Border.all(
             color: isSelected ? color : (Theme.of(context).brightness == Brightness.dark
@@ -558,7 +558,7 @@ class KlasivoEmptyState extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(KlasivoSpacing.xxl),
               decoration: BoxDecoration(
-                color: (iconColor ?? KlasivoColors.primary).withOpacity(0.08),
+                color: (iconColor ?? KlasivoColors.primary).withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -662,7 +662,7 @@ class KlasivoStatPill extends StatelessWidget {
         vertical: KlasivoSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(KlasivoRadius.md),
       ),
       child: Row(

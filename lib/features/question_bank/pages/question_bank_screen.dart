@@ -977,7 +977,7 @@ class _QuestionBankCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.sm),
                   decoration: BoxDecoration(
-                    color: question.difficultyColor.withOpacity(0.12),
+                    color: question.difficultyColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                   ),
                   child: Icon(
@@ -995,7 +995,7 @@ class _QuestionBankCard extends ConsumerWidget {
                     vertical: KlasivoSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: question.difficultyColor.withOpacity(0.12),
+                    color: question.difficultyColor.withValues(alpha: 0.12),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.pill),
                   ),
@@ -1015,7 +1015,7 @@ class _QuestionBankCard extends ConsumerWidget {
                     vertical: KlasivoSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: KlasivoColors.primary.withOpacity(0.08),
+                    color: KlasivoColors.primary.withValues(alpha: 0.08),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.pill),
                   ),
@@ -1085,7 +1085,7 @@ class _QuestionBankCard extends ConsumerWidget {
                       ),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? KlasivoColors.darkBorder.withOpacity(0.5)
+                            ? KlasivoColors.darkBorder.withValues(alpha: 0.5)
                             : KlasivoColors.lightBackground,
                         borderRadius:
                             BorderRadius.circular(KlasivoRadius.pill),
@@ -1199,7 +1199,7 @@ class _QuestionBankCard extends ConsumerWidget {
                       vertical: KlasivoSpacing.sm,
                     ),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withOpacity(0.08),
+                      color: KlasivoColors.primary.withValues(alpha: 0.08),
                       borderRadius:
                           BorderRadius.circular(KlasivoRadius.sm),
                     ),

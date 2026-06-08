@@ -52,19 +52,19 @@ class QrService {
 
       final classData = classDoc.data()!;
 
-      // Verify teacher owns this class
-      if (classData['teacherId'] != teacherId) {
+      // Verify teacher owns this class (check both 'createdBy' and 'teacherId' for compatibility)
+      final classOwner = classData['createdBy'] ?? classData['teacherId'];
+      if (classOwner != teacherId) {
         throw Exception('Invalid class QR code');
       }
 
-      // Update student's classId
+      // Update student's classId (students are stored in usersCollection)
       await _firestore
-          .collection(AppConstants.studentsCollection)
+          .collection(AppConstants.usersCollection)
           .doc(studentId)
           .update({
         'classId': classId,
-        'className': classData['name'],
-        'teacherId': teacherId,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;

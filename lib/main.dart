@@ -126,6 +126,7 @@ class MyApp extends ConsumerWidget {
 
 class AuthChangeNotifier extends ChangeNotifier {
   StreamSubscription<User?>? _firebaseSub;
+  StreamSubscription<dynamic>? _hivePollSub;
 
   AuthChangeNotifier() {
     _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(
@@ -137,7 +138,7 @@ class AuthChangeNotifier extends ChangeNotifier {
 
   void _startHiveWatch() {
     bool _lastValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
-    Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
+    _hivePollSub = Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
       final currentValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
       if (currentValue != _lastValue) {
         _lastValue = currentValue;
@@ -149,6 +150,7 @@ class AuthChangeNotifier extends ChangeNotifier {
   @override
   void dispose() {
     _firebaseSub?.cancel();
+    _hivePollSub?.cancel();
     super.dispose();
   }
 }
@@ -615,6 +617,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/parent',
             builder: (context, state) => const ParentDashboard(),
+          ),
+          GoRoute(
+            path: '/parent/results',
+            builder: (context, state) => const ParentResultsView(),
+          ),
+          GoRoute(
+            path: '/parent/attendance',
+            builder: (context, state) => const ParentAttendanceView(),
           ),
         ],
       ),

@@ -217,7 +217,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                     decoration: BoxDecoration(
                       color: KlasivoColors.errorSurface,
                       borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      border: Border.all(color: KlasivoColors.error.withOpacity(0.3)),
+                      border: Border.all(color: KlasivoColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [

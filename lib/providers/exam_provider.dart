@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -22,7 +23,10 @@ final examsProvider = Provider<List<ExamData>>((ref) {
     data: (snapshot) =>
         snapshot.docs.map((doc) => ExamData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) {
+      debugPrint('examsProvider error: $e');
+      return [];
+    },
   );
 });
 
@@ -82,13 +86,8 @@ final classExamsStreamProvider =
 });
 
 // ─── Exam Stats Stream Provider ──────────────────────────────────────────
-
-final examStatsStreamProvider = StreamProvider.family<QuerySnapshot, String>((ref, examId) {
-  return FirebaseFirestore.instance
-      .collection(AppConstants.examStatsCollection)
-      .where('examId', isEqualTo: examId)
-      .snapshots();
-});
+// NOTE: examStatsStreamProvider is defined in exam_stats_provider.dart
+// to avoid duplicate provider definitions.
 
 // ─── Exam Data Model ────────────────────────────────────────────────────────
 
@@ -107,7 +106,7 @@ class ExamData {
   final int questionCount;
   final bool isRandomized;
   final bool allowRetake;
-  final String institutionId;
+  final String organizationId;
   final DateTime? createdAt;
   final DateTime? publishedAt;
 
@@ -126,7 +125,7 @@ class ExamData {
     this.questionCount = 0,
     this.isRandomized = false,
     this.allowRetake = false,
-    this.institutionId = AppConstants.defaultInstitutionId,
+    this.organizationId = AppConstants.defaultInstitutionId,
     this.createdAt,
     this.publishedAt,
   });
@@ -148,7 +147,7 @@ class ExamData {
       questionCount: data['questionCount'] as int? ?? 0,
       isRandomized: data['isRandomized'] as bool? ?? false,
       allowRetake: data['allowRetake'] as bool? ?? false,
-      institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      organizationId: data['organizationId'] ?? data['institutionId'] ?? AppConstants.defaultInstitutionId,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       publishedAt: (data['publishedAt'] as Timestamp?)?.toDate(),
     );
@@ -186,6 +185,9 @@ class ExamData {
       'questionCount': questionCount,
       'isRandomized': isRandomized,
       'allowRetake': allowRetake,
+      'organizationId': organizationId,
+      'createdAt': createdAt,
+      'publishedAt': publishedAt,
     };
   }
 }

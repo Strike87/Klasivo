@@ -110,7 +110,7 @@ class ExamResultsScreen extends ConsumerWidget {
                   // ── Precomputed Stats Banner ──
                   if (liveStats != null)
                     Card(
-                      color: Colors.blue.withOpacity(0.05),
+                      color: Colors.blue.withValues(alpha: 0.05),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                       child: Padding(
@@ -222,8 +222,8 @@ class ExamResultsScreen extends ConsumerWidget {
                         return Chip(
                           label: Text('$range: $count ($pct%)',
                               style: TextStyle(fontSize: 11, color: color)),
-                          backgroundColor: color.withOpacity(0.1),
-                          side: BorderSide(color: color.withOpacity(0.3)),
+                          backgroundColor: color.withValues(alpha: 0.1),
+                          side: BorderSide(color: color.withValues(alpha: 0.3)),
                         );
                       }).toList(),
                     ),
@@ -460,7 +460,7 @@ class _StudentResultCard extends ConsumerWidget {
         leading: CircleAvatar(
           radius: 22,
           backgroundColor:
-              (passed ? Colors.green : Colors.red).withOpacity(0.1),
+              (passed ? Colors.green : Colors.red).withValues(alpha: 0.1),
           child: Text(
             '${submission.percentage}%',
             style: TextStyle(
@@ -483,7 +483,7 @@ class _StudentResultCard extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(

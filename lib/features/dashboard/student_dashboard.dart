@@ -394,7 +394,7 @@ class _ActiveExamsList extends ConsumerWidget {
                           color: (isActive
                                   ? KlasivoColors.accent
                                   : KlasivoColors.primary)
-                              .withOpacity(0.1),
+                              .withValues(alpha: 0.1),
                           borderRadius:
                               BorderRadius.circular(KlasivoRadius.sm),
                         ),
@@ -515,7 +515,7 @@ class _RecentResultsList extends ConsumerWidget {
               radius: 20,
               backgroundColor:
                   (passed ? KlasivoColors.secondary : KlasivoColors.error)
-                      .withOpacity(0.1),
+                      .withValues(alpha: 0.1),
               child: Text(
                 '${sub.percentage}%',
                 style: KlasivoTypography.labelMedium.copyWith(

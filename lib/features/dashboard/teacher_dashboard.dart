@@ -41,7 +41,7 @@ class TeacherDashboard extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.sm),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withOpacity(0.1),
+                      color: KlasivoColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                     ),
                     child: const Icon(
@@ -300,7 +300,7 @@ class _RecentClassesList extends ConsumerWidget {
             leading: Container(
               padding: const EdgeInsets.all(KlasivoSpacing.sm),
               decoration: BoxDecoration(
-                color: KlasivoColors.primary.withOpacity(0.1),
+                color: KlasivoColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),
               ),
               child: const Icon(
@@ -371,7 +371,7 @@ class _RecentStudentsList extends ConsumerWidget {
             dense: true,
             leading: CircleAvatar(
               radius: 18,
-              backgroundColor: KlasivoColors.secondary.withOpacity(0.1),
+              backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
               child: Text(
                 student.fullName.isNotEmpty
                     ? student.fullName[0].toUpperCase()
@@ -433,16 +433,16 @@ class _QuickAction extends StatelessWidget {
             horizontal: KlasivoSpacing.sm + 2,
           ),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.06),
+            color: color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            border: Border.all(color: color.withOpacity(0.15)),
+            border: Border.all(color: color.withValues(alpha: 0.15)),
           ),
           child: Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                 ),
                 child: Icon(icon, color: color, size: 24),

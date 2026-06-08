@@ -143,7 +143,7 @@ class _ResultCard extends ConsumerWidget {
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: (passed ? Colors.green : Colors.red)
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -175,7 +175,7 @@ class _ResultCard extends ConsumerWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
@@ -208,7 +208,7 @@ class _ResultCard extends ConsumerWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: (passed ? Colors.green : Colors.red)
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                     ),
                     child: Center(
                       child: Text(
@@ -492,7 +492,7 @@ class _DetailCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -577,8 +577,8 @@ class _AnswersReviewList extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(10),
                     side: BorderSide(
                       color: isCorrect
-                          ? Colors.green.withOpacity(0.3)
-                          : Colors.red.withOpacity(0.3),
+                          ? Colors.green.withValues(alpha: 0.3)
+                          : Colors.red.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -594,7 +594,7 @@ class _AnswersReviewList extends ConsumerWidget {
                               backgroundColor: (isCorrect
                                       ? Colors.green
                                       : Colors.red)
-                                  .withOpacity(0.1),
+                                  .withValues(alpha: 0.1),
                               child: Text(
                                 '${index + 1}',
                                 style: TextStyle(
@@ -612,7 +612,7 @@ class _AnswersReviewList extends ConsumerWidget {
                                   horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color:
-                                    q.typeColor.withOpacity(0.1),
+                                    q.typeColor.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(

@@ -57,7 +57,7 @@ final userIdProvider = StateProvider<String?>((ref) {
 });
 
 // ─── Organization ID Provider (persisted with Hive) ──────────────────────────
-
+// Alias — canonical definition is currentOrganizationIdProvider in organization_provider.dart
 final organizationIdProvider = StateProvider<String?>((ref) {
   final box = Hive.box(AppConstants.authBox);
   return box.get('organizationId') as String?;

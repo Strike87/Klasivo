@@ -265,7 +265,7 @@ class _StudentExamCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
+                        color: Colors.orange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Row(
@@ -292,7 +292,7 @@ class _StudentExamCard extends StatelessWidget {
                         color: (submission!.percentage >= exam.passingScore
                                 ? Colors.green
                                 : Colors.red)
-                            .withOpacity(0.1),
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(

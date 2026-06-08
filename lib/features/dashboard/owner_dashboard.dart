@@ -44,7 +44,7 @@ class OwnerDashboard extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.sm),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withOpacity(0.1),
+                      color: KlasivoColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                     ),
                     child: const Icon(
@@ -267,9 +267,9 @@ class _QuickActionChip extends StatelessWidget {
             vertical: KlasivoSpacing.lg,
           ),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.06),
+            color: color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            border: Border.all(color: color.withOpacity(0.15)),
+            border: Border.all(color: color.withValues(alpha: 0.15)),
           ),
           child: Column(
             children: [
@@ -318,7 +318,7 @@ class _RecentNotificationsList extends ConsumerWidget {
             leading: Container(
               padding: const EdgeInsets.all(KlasivoSpacing.sm),
               decoration: BoxDecoration(
-                color: _typeColor(n.type).withOpacity(0.1),
+                color: _typeColor(n.type).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),
               ),
               child: Icon(_typeIcon(n.type), color: _typeColor(n.type), size: 18),

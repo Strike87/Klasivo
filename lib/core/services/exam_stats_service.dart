@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 
@@ -24,7 +25,7 @@ class ExamStatsService {
       final totalMarks = examData['totalMarks'] as int? ?? 0;
       final classId = examData['classId'] as String? ?? '';
       final institutionId =
-          examData['institutionId'] as String? ?? AppConstants.defaultInstitutionId;
+          examData['organizationId'] as String? ?? AppConstants.defaultInstitutionId;
 
       // Get all submissions for this exam
       final submissionsSnapshot = await _firestore
@@ -36,6 +37,7 @@ class ExamStatsService {
       final classStudentsSnapshot = await _firestore
           .collection(AppConstants.studentsCollection)
           .where('classId', isEqualTo: classId)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .get();
       final totalStudents = classStudentsSnapshot.size;
 
@@ -108,7 +110,7 @@ class ExamStatsService {
       final statsData = <String, dynamic>{
         'examId': examId,
         'classId': classId,
-        'institutionId': institutionId,
+        'organizationId': institutionId,
         'totalStudents': totalStudents,
         'submittedStudents': submittedStudents,
         'absentStudents': totalStudents - submittedStudents,
@@ -183,7 +185,7 @@ class ExamStatsService {
     final mean = scores.reduce((a, b) => a + b) / scores.length;
     final sumSquaredDiff =
         scores.map((s) => (s - mean) * (s - mean)).reduce((a, b) => a + b);
-    return (sumSquaredDiff / (scores.length - 1));
+    return sqrt(sumSquaredDiff / (scores.length - 1));
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -468,7 +470,7 @@ class ExamStatsData {
   final String id;
   final String examId;
   final String classId;
-  final String institutionId;
+  final String organizationId;
   final int totalStudents;
   final int submittedStudents;
   final int absentStudents;
@@ -491,7 +493,7 @@ class ExamStatsData {
     required this.id,
     required this.examId,
     required this.classId,
-    this.institutionId = AppConstants.defaultInstitutionId,
+    this.organizationId = AppConstants.defaultInstitutionId,
     this.totalStudents = 0,
     this.submittedStudents = 0,
     this.absentStudents = 0,
@@ -517,7 +519,7 @@ class ExamStatsData {
       id: doc.id,
       examId: data['examId'] ?? '',
       classId: data['classId'] ?? '',
-      institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      organizationId: data['organizationId'] ?? data['institutionId'] ?? AppConstants.defaultInstitutionId,
       totalStudents: data['totalStudents'] as int? ?? 0,
       submittedStudents: data['submittedStudents'] as int? ?? 0,
       absentStudents: data['absentStudents'] as int? ?? 0,

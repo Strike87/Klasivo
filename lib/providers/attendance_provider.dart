@@ -62,7 +62,7 @@ final groupAttendanceProvider = StreamProvider<QuerySnapshot>((ref) {
 final studentAttendanceProvider = StreamProvider<QuerySnapshot>((ref) {
   final orgId = ref.watch(currentOrganizationIdProvider);
   final userId = ref.watch(currentUserIdProvider);
-  final role = ref.watch(currentUserRoleProvider);
+  final role = ref.watch(userRoleProvider);
 
   if (orgId == null || userId == null || role != AppConstants.roleStudent) {
     return const Stream.empty();
@@ -79,7 +79,7 @@ final studentAttendanceProvider = StreamProvider<QuerySnapshot>((ref) {
 final studentAttendanceStatsProvider = FutureProvider<Map<String, dynamic>>((ref) {
   final orgId = ref.watch(currentOrganizationIdProvider);
   final userId = ref.watch(currentUserIdProvider);
-  final role = ref.watch(currentUserRoleProvider);
+  final role = ref.watch(userRoleProvider);
 
   if (orgId == null || userId == null || role != AppConstants.roleStudent) {
     return {

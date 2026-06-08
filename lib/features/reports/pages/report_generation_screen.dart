@@ -100,7 +100,7 @@ class _ReportGenerationScreenState
             // ── Preview Info ──
             if (_canGenerate()) ...[
               Card(
-                color: Colors.blue.withOpacity(0.05),
+                color: Colors.blue.withValues(alpha: 0.05),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 child: Padding(

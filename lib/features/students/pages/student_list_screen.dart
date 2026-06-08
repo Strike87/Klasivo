@@ -55,7 +55,7 @@ class StudentListScreen extends ConsumerWidget {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
-                  color: theme.colorScheme.primary.withOpacity(0.05),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.05),
                   child: Row(
                     children: [
                       Icon(Icons.people_outline,
@@ -162,7 +162,7 @@ class _StudentCard extends StatelessWidget {
             // ── Avatar ──
             CircleAvatar(
               radius: 24,
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
               child: Text(
                 student.fullName.isNotEmpty
                     ? student.fullName[0].toUpperCase()
@@ -196,7 +196,7 @@ class _StudentCard extends StatelessWidget {
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
+                          color: Colors.green.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(

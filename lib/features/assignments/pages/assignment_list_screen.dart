@@ -305,7 +305,7 @@ class _AssignmentCard extends StatelessWidget {
                       child: Icon(
                         Icons.delete_outline,
                         size: 18,
-                        color: KlasivoColors.error.withOpacity(0.7),
+                        color: KlasivoColors.error.withValues(alpha: 0.7),
                       ),
                     ),
                   ),

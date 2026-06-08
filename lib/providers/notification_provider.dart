@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,7 +24,7 @@ final notificationsProvider = Provider<List<NotificationData>>((ref) {
     data: (snapshot) =>
         snapshot.docs.map((doc) => NotificationData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 

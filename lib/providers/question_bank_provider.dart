@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,7 +22,7 @@ final questionBankProvider = Provider<List<QuestionBankData>>((ref) {
   return asyncQuestions.when(
     data: (snapshot) => snapshot.docs.map((doc) => QuestionBankData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
@@ -67,7 +68,7 @@ class QuestionBankData {
   final List<String> tags;
   final String? imageUrl;
   final int usageCount;
-  final String institutionId;
+  final String organizationId;
   final DateTime? createdAt;
 
   QuestionBankData({
@@ -86,7 +87,7 @@ class QuestionBankData {
     this.tags = const [],
     this.imageUrl,
     this.usageCount = 0,
-    this.institutionId = AppConstants.defaultInstitutionId,
+    this.organizationId = AppConstants.defaultInstitutionId,
     this.createdAt,
   });
 
@@ -108,7 +109,7 @@ class QuestionBankData {
       tags: List<String>.from(data['tags'] ?? []),
       imageUrl: data['imageUrl'],
       usageCount: data['usageCount'] ?? 0,
-      institutionId: data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      organizationId: data['organizationId'] ?? data['institutionId'] ?? AppConstants.defaultInstitutionId,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -9,7 +10,7 @@ final assignmentServiceProvider =
     Provider<AssignmentService>((ref) => AssignmentService());
 
 final assignmentsByClassProvider =
-    StreamProvider.family<QuerySnapshot, String>((ref, classId) {
+    StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, classId) {
   return ref.read(assignmentServiceProvider).getAssignmentsByClassStream(classId);
 });
 
@@ -28,7 +29,7 @@ final assignmentsProvider = Provider<List<AssignmentData>>((ref) {
         .map((doc) => AssignmentData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
@@ -40,7 +41,7 @@ final assignmentsByClassListProvider =
         .map((doc) => AssignmentData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 

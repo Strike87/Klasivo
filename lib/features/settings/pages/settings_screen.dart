@@ -43,7 +43,7 @@ class SettingsScreen extends ConsumerWidget {
                     children: [
                       CircleAvatar(
                         radius: 32,
-                        backgroundColor: KlasivoColors.primary.withOpacity(0.1),
+                        backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
                         child: Text(
                           userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                           style: KlasivoTypography.headlineSmall.copyWith(
@@ -74,8 +74,8 @@ class SettingsScreen extends ConsumerWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: userRole == AppConstants.roleOwner
-                                    ? KlasivoColors.primary.withOpacity(0.1)
-                                    : KlasivoColors.secondary.withOpacity(0.1),
+                                    ? KlasivoColors.primary.withValues(alpha: 0.1)
+                                    : KlasivoColors.secondary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                               ),
                               child: Text(
@@ -203,7 +203,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.info_outline_rounded,
                     iconColor: KlasivoColors.primary,
                     title: 'About Klasivo',
-                    subtitle: 'Version 1.6.0',
+                    subtitle: 'Version 1.7.0',
                     onTap: () => _showAbout(context),
                   ),
                 ],
@@ -504,7 +504,7 @@ class SettingsScreen extends ConsumerWidget {
       applicationIcon: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.md),
         decoration: BoxDecoration(
-          color: KlasivoColors.primary.withOpacity(0.1),
+          color: KlasivoColors.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(KlasivoRadius.md),
         ),
         child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.primary),
@@ -569,7 +569,7 @@ class _SettingsTile extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.sm),
         decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
+          color: iconColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         ),
         child: Icon(icon, color: iconColor, size: 20),
@@ -601,7 +601,7 @@ class _ThemeToggleTileState extends ConsumerState<_ThemeToggleTile> {
       leading: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.sm),
         decoration: BoxDecoration(
-          color: KlasivoColors.accent.withOpacity(0.1),
+          color: KlasivoColors.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         ),
         child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
@@ -767,8 +767,8 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
                                   padding: const EdgeInsets.all(KlasivoSpacing.sm),
                                   decoration: BoxDecoration(
                                     color: isActive
-                                        ? KlasivoColors.secondary.withOpacity(0.1)
-                                        : KlasivoColors.error.withOpacity(0.1),
+                                        ? KlasivoColors.secondary.withValues(alpha: 0.1)
+                                        : KlasivoColors.error.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                                   ),
                                   child: Icon(
@@ -871,7 +871,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
                 decoration: BoxDecoration(
-                  color: KlasivoColors.primary.withOpacity(0.1),
+                  color: KlasivoColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                 ),
                 child: Text('${_teachers.length}',
@@ -899,7 +899,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
                           children: [
                             CircleAvatar(
                               radius: 20,
-                              backgroundColor: (isOwner ? KlasivoColors.primary : KlasivoColors.secondary).withOpacity(0.1),
+                              backgroundColor: (isOwner ? KlasivoColors.primary : KlasivoColors.secondary).withValues(alpha: 0.1),
                               child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
                                 style: KlasivoTypography.titleMedium.copyWith(
                                   color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
@@ -919,7 +919,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
                               decoration: BoxDecoration(
-                                color: isOwner ? KlasivoColors.primary.withOpacity(0.1) : KlasivoColors.secondary.withOpacity(0.1),
+                                color: isOwner ? KlasivoColors.primary.withValues(alpha: 0.1) : KlasivoColors.secondary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                               ),
                               child: Text(isOwner ? 'Owner' : 'Teacher',

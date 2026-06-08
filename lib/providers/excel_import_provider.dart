@@ -1,16 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/services/excel_import_service.dart';
-import '../core/services/auth_service.dart';
+import 'auth_provider.dart'; // authServiceProvider is defined here
 
 // ==================== SERVICE PROVIDERS ====================
 
 final excelImportServiceProvider = Provider<ExcelImportService>((ref) {
   return ExcelImportService();
-});
-
-final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService();
 });
 
 // ==================== IMPORT STATE ====================

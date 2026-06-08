@@ -343,7 +343,7 @@ class _ResultsAnalyticsRow extends ConsumerWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withOpacity(0.3),
+                color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(KlasivoRadius.sm),
               ),
             ),
@@ -352,7 +352,7 @@ class _ResultsAnalyticsRow extends ConsumerWidget {
               width: 60,
               height: 24,
               decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withOpacity(0.3),
+                color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(KlasivoRadius.xs),
               ),
             ),
@@ -361,7 +361,7 @@ class _ResultsAnalyticsRow extends ConsumerWidget {
               width: 80,
               height: 12,
               decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withOpacity(0.2),
+                color: KlasivoColors.lightBorder.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(KlasivoRadius.xs),
               ),
             ),
@@ -443,7 +443,7 @@ class _ParentResultsList extends ConsumerWidget {
                   backgroundColor: (passed
                           ? KlasivoColors.secondary
                           : KlasivoColors.error)
-                      .withOpacity(0.1),
+                      .withValues(alpha: 0.1),
                   child: Text(
                     '$percentage%',
                     style: KlasivoTypography.labelMedium.copyWith(
@@ -527,7 +527,7 @@ class _AttendanceAnalyticsCard extends ConsumerWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: KlasivoColors.lightBorder.withOpacity(0.3),
+                    color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                   ),
                 ),
@@ -536,7 +536,7 @@ class _AttendanceAnalyticsCard extends ConsumerWidget {
                   width: 60,
                   height: 24,
                   decoration: BoxDecoration(
-                    color: KlasivoColors.lightBorder.withOpacity(0.3),
+                    color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(KlasivoRadius.xs),
                   ),
                 ),
@@ -545,7 +545,7 @@ class _AttendanceAnalyticsCard extends ConsumerWidget {
                   width: 80,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: KlasivoColors.lightBorder.withOpacity(0.2),
+                    color: KlasivoColors.lightBorder.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(KlasivoRadius.xs),
                   ),
                 ),
@@ -685,7 +685,7 @@ class _ParentAttendanceList extends ConsumerWidget {
                 leading: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.sm),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.sm),
                   ),
@@ -717,7 +717,7 @@ class _ParentAttendanceList extends ConsumerWidget {
                     vertical: KlasivoSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.pill),
                   ),

@@ -39,7 +39,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                   children: [
                     CircleAvatar(
                       radius: 32,
-                      backgroundColor: KlasivoColors.secondary.withOpacity(0.1),
+                      backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
                       child: Text(
                         userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                         style: KlasivoTypography.headlineSmall.copyWith(
@@ -60,7 +60,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                               vertical: KlasivoSpacing.xs,
                             ),
                             decoration: BoxDecoration(
-                              color: KlasivoColors.secondary.withOpacity(0.1),
+                              color: KlasivoColors.secondary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                             ),
                             child: Text(
@@ -88,7 +88,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.secondary.withOpacity(0.1),
+                        color: KlasivoColors.secondary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: const Icon(Icons.badge_outlined, color: KlasivoColors.secondary, size: 20),
@@ -104,7 +104,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.primary.withOpacity(0.1),
+                        color: KlasivoColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: const Icon(Icons.class_outlined, color: KlasivoColors.primary, size: 20),
@@ -129,7 +129,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.accent.withOpacity(0.1),
+                        color: KlasivoColors.accent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
@@ -156,7 +156,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.accent.withOpacity(0.1),
+                        color: KlasivoColors.accent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: const Icon(Icons.notifications_outlined, color: KlasivoColors.accent, size: 20),
@@ -188,7 +188,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.primary.withOpacity(0.1),
+                        color: KlasivoColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: const Icon(Icons.help_outline_rounded, color: KlasivoColors.primary, size: 20),
@@ -215,7 +215,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm),
                       decoration: BoxDecoration(
-                        color: KlasivoColors.primary.withOpacity(0.1),
+                        color: KlasivoColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                       ),
                       child: const Icon(Icons.info_outline_rounded, color: KlasivoColors.primary, size: 20),
@@ -234,7 +234,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                         applicationIcon: Container(
                           padding: const EdgeInsets.all(KlasivoSpacing.md),
                           decoration: BoxDecoration(
-                            color: KlasivoColors.secondary.withOpacity(0.1),
+                            color: KlasivoColors.secondary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(KlasivoRadius.md),
                           ),
                           child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.secondary),

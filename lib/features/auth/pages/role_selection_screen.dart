@@ -23,7 +23,7 @@ class RoleSelectionScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.lg),
                 decoration: BoxDecoration(
-                  color: KlasivoColors.primary.withOpacity(0.08),
+                  color: KlasivoColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                 ),
                 child: const Icon(
@@ -81,6 +81,16 @@ class RoleSelectionScreen extends StatelessWidget {
                 color: KlasivoColors.secondary,
                 onTap: () => context.go('/auth/student-login'),
               ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
+              // ── Parent Card ──
+              _RoleCard(
+                icon: Icons.family_restroom_outlined,
+                title: 'Parent',
+                subtitle: 'View your child\'s results and attendance',
+                color: KlasivoColors.accent,
+                onTap: () => context.go('/auth/parent-login'),
+              ),
               const SizedBox(height: KlasivoSpacing.xxxl),
 
               // ── Footer ──
@@ -131,7 +141,7 @@ class _RoleCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(KlasivoSpacing.md),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(KlasivoRadius.md),
                 ),
                 child: Icon(icon, color: color, size: 28),

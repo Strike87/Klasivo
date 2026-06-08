@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -26,14 +27,14 @@ final parentLinksProvider = Provider<List<ParentLinkData>>((ref) {
     data: (snapshot) =>
         snapshot.docs.map((doc) => ParentLinkData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
 // ─── Student's Parents Stream (teacher/admin) ────────────────────────────────
 
 final studentParentsStreamProvider =
-    StreamProvider.family<QuerySnapshot, String>((ref, studentId) {
+    StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, studentId) {
   return ref.read(parentLinkServiceProvider).getStudentParentsStream(studentId);
 });
 
@@ -44,14 +45,14 @@ final studentParentsListProvider =
     data: (snapshot) =>
         snapshot.docs.map((doc) => ParentLinkData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 
 // ─── Parent Viewing Student Results ──────────────────────────────────────────
 
 final parentStudentResultsProvider =
-    StreamProvider.family<QuerySnapshot, String>((ref, studentId) {
+    StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, studentId) {
   final parentId = ref.watch(userIdProvider);
   if (parentId == null || parentId.isEmpty) return const Stream.empty();
   return ref
@@ -62,7 +63,7 @@ final parentStudentResultsProvider =
 // ─── Parent Viewing Student Attendance ───────────────────────────────────────
 
 final parentStudentAttendanceProvider =
-    StreamProvider.family<QuerySnapshot, String>((ref, studentId) {
+    StreamProvider.family.autoDispose<QuerySnapshot, String>((ref, studentId) {
   final parentId = ref.watch(userIdProvider);
   if (parentId == null || parentId.isEmpty) return const Stream.empty();
   return ref

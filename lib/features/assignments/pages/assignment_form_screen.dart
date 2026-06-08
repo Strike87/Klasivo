@@ -257,8 +257,8 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.xxl),
                   decoration: BoxDecoration(
-                    color: KlasivoColors.primarySurface.withOpacity(
-                      isDark ? 0.15 : 1.0,
+                    color: KlasivoColors.primarySurface.withValues(
+                      alpha: isDark ? 0.15 : 1.0,
                     ),
                     borderRadius: BorderRadius.circular(KlasivoRadius.xl),
                   ),

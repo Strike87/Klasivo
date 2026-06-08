@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+
+import '../config/app_constants.dart';
 
 /// Service for QR code-based student enrollment
 /// QR codes contain encoded class/teacher information that allows
@@ -15,7 +18,7 @@ class QREnrollmentService {
     required String teacherId,
     required String className,
     String? grade,
-    String institutionId = 'default',
+    String organizationId = AppConstants.defaultInstitutionId,
   }) {
     final data = {
       'type': 'enrollment',
@@ -23,7 +26,7 @@ class QREnrollmentService {
       'teacherId': teacherId,
       'className': className,
       'grade': grade,
-      'institutionId': institutionId,
+      'organizationId': organizationId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
     return jsonEncode(data);
@@ -59,10 +62,10 @@ class QREnrollmentService {
     final teacherId = qrData['teacherId'] as String;
     final className = qrData['className'] as String? ?? '';
     final grade = qrData['grade'] as String? ?? '';
-    final institutionId = qrData['institutionId'] as String? ?? 'default';
+    final organizationId = qrData['organizationId'] as String? ?? AppConstants.defaultInstitutionId;
 
     // Verify class exists
-    final classDoc = await _firestore.collection('classes').doc(classId).get();
+    final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
     if (!classDoc.exists) {
       throw Exception('Class not found. The QR code may be outdated.');
     }
@@ -70,9 +73,11 @@ class QREnrollmentService {
     // Generate unique student code
     final studentCode = await _generateStudentCode(teacherId);
 
-    // Create student document
-    final docRef = _firestore.collection('students').doc();
+    // Create student document (students ARE users — stored in usersCollection)
+    final docRef = _firestore.collection(AppConstants.usersCollection).doc();
     await docRef.set({
+      'organizationId': organizationId,
+      'role': AppConstants.roleStudent,
       'id': docRef.id,
       'teacherId': teacherId,
       'classId': classId,
@@ -81,14 +86,15 @@ class QREnrollmentService {
       'studentCode': studentCode,
       'passwordHash': hashPassword != null ? hashPassword(password) : password,
       'grade': grade,
-      'institutionId': institutionId,
       'enrolledVia': 'qr',
+      'isActive': true,
       'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Update class student count
     final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
-    await _firestore.collection('classes').doc(classId).update({
+    await _firestore.collection(AppConstants.classesCollection).doc(classId).update({
       'studentCount': currentCount + 1,
     });
 
@@ -96,15 +102,16 @@ class QREnrollmentService {
   }
 
   /// Generates a unique student code (STU-XXXXXX format)
+  /// Uses cryptographically secure Random for uniqueness
   Future<String> _generateStudentCode(String teacherId) async {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final rng = DateTime.now().microsecondsSinceEpoch;
+    final rng = Random();
 
     for (int attempt = 0; attempt < 10; attempt++) {
-      final code = 'STU-${List.generate(6, (i) => chars[(rng + i * 17 + attempt * 31) % chars.length]).join()}';
+      final code = 'STU-${List.generate(6, (_) => chars[rng.nextInt(chars.length)])}';
 
       final existing = await _firestore
-          .collection('students')
+          .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: code)
           .limit(1)
           .get();
@@ -122,7 +129,7 @@ class QREnrollmentService {
       final classId = qrData['classId'] as String?;
       if (classId == null) return false;
 
-      final classDoc = await _firestore.collection('classes').doc(classId).get();
+      final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
       return classDoc.exists;
     } catch (e) {
       debugPrint('Error validating QR data: $e');
@@ -136,7 +143,7 @@ class QREnrollmentService {
       final classId = qrData['classId'] as String?;
       if (classId == null) return null;
 
-      final classDoc = await _firestore.collection('classes').doc(classId).get();
+      final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
       if (!classDoc.exists) return null;
 
       final data = classDoc.data()!;
@@ -144,7 +151,7 @@ class QREnrollmentService {
         'className': data['name'] ?? qrData['className'],
         'grade': data['grade'] ?? qrData['grade'],
         'studentCount': data['studentCount'] ?? 0,
-        'teacherId': data['teacherId'] ?? qrData['teacherId'],
+        'teacherId': data['createdBy'] ?? data['teacherId'] ?? qrData['teacherId'],
       };
     } catch (e) {
       debugPrint('Error getting class info from QR: $e');

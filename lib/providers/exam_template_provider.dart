@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -40,7 +41,7 @@ final examTemplatesProvider = Provider<List<ExamTemplateData>>((ref) {
         .map((doc) => ExamTemplateData.fromFirestore(doc))
         .toList(),
     loading: () => [],
-    error: (_, __) => [],
+    error: (e, st) { debugPrint('provider error: $e'); return []; },
   );
 });
 

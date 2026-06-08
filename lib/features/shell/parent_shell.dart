@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
@@ -44,6 +45,29 @@ class _ParentShellState extends ConsumerState<ParentShell> {
       route: '/parent/attendance',
     ),
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncIndexWithRoute();
+  }
+
+  void _syncIndexWithRoute() {
+    final location = GoRouterState.of(context).matchedLocation;
+    // Match the longest prefix (e.g., '/parent/results' before '/parent')
+    int bestMatch = -1;
+    int bestLength = 0;
+    for (int i = 0; i < _destinations.length; i++) {
+      final route = _destinations[i].route;
+      if (location.startsWith(route) && route.length > bestLength) {
+        bestMatch = i;
+        bestLength = route.length;
+      }
+    }
+    if (bestMatch != -1 && bestMatch != _currentIndex) {
+      setState(() => _currentIndex = bestMatch);
+    }
+  }
 
   void _onTabTap(int index) {
     if (index == _currentIndex) return;
@@ -233,7 +257,7 @@ class _ParentFullResultsList extends ConsumerWidget {
                   backgroundColor: (passed
                           ? KlasivoColors.secondary
                           : KlasivoColors.error)
-                      .withOpacity(0.1),
+                      .withValues(alpha: 0.1),
                   child: Text(
                     '$percentage%',
                     style: KlasivoTypography.labelMedium.copyWith(
@@ -431,7 +455,7 @@ class _ParentFullAttendanceList extends ConsumerWidget {
                 leading: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.sm),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.sm),
                   ),
@@ -463,7 +487,7 @@ class _ParentFullAttendanceList extends ConsumerWidget {
                     vertical: KlasivoSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius:
                         BorderRadius.circular(KlasivoRadius.pill),
                   ),

@@ -121,7 +121,7 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(KlasivoSpacing.lg),
                     decoration: BoxDecoration(
-                      color: KlasivoColors.secondary.withOpacity(0.08),
+                      color: KlasivoColors.secondary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                     ),
                     child: const Icon(

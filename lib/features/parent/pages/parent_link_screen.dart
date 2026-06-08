@@ -188,7 +188,7 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.lg),
                   decoration: BoxDecoration(
-                    color: KlasivoColors.secondary.withOpacity(0.08),
+                    color: KlasivoColors.secondary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(KlasivoRadius.lg),
                   ),
                   child: const Icon(
@@ -322,7 +322,7 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: KlasivoColors.secondary,
                     disabledBackgroundColor:
-                        KlasivoColors.secondary.withOpacity(0.4),
+                        KlasivoColors.secondary.withValues(alpha: 0.4),
                   ),
                   child: _isLoading
                       ? const SizedBox(
