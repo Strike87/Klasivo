@@ -43,7 +43,7 @@ class _TeacherRegistrationScreenState
       final authService = ref.read(authServiceProvider);
 
       if (_isOwnerFlow) {
-        // Owner registration — no org name asked here
+        // Owner registration — creates workspace
         final result = await authService.registerOwner(
           email: _emailController.text.trim(),
           password: _passwordController.text,
@@ -56,11 +56,11 @@ class _TeacherRegistrationScreenState
           userId: result['id'],
           email: result['email'],
           organizationId: result['organizationId'],
-          hasCompletedSetup: false, // Owner hasn't named workspace yet
+          hasCompletedSetup: false,
+          authProvider: 'password',
         );
 
         if (mounted) {
-          // Redirect to Welcome screen to name workspace
           context.go('/welcome');
         }
       } else {
@@ -78,7 +78,8 @@ class _TeacherRegistrationScreenState
           userId: result['id'],
           email: result['email'],
           organizationId: result['organizationId'],
-          hasCompletedSetup: true, // Teachers join existing org
+          hasCompletedSetup: true,
+          authProvider: 'password',
         );
 
         if (mounted) {
@@ -99,22 +100,53 @@ class _TeacherRegistrationScreenState
 
     try {
       final authService = ref.read(authServiceProvider);
-      final result = await authService.loginWithGoogle();
 
-      await saveTeacherAuthData(
-        role: result['role'] ?? AppConstants.roleOwner,
-        name: result['fullName'] ?? 'User',
-        userId: result['id'],
-        email: result['email'] ?? '',
-        organizationId: result['organizationId'],
-        hasCompletedSetup: result['hasCompletedSetup'] ?? true,
-      );
+      if (_isOwnerFlow) {
+        // Owner Google registration
+        final result = await authService.registerOwnerWithGoogle();
 
-      if (mounted) {
-        final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-        if (!hasCompletedSetup) {
-          context.go('/welcome');
-        } else {
+        await saveTeacherAuthData(
+          role: result['role'] ?? AppConstants.roleOwner,
+          name: result['fullName'] ?? 'User',
+          userId: result['id'],
+          email: result['email'] ?? '',
+          organizationId: result['organizationId'],
+          hasCompletedSetup: result['hasCompletedSetup'] ?? false,
+          authProvider: 'google',
+        );
+
+        if (mounted) {
+          final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
+          if (!hasCompletedSetup) {
+            context.go('/welcome');
+          } else {
+            context.go('/dashboard');
+          }
+        }
+      } else {
+        // Teacher Google registration — needs invite code
+        if (_inviteCodeController.text.trim().isEmpty) {
+          ref.read(authErrorProvider.notifier).state =
+              'Invite code is required for teachers';
+          ref.read(authLoadingProvider.notifier).state = false;
+          return;
+        }
+
+        final result = await authService.registerTeacherWithGoogle(
+          inviteCode: _inviteCodeController.text.trim(),
+        );
+
+        await saveTeacherAuthData(
+          role: result['role'] ?? AppConstants.roleTeacher,
+          name: result['fullName'] ?? 'Teacher',
+          userId: result['id'],
+          email: result['email'] ?? '',
+          organizationId: result['organizationId'],
+          hasCompletedSetup: result['hasCompletedSetup'] ?? true,
+          authProvider: 'google',
+        );
+
+        if (mounted) {
           context.go('/dashboard');
         }
       }
@@ -207,6 +239,33 @@ class _TeacherRegistrationScreenState
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
+                // ── Invite Code (Teacher flow — shown FIRST) ──
+                if (!_isOwnerFlow) ...[
+                  Text(
+                    'Invite Code',
+                    style: KlasivoTypography.labelMedium.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextSecondary
+                          : KlasivoColors.lightTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: KlasivoSpacing.sm),
+                  TextFormField(
+                    controller: _inviteCodeController,
+                    decoration: const InputDecoration(
+                      hintText: 'T-XXXXXXXX or klasivo.app/join/XXXXXXX',
+                      prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
+                    ),
+                    validator: (value) {
+                      if (!_isOwnerFlow && (value == null || value.trim().isEmpty)) {
+                        return 'Invite code is required for teachers';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
+
                 // ── Full Name ──
                 Text(
                   'Full Name',
@@ -292,33 +351,6 @@ class _TeacherRegistrationScreenState
                 ),
                 const SizedBox(height: KlasivoSpacing.lg),
 
-                // ── Invite Code (Teacher flow only) ──
-                if (!_isOwnerFlow) ...[
-                  Text(
-                    'Invite Code',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark
-                          ? KlasivoColors.darkTextSecondary
-                          : KlasivoColors.lightTextSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
-                    controller: _inviteCodeController,
-                    decoration: const InputDecoration(
-                      hintText: 'T-XXXXXXXX or klasivo.app/join/XXXXXXX',
-                      prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
-                    ),
-                    validator: (value) {
-                      if (!_isOwnerFlow && (value == null || value.trim().isEmpty)) {
-                        return 'Invite code is required for teachers';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: KlasivoSpacing.lg),
-                ],
-
                 // ── Error Message ──
                 if (error != null) ...[
                   Container(
@@ -398,7 +430,7 @@ class _TeacherRegistrationScreenState
                       height: 20,
                       errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 24),
                     ),
-                    label: const Text('Sign Up with Google'),
+                    label: const Text('Continue with Google'),
                     style: OutlinedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(KlasivoRadius.md),

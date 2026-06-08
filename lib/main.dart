@@ -14,6 +14,7 @@ import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
 import 'features/auth/pages/teacher_registration_screen.dart';
+import 'features/auth/pages/owner_register_screen.dart';
 import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
 import 'features/auth/pages/forgot_password_screen.dart';
@@ -60,6 +61,7 @@ import 'features/assignments/pages/assignment_detail_screen.dart';
 import 'features/gradebook/pages/gradebook_screen.dart';
 import 'features/attendance/pages/attendance_screen.dart';
 import 'features/parent/pages/parent_login_screen.dart';
+import 'features/parent/pages/parent_register_screen.dart';
 import 'features/parent/pages/parent_link_screen.dart';
 import 'features/parent/pages/parent_dashboard.dart';
 import 'providers/class_provider.dart';
@@ -279,12 +281,20 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const TeacherRegistrationScreen(),
           ),
           GoRoute(
+            path: 'owner-register',
+            builder: (context, state) => const OwnerRegisterScreen(),
+          ),
+          GoRoute(
             path: 'student-login',
             builder: (context, state) => const StudentLoginScreen(),
           ),
           GoRoute(
             path: 'parent-login',
             builder: (context, state) => const ParentLoginScreen(),
+          ),
+          GoRoute(
+            path: 'parent-register',
+            builder: (context, state) => const ParentRegisterScreen(),
           ),
           GoRoute(
             path: 'parent-link',

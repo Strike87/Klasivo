@@ -6,27 +6,31 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 
-class TeacherLoginScreen extends ConsumerStatefulWidget {
-  const TeacherLoginScreen({Key? key}) : super(key: key);
+/// Parent Registration screen — email+password and Google Sign-In.
+/// After registration, parents are redirected to link their child.
+class ParentRegisterScreen extends ConsumerStatefulWidget {
+  const ParentRegisterScreen({Key? key}) : super(key: key);
 
   @override
-  ConsumerState<TeacherLoginScreen> createState() => _TeacherLoginScreenState();
+  ConsumerState<ParentRegisterScreen> createState() => _ParentRegisterScreenState();
 }
 
-class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
+class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
+  Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
     ref.read(authLoadingProvider.notifier).state = true;
@@ -34,70 +38,61 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
-      final result = await authService.loginWithEmail(
+      final result = await authService.registerParent(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        fullName: _nameController.text.trim(),
       );
 
-      await saveTeacherAuthData(
-        role: result['role'] ?? AppConstants.roleTeacher,
-        name: result['fullName'] ?? 'Teacher',
+      await saveParentAuthData(
+        name: result['fullName'],
         userId: result['id'],
-        email: result['email'] ?? _emailController.text.trim(),
+        email: result['email'],
         organizationId: result['organizationId'],
-        hasCompletedSetup: result['hasCompletedSetup'] ?? true,
-        authProvider: result['authProvider'] ?? 'password',
+        hasCompletedSetup: false,
+        authProvider: 'password',
       );
 
       if (mounted) {
-        final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-        final role = result['role'] ?? AppConstants.roleTeacher;
-        if (!hasCompletedSetup && role == AppConstants.roleOwner) {
-          context.go('/welcome');
-        } else if (!hasCompletedSetup && role == AppConstants.roleParent) {
-          context.go('/parent');
-        } else {
-          context.go('/dashboard');
-        }
+        // Parents need to link their child after registration
+        context.go(AppConstants.routeParentLink);
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
   }
 
-  Future<void> _loginWithGoogle() async {
+  Future<void> _registerWithGoogle() async {
     ref.read(authLoadingProvider.notifier).state = true;
     ref.read(authErrorProvider.notifier).state = null;
 
     try {
       final authService = ref.read(authServiceProvider);
-      final result = await authService.loginWithGoogle();
+      final result = await authService.registerParentWithGoogle();
 
-      await saveTeacherAuthData(
-        role: result['role'] ?? AppConstants.roleTeacher,
-        name: result['fullName'] ?? 'User',
+      await saveParentAuthData(
+        name: result['fullName'] ?? 'Parent',
         userId: result['id'],
         email: result['email'] ?? '',
         organizationId: result['organizationId'],
-        hasCompletedSetup: result['hasCompletedSetup'] ?? true,
-        authProvider: result['authProvider'] ?? 'google',
+        hasCompletedSetup: result['hasCompletedSetup'] ?? false,
+        authProvider: 'google',
       );
 
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-        final role = result['role'] ?? AppConstants.roleTeacher;
-        if (!hasCompletedSetup && role == AppConstants.roleOwner) {
-          context.go('/welcome');
-        } else if (!hasCompletedSetup && role == AppConstants.roleParent) {
-          context.go('/parent');
+        if (!hasCompletedSetup) {
+          context.go(AppConstants.routeParentLink);
         } else {
-          context.go('/dashboard');
+          context.go(AppConstants.routeParentHome);
         }
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -113,7 +108,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => context.go('/auth'),
+          onPressed: () => context.go('/auth/parent-login'),
         ),
       ),
       body: SafeArea(
@@ -126,25 +121,69 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
               children: [
                 const SizedBox(height: KlasivoSpacing.lg),
 
-                // ── Header ──
-                Text(
-                  'Welcome back',
-                  style: KlasivoTypography.headlineLarge.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextPrimary
-                        : KlasivoColors.lightTextPrimary,
+                // ── Icon ──
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF845EF7).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(KlasivoRadius.lg),
+                    ),
+                    child: const Icon(
+                      Icons.family_restroom_outlined,
+                      size: 48,
+                      color: Color(0xFF845EF7),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Title ──
+                Center(
+                  child: Text(
+                    'Create Parent Account',
+                    style: KlasivoTypography.headlineLarge.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextPrimary
+                          : KlasivoColors.lightTextPrimary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.sm),
-                Text(
-                  'Sign in to your Klasivo account',
-                  style: KlasivoTypography.bodyMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
+                Center(
+                  child: Text(
+                    'Sign up to track your child\'s progress',
+                    style: KlasivoTypography.bodyMedium.copyWith(
+                      color: isDark
+                          ? KlasivoColors.darkTextTertiary
+                          : KlasivoColors.lightTextTertiary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xxxl),
+
+                // ── Full Name ──
+                Text(
+                  'Full Name',
+                  style: KlasivoTypography.labelMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter your full name',
+                    prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return 'Name is required';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Email ──
                 Text(
@@ -161,7 +200,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
                   decoration: const InputDecoration(
-                    hintText: 'you@example.com',
+                    hintText: 'parent@email.com',
                     prefixIcon: Icon(Icons.email_outlined, size: 20),
                   ),
                   validator: (value) {
@@ -186,7 +225,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    hintText: 'Enter your password',
+                    hintText: 'At least 6 characters',
                     prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -206,17 +245,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: KlasivoSpacing.sm),
-
-                // ── Forgot Password ──
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => context.go('/auth/forgot-password'),
-                    child: const Text('Forgot password?'),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.xl),
+                const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Error Message ──
                 if (error != null) ...[
@@ -246,12 +275,15 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                   const SizedBox(height: KlasivoSpacing.lg),
                 ],
 
-                // ── Sign In Button ──
+                // ── Create Account Button ──
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : _login,
+                    onPressed: isLoading ? null : _register,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF845EF7),
+                    ),
                     child: isLoading
                         ? const SizedBox(
                             height: 20,
@@ -261,7 +293,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Sign In'),
+                        : const Text('Create Account'),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
@@ -290,7 +322,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                   width: double.infinity,
                   height: 52,
                   child: OutlinedButton.icon(
-                    onPressed: isLoading ? null : _loginWithGoogle,
+                    onPressed: isLoading ? null : _registerWithGoogle,
                     icon: Image.asset(
                       'assets/images/google_logo.png',
                       width: 20,
@@ -307,12 +339,12 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
-                // ── Register Link ──
+                // ── Login Link ──
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Don't have an account? ",
+                      'Already have an account? ',
                       style: KlasivoTypography.bodyMedium.copyWith(
                         color: isDark
                             ? KlasivoColors.darkTextTertiary
@@ -320,8 +352,8 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => context.go('/auth/teacher-register'),
-                      child: const Text('Create one'),
+                      onPressed: () => context.go('/auth/parent-login'),
+                      child: const Text('Sign in'),
                     ),
                   ],
                 ),

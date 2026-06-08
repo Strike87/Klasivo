@@ -33,8 +33,10 @@ class RoleSelectionScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: KlasivoSpacing.xxl),
+
+              // ── App Name ──
               Text(
-                'Klasivo',
+                'Welcome to Klasivo',
                 style: KlasivoTypography.headlineLarge.copyWith(
                   color: isDark
                       ? KlasivoColors.darkTextPrimary
@@ -52,9 +54,9 @@ class RoleSelectionScreen extends StatelessWidget {
               ),
               const SizedBox(height: KlasivoSpacing.xxxl),
 
-              // ── Role Selection ──
+              // ── Continue As ──
               Text(
-                'I am a...',
+                'Continue as',
                 style: KlasivoTypography.titleLarge.copyWith(
                   color: isDark
                       ? KlasivoColors.darkTextSecondary
@@ -63,12 +65,24 @@ class RoleSelectionScreen extends StatelessWidget {
               ),
               const SizedBox(height: KlasivoSpacing.xxl),
 
+              // ── Organization Owner Card ──
+              _RoleCard(
+                icon: Icons.business_outlined,
+                emoji: '🏢',
+                title: 'Organization Owner',
+                subtitle: 'Create and manage your educational workspace',
+                color: KlasivoColors.primary,
+                onTap: () => context.go('/auth/owner-register'),
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
               // ── Teacher Card ──
               _RoleCard(
                 icon: Icons.person_outline_rounded,
+                emoji: '👨‍🏫',
                 title: 'Teacher',
                 subtitle: 'Create exams, manage classes, and grade students',
-                color: KlasivoColors.primary,
+                color: KlasivoColors.secondary,
                 onTap: () => context.go('/auth/teacher-login'),
               ),
               const SizedBox(height: KlasivoSpacing.lg),
@@ -76,9 +90,10 @@ class RoleSelectionScreen extends StatelessWidget {
               // ── Student Card ──
               _RoleCard(
                 icon: Icons.school_outlined,
+                emoji: '🎓',
                 title: 'Student',
                 subtitle: 'Take exams, view results, and track progress',
-                color: KlasivoColors.secondary,
+                color: KlasivoColors.accent,
                 onTap: () => context.go('/auth/student-login'),
               ),
               const SizedBox(height: KlasivoSpacing.lg),
@@ -86,9 +101,10 @@ class RoleSelectionScreen extends StatelessWidget {
               // ── Parent Card ──
               _RoleCard(
                 icon: Icons.family_restroom_outlined,
+                emoji: '👨‍👩‍👧',
                 title: 'Parent',
                 subtitle: 'View your child\'s results and attendance',
-                color: KlasivoColors.accent,
+                color: const Color(0xFF845EF7),
                 onTap: () => context.go('/auth/parent-login'),
               ),
               const SizedBox(height: KlasivoSpacing.xxxl),
@@ -113,6 +129,7 @@ class RoleSelectionScreen extends StatelessWidget {
 
 class _RoleCard extends StatelessWidget {
   final IconData icon;
+  final String emoji;
   final String title;
   final String subtitle;
   final Color color;
@@ -120,6 +137,7 @@ class _RoleCard extends StatelessWidget {
 
   const _RoleCard({
     required this.icon,
+    required this.emoji,
     required this.title,
     required this.subtitle,
     required this.color,

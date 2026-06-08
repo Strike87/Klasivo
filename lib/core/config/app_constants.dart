@@ -82,7 +82,9 @@ class AppConstants {
   static const String routeAuth = '/auth';
   static const String routeTeacherLogin = '/auth/teacher-login';
   static const String routeTeacherRegister = '/auth/teacher-register';
+  static const String routeOwnerRegister = '/auth/owner-register';
   static const String routeStudentLogin = '/auth/student-login';
+  static const String routeParentRegister = '/auth/parent-register';
   static const String routeWelcome = '/welcome'; // Post-login org naming
 
   // Owner/Teacher Shell

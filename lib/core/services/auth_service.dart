@@ -8,6 +8,15 @@ import 'firebase_service.dart';
 import 'organization_service.dart';
 import 'invite_code_service.dart';
 
+// ─── Auth Provider Constants ─────────────────────────────────────────────────
+// Tracks which authentication method a user registered with.
+
+class AuthProviders {
+  static const String password = 'password';
+  static const String google = 'google';
+  static const String studentCode = 'student_code';
+}
+
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -19,12 +28,11 @@ class AuthService {
     return digest.toString();
   }
 
-  // ─── Owner Registration (NO org name — post-login naming) ──────────────
+  // ─── Owner Registration (Email + Password) ────────────────────────────────
 
-  /// Register a new owner. No organization name is asked here.
+  /// Register a new owner with email and password.
   /// Organization is auto-created with a temporary default name.
-  /// After login, the owner is redirected to the Welcome/Org Naming screen
-  /// where they choose their workspace name (with auto-suggest).
+  /// After login, the owner is redirected to the Welcome/Org Naming screen.
   Future<Map<String, dynamic>> registerOwner({
     required String email,
     required String password,
@@ -36,7 +44,6 @@ class AuthService {
       final user = userCredential.user!;
 
       // Auto-create organization with a temporary default name
-      // The owner will rename it in the post-login onboarding screen
       final orgService = OrganizationService();
       final orgId = await orgService.createOrganization(
         ownerId: user.uid,
@@ -51,12 +58,13 @@ class AuthService {
           .set({
         'organizationId': orgId,
         'role': AppConstants.roleOwner,
+        'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
-        'hasCompletedSetup': false, // Will be true after naming workspace
+        'hasCompletedSetup': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -65,6 +73,7 @@ class AuthService {
         'id': user.uid,
         'organizationId': orgId,
         'role': AppConstants.roleOwner,
+        'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
         'hasCompletedSetup': false,
@@ -74,18 +83,25 @@ class AuthService {
     }
   }
 
-  // ─── Complete Owner Setup — Name the workspace ─────────────────────────
+  // ─── Owner Registration (Google Sign-In) ──────────────────────────────────
 
-  /// Called after first login when owner has NOT completed setup.
-  /// The Welcome screen shows auto-suggest based on the owner's name.
-  /// The owner picks or types a workspace name, then this method saves it.
+  /// Register a new owner via Google Sign-In.
+  /// If user already exists, logs them in instead.
+  Future<Map<String, dynamic>> registerOwnerWithGoogle() async {
+    return _signInWithGoogle(
+      expectedRole: AppConstants.roleOwner,
+      isNewUser: true,
+    );
+  }
+
+  // ─── Complete Owner Setup — Name the workspace ────────────────────────────
+
   Future<void> completeOwnerSetup({
     required String userId,
     required String organizationId,
     required String workspaceName,
   }) async {
     try {
-      // Update the organization name
       await _firestore
           .collection(AppConstants.organizationsCollection)
           .doc(organizationId)
@@ -94,7 +110,6 @@ class AuthService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Mark user setup as complete
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(userId)
@@ -107,10 +122,8 @@ class AuthService {
     }
   }
 
-  // ─── Generate workspace name auto-suggest ───────────────────────────────
+  // ─── Generate workspace name auto-suggest ─────────────────────────────────
 
-  /// Returns a list of suggested workspace names based on the owner's name.
-  /// Example: "Mohamed" → ["Mohamed Academy", "Mohamed's Classroom", "Mohamed Learning Center"]
   List<String> generateWorkspaceSuggestions(String fullName) {
     final firstName = fullName.split(' ').first;
     return [
@@ -122,9 +135,10 @@ class AuthService {
     ];
   }
 
-  // ─── Teacher/Owner Login ────────────────────────────────────────────────
+  // ─── Teacher/Owner/Parent Login (Email + Password) ────────────────────────
 
-  Future<Map<String, dynamic>> loginTeacher({
+  /// Unified email+password login for owners, teachers, and parents.
+  Future<Map<String, dynamic>> loginWithEmail({
     required String email,
     required String password,
   }) async {
@@ -151,16 +165,18 @@ class AuthService {
         throw Exception('Your account has been deactivated. Contact your administrator.');
       }
 
-      if (role != AppConstants.roleOwner && role != AppConstants.roleTeacher) {
+      // Students should NOT use email login — they use student code login
+      if (role == AppConstants.roleStudent) {
         await _auth.signOut();
-        throw Exception('This account does not have teacher access.');
+        throw Exception('Students must login with their student code.');
       }
 
       return {
         'id': user.uid,
         'organizationId': userData['organizationId'] ?? '',
         'role': role ?? AppConstants.roleTeacher,
-        'fullName': userData['fullName'] ?? 'Teacher',
+        'authProvider': AuthProviders.password,
+        'fullName': userData['fullName'] ?? 'User',
         'email': userData['email'] ?? email,
         'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
       };
@@ -169,11 +185,10 @@ class AuthService {
     }
   }
 
-  // ─── Student Login (Firebase Auth backed, code-based UX) ───────────────
+  // ─── Student Login (Student Code + Password) ──────────────────────────────
 
   /// Student login using student code + password.
-  /// UX: Student enters code + password (simple, familiar).
-  /// Backend: Internally maps to Firebase Auth for push notifications,
+  /// Internally maps to Firebase Auth for push notifications,
   /// multi-device, password reset, security rules, and analytics.
   Future<Map<String, dynamic>> loginStudent({
     required String studentCode,
@@ -224,7 +239,6 @@ class AuthService {
       }
 
       // Step 3: Sign in via Firebase Auth using the student's internal email
-      // This gives students push notifications, multi-device, security rules, etc.
       final internalEmail = student['authEmail'] as String?;
       if (internalEmail != null && internalEmail.isNotEmpty) {
         try {
@@ -233,9 +247,7 @@ class AuthService {
             password: password,
           );
         } catch (authError) {
-          // If Firebase Auth fails, still allow login (graceful fallback)
-          // This handles cases where Firebase Auth account wasn't created yet
-          // (e.g., students created before this update)
+          // Graceful fallback — still allow login even if Firebase Auth fails
         }
       }
 
@@ -243,17 +255,18 @@ class AuthService {
         'id': userDoc.id,
         'organizationId': student['organizationId'] ?? '',
         'role': AppConstants.roleStudent,
+        'authProvider': AuthProviders.studentCode,
         'fullName': student['fullName'] ?? 'Student',
         'studentCode': student['studentCode'],
         'classId': student['classId'],
-        'hasCompletedSetup': true, // Students don't need workspace naming
+        'hasCompletedSetup': true,
       };
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Register Teacher via Invite Code ────────────────────────────────────
+  // ─── Teacher Registration via Invite Code ──────────────────────────────────
 
   Future<Map<String, dynamic>> registerTeacherWithInvite({
     required String email,
@@ -262,7 +275,7 @@ class AuthService {
     required String inviteCode,
   }) async {
     try {
-      // Validate invite code (supports both T-XXXXXXXX and URL code format)
+      // Validate invite code
       final inviteService = InviteCodeService();
       final codeData = await inviteService.validateInviteCode(inviteCode);
 
@@ -282,13 +295,13 @@ class AuthService {
       final user = userCredential.user!;
 
       // Create user document with teacher role
-      // Teachers always have hasCompletedSetup = true (they join an existing org)
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
           .set({
         'organizationId': organizationId,
         'role': AppConstants.roleTeacher,
+        'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
         'photoUrl': null,
@@ -314,6 +327,7 @@ class AuthService {
         'id': user.uid,
         'organizationId': organizationId,
         'role': AppConstants.roleTeacher,
+        'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
         'hasCompletedSetup': true,
@@ -323,27 +337,202 @@ class AuthService {
     }
   }
 
-  // ─── Google Sign-In (for Teachers/Owners) ───────────────────────────────
+  // ─── Teacher Registration via Google Sign-In ───────────────────────────────
 
-  /// Sign in with Google. Used by teachers and owners.
-  /// If the user already exists, logs them in.
-  /// If the user is new, creates an owner account (with hasCompletedSetup=false).
-  Future<Map<String, dynamic>> loginWithGoogle() async {
+  /// Register a teacher via Google Sign-In with an invite code.
+  Future<Map<String, dynamic>> registerTeacherWithGoogle({
+    required String inviteCode,
+  }) async {
     try {
-      // Trigger the Google Sign-In flow
+      // Validate invite code first
+      final inviteService = InviteCodeService();
+      final codeData = await inviteService.validateInviteCode(inviteCode);
+
+      if (codeData == null) {
+        throw Exception('Invalid or expired invite code.');
+      }
+
+      if (codeData['type'] != AppConstants.inviteTypeTeacher) {
+        throw Exception('This invite code is not for teachers.');
+      }
+
+      final organizationId = codeData['organizationId'] as String;
+
+      // Trigger Google Sign-In
       final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         throw Exception('Google sign-in was cancelled.');
       }
 
-      // Obtain the auth details from the request
       final googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase with the Google credential
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user!;
+
+      // Check if user document already exists
+      final userDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        // Existing user — log them in
+        final userData = userDoc.data()!;
+        final isActive = userData['isActive'] as bool? ?? true;
+        if (!isActive) {
+          await _auth.signOut();
+          throw Exception('Your account has been deactivated.');
+        }
+        return {
+          'id': user.uid,
+          'organizationId': userData['organizationId'] ?? organizationId,
+          'role': userData['role'] ?? AppConstants.roleTeacher,
+          'authProvider': AuthProviders.google,
+          'fullName': userData['fullName'] ?? user.displayName ?? 'Teacher',
+          'email': userData['email'] ?? user.email ?? '',
+          'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+        };
+      }
+
+      // New user — create teacher document
+      final fullName = user.displayName ?? 'Teacher';
+      final email = user.email ?? '';
+
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': organizationId,
+        'role': AppConstants.roleTeacher,
+        'authProvider': AuthProviders.google,
+        'fullName': fullName,
+        'email': email,
+        'photoUrl': user.photoURL,
+        'phoneNumber': null,
+        'isActive': true,
+        'hasCompletedSetup': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Mark invite code as used
+      await _firestore
+          .collection(AppConstants.inviteCodesCollection)
+          .doc(codeData['id'])
+          .update({
+        'isUsed': true,
+        'usedBy': user.uid,
+        'usedAt': FieldValue.serverTimestamp(),
+        'useCount': FieldValue.increment(1),
+      });
+
+      return {
+        'id': user.uid,
+        'organizationId': organizationId,
+        'role': AppConstants.roleTeacher,
+        'authProvider': AuthProviders.google,
+        'fullName': fullName,
+        'email': email,
+        'hasCompletedSetup': true,
+      };
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Parent Registration (Email + Password) ───────────────────────────────
+
+  /// Register a parent with email, password, and an invite code to link child.
+  Future<Map<String, dynamic>> registerParent({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    try {
+      final userCredential =
+          await FirebaseService.registerWithEmail(email, password);
+      final user = userCredential.user!;
+
+      // Create user document with parent role
+      // Parents need to link a child after registration
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': null, // Set when parent links a child
+        'role': AppConstants.roleParent,
+        'authProvider': AuthProviders.password,
+        'fullName': fullName,
+        'email': email,
+        'photoUrl': null,
+        'phoneNumber': null,
+        'isActive': true,
+        'hasCompletedSetup': false, // Needs to link child
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      return {
+        'id': user.uid,
+        'organizationId': null,
+        'role': AppConstants.roleParent,
+        'authProvider': AuthProviders.password,
+        'fullName': fullName,
+        'email': email,
+        'hasCompletedSetup': false,
+      };
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ─── Parent Registration (Google Sign-In) ─────────────────────────────────
+
+  /// Register a parent via Google Sign-In.
+  Future<Map<String, dynamic>> registerParentWithGoogle() async {
+    return _signInWithGoogle(
+      expectedRole: AppConstants.roleParent,
+      isNewUser: true,
+    );
+  }
+
+  // ─── Google Sign-In (Unified — Owner / Teacher / Parent) ──────────────────
+
+  /// Sign in with Google. Works for owners, teachers, and parents.
+  /// If the user already exists, logs them in.
+  /// If the user is new, creates an account based on [expectedRole]:
+  ///   - owner: auto-creates organization (hasCompletedSetup=false)
+  ///   - teacher: needs invite code (handled separately via registerTeacherWithGoogle)
+  ///   - parent: creates parent account (hasCompletedSetup=false, needs to link child)
+  Future<Map<String, dynamic>> loginWithGoogle({
+    String? expectedRole,
+  }) async {
+    return _signInWithGoogle(
+      expectedRole: expectedRole,
+      isNewUser: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> _signInWithGoogle({
+    String? expectedRole,
+    bool isNewUser = false,
+  }) async {
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        throw Exception('Google sign-in was cancelled.');
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
       final userCredential = await _auth.signInWithCredential(credential);
       final user = userCredential.user!;
 
@@ -364,81 +553,95 @@ class AuthService {
           throw Exception('Your account has been deactivated.');
         }
 
-        if (role != AppConstants.roleOwner && role != AppConstants.roleTeacher) {
+        // Students cannot use Google Sign-In
+        if (role == AppConstants.roleStudent) {
           await _auth.signOut();
-          throw Exception('This account does not have teacher access.');
+          throw Exception('Students must login with their student code.');
         }
 
         return {
           'id': user.uid,
           'organizationId': userData['organizationId'] ?? '',
-          'role': role ?? AppConstants.roleOwner,
+          'role': role ?? expectedRole ?? AppConstants.roleOwner,
+          'authProvider': AuthProviders.google,
           'fullName': userData['fullName'] ?? user.displayName ?? 'User',
           'email': userData['email'] ?? user.email ?? '',
           'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
         };
-      } else {
-        // New user — auto-create as owner
-        final fullName = user.displayName ?? 'User';
-        final email = user.email ?? '';
+      }
 
-        // Auto-create organization with temporary default name
+      // New user — create account based on expected role
+      final fullName = user.displayName ?? 'User';
+      final email = user.email ?? '';
+      final role = expectedRole ?? AppConstants.roleOwner;
+
+      String? organizationId;
+      bool hasCompletedSetup = true;
+
+      if (role == AppConstants.roleOwner) {
+        // Auto-create organization for new owners
         final orgService = OrganizationService();
-        final orgId = await orgService.createOrganization(
+        organizationId = await orgService.createOrganization(
           ownerId: user.uid,
           name: "$fullName's Workspace",
         );
-
-        // Create user document with owner role
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .set({
-          'organizationId': orgId,
-          'role': AppConstants.roleOwner,
-          'fullName': fullName,
-          'email': email,
-          'photoUrl': user.photoURL,
-          'phoneNumber': null,
-          'isActive': true,
-          'hasCompletedSetup': false, // Needs to name workspace
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
-        return {
-          'id': user.uid,
-          'organizationId': orgId,
-          'role': AppConstants.roleOwner,
-          'fullName': fullName,
-          'email': email,
-          'hasCompletedSetup': false,
-        };
+        hasCompletedSetup = false; // Needs to name workspace
+      } else if (role == AppConstants.roleParent) {
+        organizationId = null; // Set when parent links a child
+        hasCompletedSetup = false; // Needs to link child
       }
+
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': organizationId,
+        'role': role,
+        'authProvider': AuthProviders.google,
+        'fullName': fullName,
+        'email': email,
+        'photoUrl': user.photoURL,
+        'phoneNumber': null,
+        'isActive': true,
+        'hasCompletedSetup': hasCompletedSetup,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      return {
+        'id': user.uid,
+        'organizationId': organizationId,
+        'role': role,
+        'authProvider': AuthProviders.google,
+        'fullName': fullName,
+        'email': email,
+        'hasCompletedSetup': hasCompletedSetup,
+      };
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Logout ──────────────────────────────────────────────────────────────
+  // ─── Logout ────────────────────────────────────────────────────────────────
 
   Future<void> logout() async {
     try {
+      await GoogleSignIn().signOut();
       await FirebaseService.logout();
     } catch (e) {
       rethrow;
     }
   }
 
-  // ─── Get Current User ────────────────────────────────────────────────────
+  // ─── Get Current User ──────────────────────────────────────────────────────
 
   User? get currentUser => FirebaseService.currentUser;
 
-  // ─── Check if user is logged in ──────────────────────────────────────────
+  // ─── Check if user is logged in ────────────────────────────────────────────
 
   bool get isLoggedIn => _auth.currentUser != null;
 
-  // ─── Password Reset with custom domain ──────────────────────────────────
+  // ─── Password Reset ────────────────────────────────────────────────────────
 
   Future<void> sendPasswordReset(String email) async {
     try {
@@ -461,10 +664,8 @@ class AuthService {
     }
   }
 
-  // ─── Check if current user needs setup ───────────────────────────────────
+  // ─── Check if current user needs setup ─────────────────────────────────────
 
-  /// Returns true if the logged-in user has NOT completed setup
-  /// (i.e., needs to name their workspace)
   Future<bool> needsSetup() async {
     try {
       final user = _auth.currentUser;
@@ -481,8 +682,9 @@ class AuthService {
       final role = data['role'] as String?;
       final hasCompletedSetup = data['hasCompletedSetup'] as bool? ?? true;
 
-      // Only owners need setup (workspace naming)
-      if (role == AppConstants.roleOwner && !hasCompletedSetup) {
+      // Owners need workspace naming, parents need child linking
+      if ((role == AppConstants.roleOwner || role == AppConstants.roleParent) &&
+          !hasCompletedSetup) {
         return true;
       }
 

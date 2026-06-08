@@ -27,8 +27,6 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 // ─── Is Logged In Provider (persisted with Hive) ─────────────────────────────
 // This is the SINGLE SOURCE OF TRUTH for whether a user is logged in.
-// Teachers: set true after Firebase Auth login + role save
-// Students: set true after code-based login + Firebase Auth sign-in
 
 final isLoggedInProvider = StateProvider<bool>((ref) {
   final box = Hive.box(AppConstants.authBox);
@@ -56,8 +54,16 @@ final userIdProvider = StateProvider<String?>((ref) {
   return box.get('userId') as String?;
 });
 
+// ─── Auth Provider Type (persisted with Hive) ────────────────────────────────
+// Tracks how the user authenticated: 'password', 'google', or 'student_code'
+
+final authMethodProvider = StateProvider<String?>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('authMethod') as String?;
+});
+
 // ─── Organization ID Provider (persisted with Hive) ──────────────────────────
-// Alias — canonical definition is currentOrganizationIdProvider in organization_provider.dart
+
 final organizationIdProvider = StateProvider<String?>((ref) {
   final box = Hive.box(AppConstants.authBox);
   return box.get('organizationId') as String?;
@@ -106,7 +112,7 @@ final authLoadingProvider = StateProvider<bool>((ref) => false);
 
 final authErrorProvider = StateProvider<String?>((ref) => null);
 
-// ─── Helper: Save auth data locally (for TEACHER/OWNER login) ────────────────
+// ─── Helper: Save auth data locally (for OWNER / TEACHER / PARENT login) ────
 
 Future<void> saveTeacherAuthData({
   required String role,
@@ -115,6 +121,7 @@ Future<void> saveTeacherAuthData({
   required String email,
   String? organizationId,
   bool hasCompletedSetup = true,
+  String authProvider = 'password',
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
@@ -122,7 +129,7 @@ Future<void> saveTeacherAuthData({
   await box.put('userName', name);
   await box.put('userId', userId);
   await box.put('userEmail', email);
-  await box.put('authMethod', 'firebase');
+  await box.put('authMethod', authProvider);
   if (organizationId != null) {
     await box.put('organizationId', organizationId);
   }
@@ -154,6 +161,29 @@ Future<void> saveStudentAuthData({
   await box.put('hasCompletedSetup', true);
 }
 
+// ─── Helper: Save auth data locally (for PARENT login) ───────────────────────
+
+Future<void> saveParentAuthData({
+  required String name,
+  required String userId,
+  required String email,
+  String? organizationId,
+  bool hasCompletedSetup = true,
+  String authProvider = 'password',
+}) async {
+  final box = Hive.box(AppConstants.authBox);
+  await box.put('isLoggedIn', true);
+  await box.put('userRole', AppConstants.roleParent);
+  await box.put('userName', name);
+  await box.put('userId', userId);
+  await box.put('userEmail', email);
+  await box.put('authMethod', authProvider);
+  if (organizationId != null) {
+    await box.put('organizationId', organizationId);
+  }
+  await box.put('hasCompletedSetup', hasCompletedSetup);
+}
+
 // ─── Helper: Clear auth data ─────────────────────────────────────────────────
 
 Future<void> clearAuthData() async {
@@ -170,7 +200,7 @@ Future<void> clearAuthData() async {
   await box.delete('authMethod');
   await box.delete('organizationId');
   await box.delete('hasCompletedSetup');
-  // Also sign out Firebase Auth if logged in
+  // Also sign out Firebase Auth + Google Sign-In
   try {
     await FirebaseAuth.instance.signOut();
   } catch (_) {}
