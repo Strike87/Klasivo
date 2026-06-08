@@ -52,6 +52,10 @@ class AuthService {
 
       // Create user document with owner role
       // hasCompletedSetup = false → triggers Welcome screen redirect
+      // Email verification: Firebase auto-sends verification for password sign-up
+      // Google Sign-In emails are pre-verified by Google
+      final isEmailVerified = user.emailVerified;
+
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -64,6 +68,7 @@ class AuthService {
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -76,6 +81,7 @@ class AuthService {
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': false,
       };
     } catch (e) {
@@ -178,6 +184,7 @@ class AuthService {
         'authProvider': AuthProviders.password,
         'fullName': userData['fullName'] ?? 'User',
         'email': userData['email'] ?? email,
+        'isEmailVerified': user.emailVerified,
         'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
       };
     } catch (e) {
@@ -294,6 +301,8 @@ class AuthService {
           await FirebaseService.registerWithEmail(email, password);
       final user = userCredential.user!;
 
+      final isEmailVerified = user.emailVerified;
+
       // Create user document with teacher role
       await _firestore
           .collection(AppConstants.usersCollection)
@@ -307,6 +316,7 @@ class AuthService {
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': true,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -330,6 +340,7 @@ class AuthService {
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': true,
       };
     } catch (e) {
@@ -394,6 +405,7 @@ class AuthService {
           'authProvider': AuthProviders.google,
           'fullName': userData['fullName'] ?? user.displayName ?? 'Teacher',
           'email': userData['email'] ?? user.email ?? '',
+          'isEmailVerified': user.emailVerified,
           'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
         };
       }
@@ -401,6 +413,7 @@ class AuthService {
       // New user — create teacher document
       final fullName = user.displayName ?? 'Teacher';
       final email = user.email ?? '';
+      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
 
       await _firestore
           .collection(AppConstants.usersCollection)
@@ -414,6 +427,7 @@ class AuthService {
         'photoUrl': user.photoURL,
         'phoneNumber': null,
         'isActive': true,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': true,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -459,6 +473,8 @@ class AuthService {
 
       // Create user document with parent role
       // Parents need to link a child after registration
+      final isEmailVerified = user.emailVerified;
+
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -471,6 +487,7 @@ class AuthService {
         'photoUrl': null,
         'phoneNumber': null,
         'isActive': true,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': false, // Needs to link child
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -483,6 +500,7 @@ class AuthService {
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': false,
       };
     } catch (e) {
@@ -566,6 +584,7 @@ class AuthService {
           'authProvider': AuthProviders.google,
           'fullName': userData['fullName'] ?? user.displayName ?? 'User',
           'email': userData['email'] ?? user.email ?? '',
+          'isEmailVerified': user.emailVerified,
           'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
         };
       }
@@ -591,6 +610,8 @@ class AuthService {
         hasCompletedSetup = false; // Needs to link child
       }
 
+      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
+
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
@@ -603,6 +624,7 @@ class AuthService {
         'photoUrl': user.photoURL,
         'phoneNumber': null,
         'isActive': true,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': hasCompletedSetup,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -615,10 +637,30 @@ class AuthService {
         'authProvider': AuthProviders.google,
         'fullName': fullName,
         'email': email,
+        'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': hasCompletedSetup,
       };
     } catch (e) {
       rethrow;
+    }
+  }
+
+  // ─── Sync Email Verification Status ────────────────────────────────────────
+
+  /// Updates the isEmailVerified field in Firestore if it has changed.
+  /// Called after every successful login to keep the field accurate.
+  /// Google Sign-In users are always verified. Password users may verify later.
+  Future<void> syncEmailVerification(String userId, bool isVerified) async {
+    try {
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(userId)
+          .update({
+        'isEmailVerified': isVerified,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Non-critical — don't block login if this fails
     }
   }
 

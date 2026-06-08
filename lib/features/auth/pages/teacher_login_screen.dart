@@ -49,6 +49,10 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
         authProvider: result['authProvider'] ?? 'password',
       );
 
+      // Sync email verification status (non-blocking)
+      final isEmailVerified = result['isEmailVerified'] as bool? ?? false;
+      authService.syncEmailVerification(result['id'], isEmailVerified);
+
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
         final role = result['role'] ?? AppConstants.roleTeacher;
