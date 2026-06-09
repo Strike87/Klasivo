@@ -136,7 +136,7 @@ class AuditLogService {
           .where('organizationId', isEqualTo: orgId)
           .count()
           .get();
-      return snapshot.count;
+      return snapshot.count ?? 0;
     } catch (e) {
       debugPrint('Error getting audit log count: $e');
       return 0;
