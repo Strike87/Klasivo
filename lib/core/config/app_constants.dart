@@ -56,8 +56,12 @@ class AppConstants {
   // Analytics
   static const String analyticsCacheCollection = 'analytics_cache';
 
+  // Calendar
+  static const String calendarEventsCollection = 'calendar_events';
+
   // Communication
   static const String notificationsCollection = 'notifications';
+  static const String announcementsCollection = 'announcements';
 
   // ─── User Roles ──────────────────────────────────────────────────────────
 
@@ -108,6 +112,17 @@ class AppConstants {
   static const String routeMessages = '/inbox/messages';
   static const String routeConversation = '/inbox/messages/:id';
   static const String routeAnnouncements = '/inbox/announcements';
+
+  // Calendar
+  static const String routeCalendar = '/calendar';
+  static const String routeCalendarEventCreate = '/calendar/create';
+
+  // Academic Years
+  static const String routeAcademicYears = '/academic/years';
+  static const String routeAcademicYearCreate = '/academic/years/create';
+
+  // Audit Logs
+  static const String routeAuditLog = '/settings/audit-log';
 
   // People sub-routes
   static const String routeTeachers = '/people/teachers';
@@ -219,6 +234,27 @@ class AppConstants {
   static const String notificationStudentJoined = 'student_joined';
   static const String notificationOrgUpdate = 'org_update';
 
+  // ─── Calendar Event Types ──────────────────────────────────────────────
+
+  static const String calendarEventExam = 'exam';
+  static const String calendarEventAssignment = 'assignment';
+  static const String calendarEventHoliday = 'holiday';
+  static const String calendarEventEvent = 'event';
+  static const String calendarEventMeeting = 'meeting';
+  static const String calendarEventDeadline = 'deadline';
+
+  // ─── Audit Log Actions ────────────────────────────────────────────────
+
+  static const String auditActionCreate = 'create';
+  static const String auditActionUpdate = 'update';
+  static const String auditActionDelete = 'delete';
+  static const String auditActionPublish = 'publish';
+  static const String auditActionArchive = 'archive';
+  static const String auditActionSubmit = 'submit';
+  static const String auditActionGrade = 'grade';
+  static const String auditActionLink = 'link';
+  static const String auditActionRevoke = 'revoke';
+
   // ─── Analytics Types ──────────────────────────────────────────────────────
 
   static const String analyticsTypeStudent = 'student';
@@ -278,6 +314,12 @@ class AppConstants {
   // ─── Default Values ──────────────────────────────────────────────────────
 
   static const String defaultInstitutionId = 'default';
+
+  // Academic Years
+  static const String academicYearsCollection = 'academic_years';
+
+  // Audit Logs
+  static const String auditLogsCollection = 'audit_logs';
 
   // ─── Extra Collections (referenced by services) ─────────────────────────
 

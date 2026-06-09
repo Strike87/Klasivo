@@ -64,6 +64,16 @@ import 'features/parent/pages/parent_login_screen.dart';
 import 'features/parent/pages/parent_register_screen.dart';
 import 'features/parent/pages/parent_link_screen.dart';
 import 'features/parent/pages/parent_dashboard.dart';
+
+// ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
+import 'features/announcements/pages/announcement_list_screen.dart';
+import 'features/announcements/pages/announcement_form_screen.dart';
+import 'features/announcements/pages/announcement_detail_screen.dart';
+import 'features/calendar/pages/calendar_screen.dart';
+import 'features/calendar/pages/calendar_event_form_screen.dart';
+import 'features/academic_years/pages/academic_year_list_screen.dart';
+import 'features/academic_years/pages/academic_year_form_screen.dart';
+import 'features/audit_log/pages/audit_log_screen.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
@@ -355,6 +365,22 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'messages',
                 builder: (context, state) => const NotificationCenterScreen(),
               ),
+              // ─── Announcements ────────────────────────────────────────
+              GoRoute(
+                path: 'announcements',
+                builder: (context, state) => const AnnouncementListScreen(),
+              ),
+              GoRoute(
+                path: 'announcements/create',
+                builder: (context, state) => const AnnouncementFormScreen(isEditing: false),
+              ),
+              GoRoute(
+                path: 'announcements/:id',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return AnnouncementDetailScreen(announcementId: id);
+                },
+              ),
             ],
           ),
 
@@ -522,6 +548,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const QuestionBankScreen(),
           ),
 
+          // ─── Calendar ─────────────────────────────────────────────────
+          GoRoute(
+            path: 'calendar',
+            builder: (context, state) => const CalendarScreen(),
+          ),
+
+          // ─── Academic Years ─────────────────────────────────────────────
+          GoRoute(
+            path: 'academic-years',
+            builder: (context, state) => const AcademicYearListScreen(),
+          ),
+
           // ─── v1.7 New Routes ──────────────────────────────────────────
           GoRoute(
             path: 'assignments',
@@ -565,6 +603,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'integrity',
             builder: (context, state) => const ExamIntegrityDashboard(),
+          ),
+
+          // ─── Audit Log (Owners Only) ──────────────────────────────────
+          GoRoute(
+            path: 'audit-log',
+            builder: (context, state) => const AuditLogScreen(),
           ),
         ],
       ),
