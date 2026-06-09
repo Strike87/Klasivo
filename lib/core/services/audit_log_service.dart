@@ -100,7 +100,7 @@ class AuditLogService {
   Stream<QuerySnapshot> getAuditLogsStream(String orgId, {int limit = 100}) {
     return _firestore
         .collection(AppConstants.auditLogsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .orderBy('timestamp', descending: true)
         .limit(limit)
         .snapshots();
@@ -110,8 +110,8 @@ class AuditLogService {
   Stream<QuerySnapshot> getAuditLogsByTypeStream(String orgId, String targetType, {int limit = 50}) {
     return _firestore
         .collection(AppConstants.auditLogsCollection)
-        .where('organizationId', orgId)
-        .where('targetType', targetType)
+        .where('organizationId', isEqualTo: orgId)
+        .where('targetType', isEqualTo: targetType)
         .orderBy('timestamp', descending: true)
         .limit(limit)
         .snapshots();
@@ -121,8 +121,8 @@ class AuditLogService {
   Stream<QuerySnapshot> getAuditLogsByUserStream(String orgId, String userId, {int limit = 50}) {
     return _firestore
         .collection(AppConstants.auditLogsCollection)
-        .where('organizationId', orgId)
-        .where('userId', userId)
+        .where('organizationId', isEqualTo: orgId)
+        .where('userId', isEqualTo: userId)
         .orderBy('timestamp', descending: true)
         .limit(limit)
         .snapshots();
@@ -133,7 +133,7 @@ class AuditLogService {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.auditLogsCollection)
-          .where('organizationId', orgId)
+          .where('organizationId', isEqualTo: orgId)
           .count()
           .get();
       return snapshot.count;

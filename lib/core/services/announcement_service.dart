@@ -105,7 +105,7 @@ class AnnouncementService {
   Stream<QuerySnapshot> getAnnouncementsByOrganizationStream(String orgId) {
     return _firestore
         .collection(AppConstants.announcementsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .where('isActive', isEqualTo: true)
         .orderBy('isPinned', descending: true)
         .orderBy('createdAt', descending: true)
@@ -116,9 +116,9 @@ class AnnouncementService {
   Stream<QuerySnapshot> getAnnouncementsByTargetStream(String orgId, String targetType, String targetId) {
     return _firestore
         .collection(AppConstants.announcementsCollection)
-        .where('organizationId', orgId)
-        .where('targetType', targetType)
-        .where('targetId', targetId)
+        .where('organizationId', isEqualTo: orgId)
+        .where('targetType', isEqualTo: targetType)
+        .where('targetId', isEqualTo: targetId)
         .where('isActive', isEqualTo: true)
         .orderBy('isPinned', descending: true)
         .orderBy('createdAt', descending: true)
@@ -129,7 +129,7 @@ class AnnouncementService {
   Stream<QuerySnapshot> getAnnouncementsForStudentStream(String orgId, String classId) {
     return _firestore
         .collection(AppConstants.announcementsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .snapshots();

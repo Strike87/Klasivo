@@ -63,6 +63,12 @@ class AppConstants {
   static const String notificationsCollection = 'notifications';
   static const String announcementsCollection = 'announcements';
 
+  // v1.7 — Materials, Lessons, Lesson Plans, Resources
+  static const String materialsCollection = 'materials';
+  static const String lessonsCollection = 'lessons';
+  static const String lessonPlansCollection = 'lesson_plans';
+  static const String resourcesCollection = 'resources';
+
   // ─── User Roles ──────────────────────────────────────────────────────────
 
   static const String roleOwner = 'owner';

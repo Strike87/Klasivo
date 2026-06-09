@@ -95,7 +95,7 @@ class CalendarEventService {
   Stream<QuerySnapshot> getEventsByMonthStream(String orgId, DateTime startOfMonth, DateTime endOfMonth) {
     return _firestore
         .collection(AppConstants.calendarEventsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
         .orderBy('date')
@@ -106,8 +106,8 @@ class CalendarEventService {
   Stream<QuerySnapshot> getEventsByClassStream(String orgId, String classId, DateTime startOfMonth, DateTime endOfMonth) {
     return _firestore
         .collection(AppConstants.calendarEventsCollection)
-        .where('organizationId', orgId)
-        .where('classId', classId)
+        .where('organizationId', isEqualTo: orgId)
+        .where('classId', isEqualTo: classId)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
         .orderBy('date')
@@ -118,7 +118,7 @@ class CalendarEventService {
   Stream<QuerySnapshot> getEventsForStudentStream(String orgId, DateTime startOfMonth, DateTime endOfMonth) {
     return _firestore
         .collection(AppConstants.calendarEventsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
         .orderBy('date')

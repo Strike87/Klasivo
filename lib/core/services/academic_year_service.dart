@@ -19,7 +19,7 @@ class AcademicYearService {
       if (isCurrent) {
         final snapshot = await _firestore
             .collection(AppConstants.academicYearsCollection)
-            .where('organizationId', organizationId)
+            .where('organizationId', isEqualTo: organizationId)
             .where('isCurrent', isEqualTo: true)
             .get();
         for (final doc in snapshot.docs) {
@@ -62,7 +62,7 @@ class AcademicYearService {
         if (orgId != null) {
           final snapshot = await _firestore
               .collection(AppConstants.academicYearsCollection)
-              .where('organizationId', orgId)
+              .where('organizationId', isEqualTo: orgId)
               .where('isCurrent', isEqualTo: true)
               .get();
           for (final doc in snapshot.docs) {
@@ -116,7 +116,7 @@ class AcademicYearService {
   Stream<QuerySnapshot> getAcademicYearsStream(String orgId) {
     return _firestore
         .collection(AppConstants.academicYearsCollection)
-        .where('organizationId', orgId)
+        .where('organizationId', isEqualTo: orgId)
         .orderBy('startDate', descending: true)
         .snapshots();
   }
@@ -126,7 +126,7 @@ class AcademicYearService {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.academicYearsCollection)
-          .where('organizationId', orgId)
+          .where('organizationId', isEqualTo: orgId)
           .where('isCurrent', isEqualTo: true)
           .limit(1)
           .get();
@@ -143,7 +143,7 @@ class AcademicYearService {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.academicYearsCollection)
-          .where('organizationId', orgId)
+          .where('organizationId', isEqualTo: orgId)
           .where('isCurrent', isEqualTo: true)
           .get();
       for (final doc in snapshot.docs) {
