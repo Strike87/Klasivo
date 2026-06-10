@@ -18,6 +18,7 @@ import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
+import 'features/shell/parent_shell.dart';
 import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
@@ -59,6 +60,8 @@ import 'features/parent/pages/parent_login_screen.dart';
 import 'features/parent/pages/parent_register_screen.dart';
 import 'features/parent/pages/parent_link_screen.dart';
 import 'features/parent/pages/parent_dashboard.dart';
+import 'features/moderation/pages/moderation_queue_screen.dart';
+import 'features/progress/pages/progress_tracking_screen.dart';
 
 // ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
 import 'features/announcements/pages/announcement_list_screen.dart';
@@ -191,6 +194,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation.startsWith('/settings') ||
           state.matchedLocation.startsWith('/teacher');
       final isOnStudent = state.matchedLocation.startsWith('/student');
+      final isOnParent = state.matchedLocation.startsWith('/parent') ||
+          state.matchedLocation.startsWith('/auth/parent');
 
       // Splash → redirect based on auth state
       if (isOnSplash) {
@@ -203,6 +208,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return '/auth';
       }
@@ -225,12 +231,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return null;
       }
 
       // Protected screens → require login
-      if (isOnDashboard || isOnStudent) {
+      if (isOnDashboard || isOnStudent || isOnParent) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
 
@@ -247,12 +254,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (userRole == AppConstants.roleStudent && isOnStudent) {
           return null;
         }
+        if (userRole == AppConstants.roleParent && isOnParent) {
+          return null;
+        }
 
         // Redirect to correct dashboard
         if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
           return '/dashboard';
         }
         if (userRole == AppConstants.roleStudent) return '/student';
+        if (userRole == AppConstants.roleParent) return '/parent';
       }
 
       return null;
@@ -281,6 +292,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'student-login',
             builder: (context, state) => const StudentLoginScreen(),
           ),
+          GoRoute(
+            path: 'parent-login',
+            builder: (context, state) => const ParentLoginScreen(),
+          ),
+          GoRoute(
+            path: 'parent-register',
+            builder: (context, state) => const ParentRegisterScreen(),
+          ),
         ],
       ),
 
@@ -288,6 +307,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/welcome',
         builder: (context, state) => const WelcomeScreen(),
+      ),
+
+      // ─── Parent Link Screen ──────────────────────────────────────────
+      GoRoute(
+        path: '/auth/parent-link',
+        builder: (context, state) => const ParentLinkScreen(),
       ),
 
       // ─── Teacher/Owner Shell Navigation ──────────────────────────────
@@ -376,7 +401,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Settings
           GoRoute(
             path: '/settings',
-            builder: (context, state) => const _SettingsPlaceholder(),
+            builder: (context, state) => const SettingsScreen(),
+            routes: [
+              GoRoute(
+                path: 'organization',
+                builder: (context, state) => const OrganizationSettingsScreen(),
+              ),
+              GoRoute(
+                path: 'profile',
+                builder: (context, state) => const ProfileSettingsScreen(),
+              ),
+            ],
           ),
         ],
       ),
@@ -575,6 +610,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'audit-log',
             builder: (context, state) => const AuditLogScreen(),
           ),
+
+          // ─── Moderation Queue ──────────────────────────────────────────
+          GoRoute(
+            path: 'moderation',
+            builder: (context, state) => const ModerationQueueScreen(),
+          ),
+
+          // ─── Progress Tracking ───────────────────────────────────────
+          GoRoute(
+            path: 'progress',
+            builder: (context, state) => const ProgressTrackingScreen(classId: '', className: 'Class'),
+          ),
         ],
       ),
 
@@ -585,6 +632,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/student',
             builder: (context, state) => const StudentDashboard(),
+          ),
+        ],
+      ),
+
+      // ─── Parent Shell Navigation ─────────────────────────────────────
+      ShellRoute(
+        builder: (context, state, child) => ParentShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/parent',
+            builder: (context, state) => const ParentDashboard(),
+          ),
+          GoRoute(
+            path: '/parent/results',
+            builder: (context, state) => const ParentResultsView(),
+          ),
+          GoRoute(
+            path: '/parent/attendance',
+            builder: (context, state) => const ParentAttendanceView(),
           ),
         ],
       ),
@@ -643,184 +709,4 @@ class _NotificationDetailScreen extends ConsumerWidget {
   }
 }
 
-class _SettingsPlaceholder extends ConsumerWidget {
-  const _SettingsPlaceholder();
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final userName = ref.watch(userNameProvider) ?? 'User';
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          // Profile Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(KlasivoSpacing.lg),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: KlasivoColors.primary.withOpacity(0.1),
-                    child: Text(
-                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                      style: KlasivoTypography.headlineSmall.copyWith(
-                        color: KlasivoColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: KlasivoSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(userName, style: KlasivoTypography.titleLarge),
-                        const SizedBox(height: KlasivoSpacing.xs),
-                        Text(
-                          ref.watch(userIdProvider) ?? '',
-                          style: KlasivoTypography.bodySmall.copyWith(
-                            color: isDark
-                                ? KlasivoColors.darkTextTertiary
-                                : KlasivoColors.lightTextTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Settings Items
-          _SettingsTile(
-            icon: Icons.business_outlined,
-            title: 'Organization',
-            subtitle: 'Manage workspace settings',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.person_outline_rounded,
-            title: 'Profile',
-            subtitle: 'Edit your profile information',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.vpn_key_outlined,
-            title: 'Invite Codes',
-            subtitle: 'Generate and manage invite codes',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.palette_outlined,
-            title: 'Appearance',
-            subtitle: 'Light and dark theme',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Manage notification preferences',
-            onTap: () {},
-          ),
-
-          const Divider(),
-
-          _SettingsTile(
-            icon: Icons.help_outline_rounded,
-            title: 'Help & Support',
-            subtitle: AppConstants.supportEmail,
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.info_outline_rounded,
-            title: 'About Klasivo',
-            subtitle: 'Version 1.6.0',
-            onTap: () {},
-          ),
-
-          const Divider(),
-
-          // Logout
-          _SettingsTile(
-            icon: Icons.logout_rounded,
-            title: 'Logout',
-            subtitle: 'Sign out of your account',
-            isDestructive: true,
-            onTap: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      style: TextButton.styleFrom(
-                        foregroundColor: KlasivoColors.error,
-                      ),
-                      child: const Text('Logout'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true && context.mounted) {
-                await clearAuthData();
-                if (context.mounted) context.go('/auth');
-              }
-            },
-          ),
-
-          const SizedBox(height: KlasivoSpacing.xxxl),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isDestructive;
-  final VoidCallback onTap;
-
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.isDestructive = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDestructive
-        ? KlasivoColors.error
-        : (isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary);
-
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(title, style: KlasivoTypography.titleMedium.copyWith(color: color)),
-      subtitle: Text(
-        subtitle,
-        style: KlasivoTypography.bodySmall.copyWith(
-          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-        ),
-      ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
-        color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-        size: 20,
-      ),
-      onTap: onTap,
-    );
-  }
-}

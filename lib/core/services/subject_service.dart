@@ -23,6 +23,8 @@ class SubjectService {
         'teacherId': teacherId,
         'createdBy': createdBy,
         'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -46,12 +48,34 @@ class SubjectService {
       if (name != null) data['name'] = name;
       if (color != null) data['color'] = color;
       if (teacherId != null) data['teacherId'] = teacherId;
-      if (isArchived != null) data['isArchived'] = isArchived;
+      if (isArchived != null) {
+        data['isArchived'] = isArchived;
+        if (isArchived) {
+          data['archivedAt'] = FieldValue.serverTimestamp();
+          data['archivedBy'] = ''; // Caller should use archiveSubject() for tracking
+        }
+      }
 
       await _firestore
           .collection(AppConstants.subjectsCollection)
           .doc(subjectId)
           .update(data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> archiveSubject(String subjectId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.subjectsCollection)
+          .doc(subjectId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       rethrow;
     }

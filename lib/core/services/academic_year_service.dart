@@ -36,6 +36,8 @@ class AcademicYearService {
         'endDate': Timestamp.fromDate(endDate),
         'isCurrent': isCurrent,
         'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
         'createdBy': createdBy,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -160,7 +162,7 @@ class AcademicYearService {
   }
 
   /// Archive an academic year
-  Future<void> archiveAcademicYear(String yearId) async {
+  Future<void> archiveAcademicYear(String yearId, {String archivedBy = ''}) async {
     try {
       await _firestore
           .collection(AppConstants.academicYearsCollection)
@@ -168,6 +170,8 @@ class AcademicYearService {
           .update({
         'isArchived': true,
         'isCurrent': false,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {

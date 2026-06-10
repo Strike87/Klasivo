@@ -68,6 +68,10 @@ class AppConstants {
   static const String lessonsCollection = 'lessons';
   static const String lessonPlansCollection = 'lesson_plans';
   static const String resourcesCollection = 'resources';
+  static const String academicYearsCollection = 'academic_years';
+  static const String auditLogsCollection = 'audit_logs';
+  static const String progressTrackingCollection = 'progress_tracking';
+  static const String moderationQueueCollection = 'moderation_queue';
 
   // ─── User Roles ──────────────────────────────────────────────────────────
 

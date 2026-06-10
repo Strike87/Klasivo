@@ -294,5 +294,89 @@ service cloud.firestore {
       allow update: if isTeacherOrOwner();
       allow delete: if isTeacherOrOwner();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.7 Feature-Complete Collections
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Calendar Events Collection ======
+    match /calendar_events/{eventId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Announcements Collection ======
+    match /announcements/{announcementId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Academic Years Collection ======
+    match /academic_years/{yearId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Audit Logs Collection ======
+    match /audit_logs/{logId} {
+      allow read: if isTeacherOrOwner();
+      allow create: if isAuth();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====== Resources Collection ======
+    match /resources/{resourceId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Materials Collection ======
+    match /materials/{materialId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Lessons Collection ======
+    match /lessons/{lessonId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Lesson Plans Collection ======
+    match /lesson_plans/{planId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Progress Tracking Collection ======
+    match /progress_tracking/{progressId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Moderation Queue Collection ======
+    match /moderation_queue/{itemId} {
+      allow read: if isTeacherOrOwner();
+      allow create: if isAuth();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
   }
 }

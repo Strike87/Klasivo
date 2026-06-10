@@ -30,6 +30,8 @@ class AssignmentService {
         'attachments': attachments ?? [],
         'createdBy': createdBy,
         'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -75,6 +77,22 @@ class AssignmentService {
           .doc(assignmentId)
           .update({
         'status': AppConstants.assignmentStatusPublished,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> archiveAssignment(String assignmentId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.assignmentsCollection)
+          .doc(assignmentId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {

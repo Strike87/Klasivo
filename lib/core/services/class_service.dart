@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'search_keyword_service.dart';
 
 class ClassService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -30,6 +31,7 @@ class ClassService {
         'isArchived': false,
         'archivedAt': null,
         'archivedBy': null,
+        'searchKeywords': SearchKeywordService().generateKeywords('$name ${code ?? ""}'),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -53,7 +55,10 @@ class ClassService {
       final data = <String, dynamic>{
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      if (name != null) data['name'] = name;
+      if (name != null) {
+        data['name'] = name;
+        data['searchKeywords'] = SearchKeywordService().generateKeywords('$name ${code ?? ""}');
+      }
       if (stageId != null) data['stageId'] = stageId;
       if (code != null) data['code'] = code;
       if (capacity != null) data['capacity'] = capacity;
