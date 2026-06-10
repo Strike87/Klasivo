@@ -160,7 +160,8 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isTeacherOrOwner();
+      // Allow update if user is teacher/owner OR if they are the org owner (fixes chicken-egg during signup)
+      allow update: if isTeacherOrOwner() || (isAuth() && resource.data.ownerId == request.auth.uid);
       allow delete: if false;
     }
 

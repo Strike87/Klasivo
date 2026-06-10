@@ -43,24 +43,18 @@ class AuthService {
           await FirebaseService.registerWithEmail(email, password);
       final user = userCredential.user!;
 
-      // Auto-create organization with a temporary default name
-      final orgService = OrganizationService();
-      final orgId = await orgService.createOrganization(
-        ownerId: user.uid,
-        name: "$fullName's Workspace",
-      );
-
-      // Create user document with owner role
-      // hasCompletedSetup = false → triggers Welcome screen redirect
       // Email verification: Firebase auto-sends verification for password sign-up
       // Google Sign-In emails are pre-verified by Google
       final isEmailVerified = user.emailVerified;
 
+      // Create user document FIRST with a placeholder orgId.
+      // This ensures isTeacherOrOwner() can resolve in Firestore rules
+      // when the org document is created/updated immediately after.
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
           .set({
-        'organizationId': orgId,
+        'organizationId': '', // Placeholder — updated below after org creation
         'role': AppConstants.roleOwner,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
@@ -71,6 +65,22 @@ class AuthService {
         'isEmailVerified': isEmailVerified,
         'hasCompletedSetup': false,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Now create the organization — rules can verify the user is an owner
+      final orgService = OrganizationService();
+      final orgId = await orgService.createOrganization(
+        ownerId: user.uid,
+        name: "$fullName's Workspace",
+      );
+
+      // Patch the user doc with the real organizationId
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .update({
+        'organizationId': orgId,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -593,42 +603,73 @@ class AuthService {
       final fullName = user.displayName ?? 'User';
       final email = user.email ?? '';
       final role = expectedRole ?? AppConstants.roleOwner;
+      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
 
       String? organizationId;
       bool hasCompletedSetup = true;
 
       if (role == AppConstants.roleOwner) {
-        // Auto-create organization for new owners
+        // Create user doc FIRST with placeholder orgId so isTeacherOrOwner() resolves
+        await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .set({
+          'organizationId': '', // Placeholder — updated below
+          'role': AppConstants.roleOwner,
+          'authProvider': AuthProviders.google,
+          'fullName': fullName,
+          'email': email,
+          'photoUrl': user.photoURL,
+          'phoneNumber': null,
+          'isActive': true,
+          'isEmailVerified': isEmailVerified,
+          'hasCompletedSetup': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Now create the organization — rules can verify user is an owner
         final orgService = OrganizationService();
         organizationId = await orgService.createOrganization(
           ownerId: user.uid,
           name: "$fullName's Workspace",
         );
+
+        // Patch the user doc with the real organizationId
+        await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .update({
+          'organizationId': organizationId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
         hasCompletedSetup = false; // Needs to name workspace
       } else if (role == AppConstants.roleParent) {
         organizationId = null; // Set when parent links a child
         hasCompletedSetup = false; // Needs to link child
       }
 
-      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
-
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(user.uid)
-          .set({
-        'organizationId': organizationId,
-        'role': role,
-        'authProvider': AuthProviders.google,
-        'fullName': fullName,
-        'email': email,
-        'photoUrl': user.photoURL,
-        'phoneNumber': null,
-        'isActive': true,
-        'isEmailVerified': isEmailVerified,
-        'hasCompletedSetup': hasCompletedSetup,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // For non-owner roles, write the user doc normally (owner doc already created above)
+      if (role != AppConstants.roleOwner) {
+        await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .set({
+          'organizationId': organizationId,
+          'role': role,
+          'authProvider': AuthProviders.google,
+          'fullName': fullName,
+          'email': email,
+          'photoUrl': user.photoURL,
+          'phoneNumber': null,
+          'isActive': true,
+          'isEmailVerified': isEmailVerified,
+          'hasCompletedSetup': hasCompletedSetup,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       return {
         'id': user.uid,

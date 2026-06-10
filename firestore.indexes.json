@@ -6,6 +6,8 @@
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
     { "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "studentCode", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }] },
 
     { "collectionGroup": "invite_codes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
