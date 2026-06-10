@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../providers/class_provider.dart';
-import '../../../providers/auth_provider.dart';
+import '../../../providers/stage_provider.dart';
 import '../../../providers/organization_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../core/config/theme.dart';
 
 class ClassFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -26,7 +28,9 @@ class ClassFormScreen extends ConsumerStatefulWidget {
 class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _gradeController = TextEditingController();
+  final _codeController = TextEditingController();
+  final _capacityController = TextEditingController();
+  String? _selectedStageId;
   bool _isLoading = false;
 
   @override
@@ -34,44 +38,60 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
     super.initState();
     if (widget.isEditing && widget.classData != null) {
       _nameController.text = widget.classData!.name;
-      _gradeController.text = widget.classData!.grade ?? '';
+      _codeController.text = widget.classData!.code;
+      _capacityController.text =
+          widget.classData!.capacity > 0 ? widget.classData!.capacity.toString() : '';
+      _selectedStageId = widget.classData!.stageId;
+    } else {
+      _selectedStageId = widget.stageId;
     }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _gradeController.dispose();
+    _codeController.dispose();
+    _capacityController.dispose();
     super.dispose();
   }
 
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Validate stage selection
+    if (_selectedStageId == null || _selectedStageId!.isEmpty) {
+      showSnackBar(context, message: 'Please select a stage', isError: true);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final classService = ref.read(classServiceProvider);
+      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+      final userId = ref.read(userIdProvider) ?? '';
+      final capacity = int.tryParse(_capacityController.text.trim()) ?? 0;
 
       if (widget.isEditing) {
-        final gradeValue = _gradeController.text.trim().isEmpty
-            ? null
-            : _gradeController.text.trim();
         await classService.updateClass(
           classId: widget.classData!.id,
           name: _nameController.text.trim(),
-          grade: gradeValue,
+          stageId: _selectedStageId,
+          code: _codeController.text.trim(),
+          capacity: capacity,
         );
         if (mounted) {
           showSnackBar(context, message: 'Class updated successfully');
           context.pop();
         }
       } else {
-        final orgId = ref.read(currentOrganizationIdProvider) ?? '';
         await classService.createClass(
           organizationId: orgId,
-          stageId: widget.stageId ?? widget.classData?.stageId ?? '',
+          stageId: _selectedStageId!,
           name: _nameController.text.trim(),
+          code: _codeController.text.trim(),
+          capacity: capacity,
+          createdBy: userId,
         );
         if (mounted) {
           showSnackBar(context, message: 'Class created successfully');
@@ -103,9 +123,19 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
     return null;
   }
 
+  String? _validateCapacity(String? value) {
+    if (value == null || value.trim().isEmpty) return null; // optional
+    final parsed = int.tryParse(value.trim());
+    if (parsed == null || parsed < 0) {
+      return 'Enter a valid number';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final stages = ref.watch(stagesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -122,13 +152,15 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  color: KlasivoColors.secondary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
-                  widget.isEditing ? Icons.edit_outlined : Icons.add_circle_outline,
+                  widget.isEditing
+                      ? Icons.edit_outlined
+                      : Icons.add_circle_outline,
                   size: 48,
-                  color: theme.colorScheme.primary,
+                  color: KlasivoColors.secondary,
                 ),
               ),
             ),
@@ -139,11 +171,55 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
               key: _formKey,
               child: Column(
                 children: [
+                  // Stage selector
+                  DropdownButtonFormField<String>(
+                    value: (_selectedStageId != null &&
+                            stages.any((s) => s.id == _selectedStageId))
+                        ? _selectedStageId
+                        : null,
+                    decoration: InputDecoration(
+                      labelText: 'Stage *',
+                      prefixIcon: const Icon(Icons.school_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    items: stages.map((stage) {
+                      return DropdownMenuItem<String>(
+                        value: stage.id,
+                        child: Text(stage.name),
+                      );
+                    }).toList(),
+                    onChanged: widget.isEditing
+                        ? null // Don't allow changing stage on edit
+                        : (value) {
+                            setState(() => _selectedStageId = value);
+                          },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please select a stage';
+                      }
+                      return null;
+                    },
+                    disabledHint: _selectedStageId != null
+                        ? Text(stages
+                                .firstWhere(
+                                    (s) => s.id == _selectedStageId,
+                                    orElse: () => StageData(
+                                        id: '',
+                                        organizationId: '',
+                                        name: 'Unknown'))
+                                .name)
+                        : const Text('Select a stage'),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Class Name
                   TextFormField(
                     controller: _nameController,
                     decoration: InputDecoration(
                       labelText: 'Class Name *',
-                      hintText: 'e.g. Grade 10 - Section A',
+                      hintText: 'e.g. Grade 5',
                       prefixIcon: const Icon(Icons.class_outlined),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -154,18 +230,37 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
                     textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
+
+                  // Class Code
                   TextFormField(
-                    controller: _gradeController,
+                    controller: _codeController,
                     decoration: InputDecoration(
-                      labelText: 'Grade / Level',
-                      hintText: 'e.g. Grade 10, 3rd Year',
-                      prefixIcon: const Icon(Icons.school_outlined),
+                      labelText: 'Class Code',
+                      hintText: 'e.g. G5',
+                      prefixIcon: const Icon(Icons.tag),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                     enabled: !_isLoading,
-                    textCapitalization: TextCapitalization.words,
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Capacity
+                  TextFormField(
+                    controller: _capacityController,
+                    decoration: InputDecoration(
+                      labelText: 'Capacity',
+                      hintText: 'e.g. 40',
+                      prefixIcon: const Icon(Icons.event_seat_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    validator: _validateCapacity,
+                    enabled: !_isLoading,
+                    keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 32),
 
@@ -184,7 +279,8 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
                           ? const SizedBox(
                               height: 24,
                               width: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
                             )
                           : Text(
                               widget.isEditing ? 'Update Class' : 'Create Class',
@@ -206,19 +302,24 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.05),
+                  color: KlasivoColors.primary.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                  border: Border.all(
+                      color: KlasivoColors.primary.withOpacity(0.2)),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                    Icon(Icons.info_outline,
+                        color: KlasivoColors.primary, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'After creating a class, you can add students to it. Each student will get a unique code for login.',
+                        'Classes belong to a stage. After creating a class, '
+                        'you can add students to it. Each student will get a '
+                        'unique code for login.',
                         style: TextStyle(
-                          color: Colors.blue[700],
+                          color: KlasivoColors.primary,
                           fontSize: 13,
                         ),
                       ),

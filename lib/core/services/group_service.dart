@@ -8,6 +8,7 @@ class GroupService {
     required String organizationId,
     required String classId,
     required String name,
+    String stageId = '',
     String createdBy = '',
   }) async {
     try {
@@ -16,9 +17,12 @@ class GroupService {
           .add({
         'organizationId': organizationId,
         'classId': classId,
+        'stageId': stageId,
         'name': name,
         'createdBy': createdBy,
         'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -38,7 +42,12 @@ class GroupService {
         'updatedAt': FieldValue.serverTimestamp(),
       };
       if (name != null) data['name'] = name;
-      if (isArchived != null) data['isArchived'] = isArchived;
+      if (isArchived != null) {
+        data['isArchived'] = isArchived;
+        if (isArchived) {
+          data['archivedAt'] = FieldValue.serverTimestamp();
+        }
+      }
 
       await _firestore
           .collection(AppConstants.groupsCollection)
@@ -49,6 +58,25 @@ class GroupService {
     }
   }
 
+  /// Soft-delete: archive the group instead of removing it.
+  Future<void> archiveGroup(String groupId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.groupsCollection)
+          .doc(groupId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Hard-delete: removes the group and all its members.
+  /// Prefer [archiveGroup] for normal flow.
   Future<void> deleteGroup(String groupId) async {
     try {
       // Delete all group members
@@ -73,6 +101,15 @@ class GroupService {
     return _firestore
         .collection(AppConstants.groupsCollection)
         .where('classId', isEqualTo: classId)
+        .where('isArchived', isEqualTo: false)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getGroupsByStageStream(String stageId) {
+    return _firestore
+        .collection(AppConstants.groupsCollection)
+        .where('stageId', isEqualTo: stageId)
         .where('isArchived', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .snapshots();

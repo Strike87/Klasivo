@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../providers/stage_provider.dart';
-import '../../../providers/grade_provider.dart';
+import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../core/config/theme.dart';
-import '../../../widgets/klasivo_components.dart';
 
 class StageListScreen extends ConsumerWidget {
   const StageListScreen({Key? key}) : super(key: key);
@@ -15,21 +15,35 @@ class StageListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stages = ref.watch(stagesProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Stages'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('Academic Structure'),
+        centerTitle: true,
+        actions: [
+          if (stages.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.auto_fix_high_outlined),
+              tooltip: 'Setup Wizard',
+              onPressed: () => _showSetupWizard(context, ref),
+            ),
+        ],
+      ),
       body: stages.isEmpty
-          ? KlasivoEmptyState(
+          ? EmptyState(
               icon: Icons.school_outlined,
               title: 'No Stages Yet',
-              subtitle: 'Create stages to organize your educational hierarchy',
-              actionLabel: 'Add Stage',
-              iconColor: KlasivoColors.primary,
+              subtitle:
+                  'Create stages to organize your educational hierarchy.\n'
+                  'e.g. Kindergarten, Primary, Preparatory, Secondary',
+              actionLabel: 'Setup Structure',
+              onAction: () => _showSetupWizard(context, ref),
             )
           : RefreshIndicator(
               onRefresh: () async => ref.invalidate(stagesStreamProvider),
               child: ListView.builder(
-                padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                padding: const EdgeInsets.all(16),
                 itemCount: stages.length,
                 itemBuilder: (context, index) {
                   final stage = stages[index];
@@ -47,46 +61,63 @@ class StageListScreen extends ConsumerWidget {
 
   void _showAddStageDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+    final descController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          'Add Stage',
-          style: KlasivoTypography.titleLarge.copyWith(
-            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
-          ),
-        ),
-        content: TextField(
-          controller: nameController,
-          decoration: InputDecoration(
-            labelText: 'Stage Name',
-            hintText: 'e.g. Secondary Stage',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+        title: const Text('Add Stage'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Stage Name *',
+                hintText: 'e.g. Primary',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
             ),
-          ),
-          autofocus: true,
+            const SizedBox(height: 12),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                hintText: 'e.g. Primary Education',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+                final orgId =
+                    ref.read(currentOrganizationIdProvider) ?? '';
                 final stages = ref.read(stagesProvider);
-                final maxOrder = stages.isEmpty ? 0 : stages.map((s) => s.order).reduce((a, b) => a > b ? a : b);
+                final maxOrder = stages.isEmpty
+                    ? 0
+                    : stages.map((s) => s.order).reduce((a, b) => a > b ? a : b);
                 await ref.read(stageServiceProvider).createStage(
                       organizationId: orgId,
                       name: nameController.text.trim(),
+                      description: descController.text.trim(),
                       order: maxOrder + 1,
                     );
                 if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) showSnackBar(context, message: 'Stage created successfully');
+                if (context.mounted) {
+                  showSnackBar(context, message: 'Stage created successfully');
+                }
               } catch (e) {
-                if (context.mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
+                if (context.mounted) {
+                  showSnackBar(context, message: 'Failed: $e', isError: true);
+                }
               }
             },
             child: const Text('Create'),
@@ -95,7 +126,20 @@ class StageListScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _showSetupWizard(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _SetupWizardSheet(ref: ref),
+    );
+  }
 }
+
+// ─── Stage Card ───────────────────────────────────────────────────────────────
 
 class _StageCard extends ConsumerWidget {
   final StageData stage;
@@ -103,70 +147,511 @@ class _StageCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gradesAsync = ref.watch(gradesByStageListProvider(stage.id));
-    final gradeCount = gradesAsync.length;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final classesAsync = ref.watch(classesByStageListProvider(stage.id));
+    final classCount = classesAsync.length;
+    final totalStudents = classesAsync.fold<int>(
+        0, (sum, c) => sum + c.studentCount);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: KlasivoSpacing.md),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
-          decoration: BoxDecoration(
-            color: KlasivoColors.primarySurface,
-            borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-          ),
-          child: const Icon(Icons.school_outlined, color: KlasivoColors.primary, size: 28),
-        ),
-        title: Text(
-          stage.name,
-          style: KlasivoTypography.titleMedium.copyWith(
-            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
-          ),
-        ),
-        subtitle: Text(
-          '$gradeCount grade${gradeCount != 1 ? 's' : ''}',
-          style: KlasivoTypography.bodySmall.copyWith(
-            color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-          ),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) async {
-            if (value == 'delete') {
-              final confirmed = await showConfirmationDialog(
-                context: context,
-                title: 'Delete Stage',
-                message: 'Delete "${stage.name}" and all its grades?',
-                confirmLabel: 'Delete',
-                isDangerous: true,
-              );
-              if (confirmed == true) {
-                try {
-                  await ref.read(stageServiceProvider).deleteStage(stage.id);
-                  if (context.mounted) showSnackBar(context, message: 'Stage deleted');
-                } catch (e) {
-                  if (context.mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
-                }
-              }
-            }
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'delete',
-              child: Text(
-                'Delete',
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: KlasivoColors.error,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () {
+          // Navigate to classes under this stage
+          context.go('/academic/stages/${stage.id}/classes');
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KlasivoColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.school_outlined,
+                  color: KlasivoColors.primary,
+                  size: 28,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stage.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (stage.description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        stage.description,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.class_outlined,
+                            size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$classCount class${classCount != 1 ? 'es' : ''}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(Icons.people_outline,
+                            size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$totalStudents student${totalStudents != 1 ? 's' : ''}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 22),
+                    tooltip: 'Add Class',
+                    onPressed: () {
+                      context.go(
+                        '/academic/stages/${stage.id}/classes/create',
+                        extra: stage.id,
+                      );
+                    },
+                  ),
+                  PopupMenuButton<String>(
+                    onSelected: (value) async {
+                      if (value == 'edit') {
+                        _showEditStageDialog(context, ref, stage);
+                      } else if (value == 'archive') {
+                        final confirmed = await showConfirmationDialog(
+                          context: context,
+                          title: 'Archive Stage',
+                          message:
+                              'Archive "${stage.name}"? It will be hidden but data is preserved.',
+                          confirmLabel: 'Archive',
+                          isDangerous: true,
+                        );
+                        if (confirmed == true) {
+                          try {
+                            final userId =
+                                ref.read(userIdProvider) ?? '';
+                            await ref
+                                .read(stageServiceProvider)
+                                .archiveStage(stage.id, archivedBy: userId);
+                            if (context.mounted) {
+                              showSnackBar(context,
+                                  message: 'Stage archived');
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              showSnackBar(context,
+                                  message: 'Failed: $e', isError: true);
+                            }
+                          }
+                        }
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'archive',
+                        child: Row(
+                          children: [
+                            Icon(Icons.archive_outlined,
+                                size: 20, color: Colors.orange[700]),
+                            SizedBox(width: 8),
+                            Text('Archive',
+                                style:
+                                    TextStyle(color: Colors.orange[700])),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _showEditStageDialog(
+      BuildContext context, WidgetRef ref, StageData stage) {
+    final nameController = TextEditingController(text: stage.name);
+    final descController = TextEditingController(text: stage.description);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Stage'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Stage Name *',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) return;
+              try {
+                await ref.read(stageServiceProvider).updateStage(
+                      stageId: stage.id,
+                      name: nameController.text.trim(),
+                      description: descController.text.trim(),
+                    );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  showSnackBar(context, message: 'Stage updated');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  showSnackBar(context, message: 'Failed: $e',
+                      isError: true);
+                }
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Smart Setup Wizard ───────────────────────────────────────────────────────
+
+class _SetupWizardSheet extends StatefulWidget {
+  final WidgetRef ref;
+  const _SetupWizardSheet({required this.ref});
+
+  @override
+  State<_SetupWizardSheet> createState() => _SetupWizardSheetState();
+}
+
+class _SetupWizardSheetState extends State<_SetupWizardSheet> {
+  String _selectedTemplate = 'egyptian';
+  bool _isCreating = false;
+
+  final Map<String, Map<String, dynamic>> _templates = {
+    'egyptian': {
+      'label': 'Egyptian School',
+      'icon': Icons.school,
+      'stages': [
+        {
+          'name': 'Kindergarten',
+          'description': 'Pre-school education',
+          'order': 1,
+          'classes': [
+            {'name': 'KG1', 'code': 'KG1'},
+            {'name': 'KG2', 'code': 'KG2'},
+          ],
+        },
+        {
+          'name': 'Primary',
+          'description': 'Primary education',
+          'order': 2,
+          'classes': [
+            {'name': 'Grade 1', 'code': 'G1'},
+            {'name': 'Grade 2', 'code': 'G2'},
+            {'name': 'Grade 3', 'code': 'G3'},
+            {'name': 'Grade 4', 'code': 'G4'},
+            {'name': 'Grade 5', 'code': 'G5'},
+            {'name': 'Grade 6', 'code': 'G6'},
+          ],
+        },
+        {
+          'name': 'Preparatory',
+          'description': 'Preparatory education',
+          'order': 3,
+          'classes': [
+            {'name': 'Grade 7', 'code': 'G7'},
+            {'name': 'Grade 8', 'code': 'G8'},
+            {'name': 'Grade 9', 'code': 'G9'},
+          ],
+        },
+        {
+          'name': 'Secondary',
+          'description': 'Secondary education',
+          'order': 4,
+          'classes': [
+            {'name': 'Grade 10', 'code': 'G10'},
+            {'name': 'Grade 11', 'code': 'G11'},
+            {'name': 'Grade 12', 'code': 'G12'},
+          ],
+        },
+      ],
+    },
+    'american': {
+      'label': 'American School',
+      'icon': Icons.flag,
+      'stages': [
+        {
+          'name': 'Elementary',
+          'description': 'Elementary school',
+          'order': 1,
+          'classes': [
+            {'name': 'Grade 1', 'code': 'G1'},
+            {'name': 'Grade 2', 'code': 'G2'},
+            {'name': 'Grade 3', 'code': 'G3'},
+            {'name': 'Grade 4', 'code': 'G4'},
+            {'name': 'Grade 5', 'code': 'G5'},
+          ],
+        },
+        {
+          'name': 'Middle School',
+          'description': 'Middle school',
+          'order': 2,
+          'classes': [
+            {'name': 'Grade 6', 'code': 'G6'},
+            {'name': 'Grade 7', 'code': 'G7'},
+            {'name': 'Grade 8', 'code': 'G8'},
+          ],
+        },
+        {
+          'name': 'High School',
+          'description': 'High school',
+          'order': 3,
+          'classes': [
+            {'name': 'Grade 9', 'code': 'G9'},
+            {'name': 'Grade 10', 'code': 'G10'},
+            {'name': 'Grade 11', 'code': 'G11'},
+            {'name': 'Grade 12', 'code': 'G12'},
+          ],
+        },
+      ],
+    },
+    'tutoring': {
+      'label': 'Tutoring Center',
+      'icon': Icons.groups,
+      'stages': [
+        {
+          'name': 'Primary',
+          'description': 'Primary level tutoring',
+          'order': 1,
+          'classes': [],
+        },
+        {
+          'name': 'Preparatory',
+          'description': 'Preparatory level tutoring',
+          'order': 2,
+          'classes': [],
+        },
+        {
+          'name': 'Secondary',
+          'description': 'Secondary level tutoring',
+          'order': 3,
+          'classes': [],
+        },
+      ],
+    },
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Setup Academic Structure',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Choose a template to auto-create stages and classes.',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 24),
+
+          // Template options
+          ..._templates.entries.map((entry) {
+            final key = entry.key;
+            final template = entry.value;
+            return RadioListTile<String>(
+              value: key,
+              groupValue: _selectedTemplate,
+              onChanged: (v) => setState(() => _selectedTemplate = v!),
+              title: Row(
+                children: [
+                  Icon(template['icon'] as IconData, size: 20),
+                  const SizedBox(width: 8),
+                  Text(template['label'] as String),
+                ],
+              ),
+              contentPadding: EdgeInsets.zero,
+            );
+          }),
+
+          const SizedBox(height: 16),
+
+          // Preview
+          _buildPreview(),
+
+          const SizedBox(height: 24),
+
+          // Create button
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _isCreating ? null : _createStructure,
+              child: _isCreating
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Create Structure',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreview() {
+    final template = _templates[_selectedTemplate]!;
+    final stages = template['stages'] as List;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: KlasivoColors.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KlasivoColors.primary.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Preview:',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: KlasivoColors.primary,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...stages.map((stage) {
+            final classes = stage['classes'] as List;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.school_outlined,
+                      size: 16, color: KlasivoColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${stage['name']}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  if (classes.isNotEmpty) ...[
+                    Text(
+                      ' (${classes.length} classes)',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createStructure() async {
+    setState(() => _isCreating = true);
+    try {
+      final orgId = widget.ref.read(currentOrganizationIdProvider) ?? '';
+      final template = _templates[_selectedTemplate]!;
+      final stages = template['stages'] as List<Map<String, dynamic>>;
+
+      await widget.ref.read(stageServiceProvider).createStagesBatch(
+            organizationId: orgId,
+            stages: stages,
+          );
+
+      if (mounted) {
+        Navigator.pop(context);
+        showSnackBar(context, message: 'Academic structure created!');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, message: 'Failed: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isCreating = false);
+    }
   }
 }

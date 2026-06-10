@@ -8,6 +8,9 @@ class ClassService {
     required String organizationId,
     required String stageId,
     required String name,
+    String code = '',
+    int capacity = 0,
+    String? homeroomTeacherId,
     String? academicYear,
     String createdBy = '',
   }) async {
@@ -18,10 +21,15 @@ class ClassService {
         'organizationId': organizationId,
         'stageId': stageId,
         'name': name,
+        'code': code,
+        'capacity': capacity,
+        'homeroomTeacherId': homeroomTeacherId,
         'academicYear': academicYear,
         'studentCount': 0,
         'createdBy': createdBy,
         'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -35,9 +43,11 @@ class ClassService {
     required String classId,
     String? name,
     String? stageId,
+    String? code,
+    int? capacity,
+    String? homeroomTeacherId,
     String? academicYear,
     String? grade,
-    bool? isArchived,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -45,9 +55,11 @@ class ClassService {
       };
       if (name != null) data['name'] = name;
       if (stageId != null) data['stageId'] = stageId;
+      if (code != null) data['code'] = code;
+      if (capacity != null) data['capacity'] = capacity;
+      if (homeroomTeacherId != null) data['homeroomTeacherId'] = homeroomTeacherId;
       if (academicYear != null) data['academicYear'] = academicYear;
       if (grade != null) data['grade'] = grade;
-      if (isArchived != null) data['isArchived'] = isArchived;
 
       await _firestore
           .collection(AppConstants.classesCollection)
@@ -58,6 +70,26 @@ class ClassService {
     }
   }
 
+  /// Soft-delete: archive the class instead of removing it.
+  /// Archived classes are filtered out of live queries via `isArchived == false`.
+  Future<void> archiveClass(String classId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.classesCollection)
+          .doc(classId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Hard-delete: removes the class and all its related data.
+  /// Use only for cleanup / admin purposes. Prefer [archiveClass] for normal flow.
   Future<void> deleteClass(String classId) async {
     try {
       // Delete students in this class
@@ -123,7 +155,7 @@ class ClassService {
         .collection(AppConstants.classesCollection)
         .where('stageId', isEqualTo: stageId)
         .where('isArchived', isEqualTo: false)
-        .orderBy('createdAt', descending: true)
+        .orderBy('name')
         .snapshots();
   }
 
@@ -156,6 +188,40 @@ class ClassService {
           .collection(AppConstants.classesCollection)
           .doc(classId)
           .update({'studentCount': count});
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Batch-create classes under a stage.
+  /// Used by the Smart Setup Wizard.
+  Future<void> createClassesBatch({
+    required String organizationId,
+    required String stageId,
+    required List<Map<String, dynamic>> classes,
+    String createdBy = '',
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      for (final classData in classes) {
+        final docRef = _firestore.collection(AppConstants.classesCollection).doc();
+        batch.set(docRef, {
+          'organizationId': organizationId,
+          'stageId': stageId,
+          'name': classData['name'],
+          'code': classData['code'] ?? '',
+          'capacity': classData['capacity'] ?? 0,
+          'homeroomTeacherId': null,
+          'studentCount': 0,
+          'createdBy': createdBy,
+          'isArchived': false,
+          'archivedAt': null,
+          'archivedBy': null,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
     } catch (e) {
       rethrow;
     }

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -12,6 +11,11 @@ final groupsByClassProvider =
   return ref.read(groupServiceProvider).getGroupsByClassStream(classId);
 });
 
+final groupsByStageProvider =
+    StreamProvider.family<QuerySnapshot, String>((ref, stageId) {
+  return ref.read(groupServiceProvider).getGroupsByStageStream(stageId);
+});
+
 final groupsByClassListProvider =
     Provider.family<List<GroupData>, String>((ref, classId) {
   final asyncGroups = ref.watch(groupsByClassProvider(classId));
@@ -19,7 +23,18 @@ final groupsByClassListProvider =
     data: (snapshot) =>
         snapshot.docs.map((doc) => GroupData.fromFirestore(doc)).toList(),
     loading: () => [],
-    error: (e, st) { debugPrint('provider error: $e'); return []; },
+    error: (_, __) => [],
+  );
+});
+
+final groupsByStageListProvider =
+    Provider.family<List<GroupData>, String>((ref, stageId) {
+  final asyncGroups = ref.watch(groupsByStageProvider(stageId));
+  return asyncGroups.when(
+    data: (snapshot) =>
+        snapshot.docs.map((doc) => GroupData.fromFirestore(doc)).toList(),
+    loading: () => [],
+    error: (_, __) => [],
   );
 });
 
@@ -27,9 +42,12 @@ class GroupData {
   final String id;
   final String organizationId;
   final String classId;
+  final String stageId;
   final String name;
   final String createdBy;
   final bool isArchived;
+  final DateTime? archivedAt;
+  final String? archivedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -37,9 +55,12 @@ class GroupData {
     required this.id,
     required this.organizationId,
     required this.classId,
+    this.stageId = '',
     required this.name,
     this.createdBy = '',
     this.isArchived = false,
+    this.archivedAt,
+    this.archivedBy,
     this.createdAt,
     this.updatedAt,
   });
@@ -50,9 +71,12 @@ class GroupData {
       id: doc.id,
       organizationId: data['organizationId'] ?? '',
       classId: data['classId'] ?? '',
+      stageId: data['stageId'] ?? '',
       name: data['name'] ?? '',
       createdBy: data['createdBy'] ?? '',
       isArchived: data['isArchived'] ?? false,
+      archivedAt: (data['archivedAt'] as Timestamp?)?.toDate(),
+      archivedBy: data['archivedBy'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -63,8 +87,11 @@ class GroupData {
       'id': id,
       'organizationId': organizationId,
       'classId': classId,
+      'stageId': stageId,
       'name': name,
       'isArchived': isArchived,
+      'archivedAt': archivedAt,
+      'archivedBy': archivedBy,
     };
   }
 }

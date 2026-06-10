@@ -3,257 +3,255 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../providers/class_provider.dart';
+import '../../../providers/stage_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../core/config/theme.dart';
-import '../../../widgets/klasivo_components.dart';
 
+/// Shows classes filtered by a specific stage, or all classes org-wide
+/// if [stageId] is null or empty.
 class ClassListScreen extends ConsumerWidget {
-  const ClassListScreen({Key? key}) : super(key: key);
+  final String? stageId;
+  const ClassListScreen({Key? key, this.stageId}) : super(key: key);
+
+  bool get _isStageScoped => stageId != null && stageId!.isNotEmpty;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final classesAsync = ref.watch(classesStreamProvider);
+    // Pick the right data source
+    final stageClasses = _isStageScoped
+        ? ref.watch(classesByStageListProvider(stageId!))
+        : <ClassData>[];
+    final allClasses = ref.watch(classesProvider);
+    final classes = _isStageScoped ? stageClasses : allClasses;
+
+    final stageName = _isStageScoped
+        ? (ref.watch(stageByIdProvider(stageId!))?.name ?? 'Stage')
+        : null;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Classes'),
+        title: Text(
+          _isStageScoped ? 'Classes - $stageName' : 'All Classes',
+        ),
         centerTitle: true,
       ),
-      body: classesAsync.when(
-        loading: () => const KlasivoLoading(message: 'Loading classes...'),
-        error: (error, stack) => _KlasivoErrorWidget(
-          message: 'Failed to load classes: $error',
-          onRetry: () => ref.invalidate(classesStreamProvider),
-        ),
-        data: (snapshot) {
-          final classes = snapshot.docs
-              .map((doc) => ClassData.fromFirestore(doc))
-              .toList();
-
-          if (classes.isEmpty) {
-            return KlasivoEmptyState(
+      body: classes.isEmpty
+          ? EmptyState(
               icon: Icons.class_outlined,
               title: 'No Classes Yet',
-              subtitle: 'Create your first class to start adding students',
-              actionLabel: 'Create Class',
-              onAction: () => context.go('/teacher/classes/create'),
-              iconColor: KlasivoColors.primary,
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(classesStreamProvider);
-            },
-            child: ListView.builder(
-              padding: const EdgeInsets.all(KlasivoSpacing.lg),
-              itemCount: classes.length,
-              itemBuilder: (context, index) {
-                final classData = classes[index];
-                return _ClassCard(
-                  classData: classData,
-                  onTap: () {
-                    context.go('/teacher/classes/${classData.id}/students');
-                  },
-                  onEdit: () {
-                    context.go(
-                      '/teacher/classes/edit/${classData.id}',
-                      extra: classData,
-                    );
-                  },
-                  onDelete: () async {
-                    final confirmed = await showConfirmationDialog(
-                      context: context,
-                      title: 'Delete Class',
-                      message:
-                          'Are you sure you want to delete "${classData.name}"? All students in this class will also be deleted. This action cannot be undone.',
-                      confirmLabel: 'Delete',
-                      isDangerous: true,
-                    );
-                    if (confirmed == true) {
-                      try {
-                        await ref
-                            .read(classServiceProvider)
-                            .deleteClass(classData.id);
-                        if (context.mounted) {
-                          showSnackBar(context, message: 'Class deleted');
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showSnackBar(
-                            context,
-                            message: 'Failed to delete: $e',
-                            isError: true,
-                          );
+              subtitle: _isStageScoped
+                  ? 'Create classes under $stageName.\n'
+                      'e.g. Grade 1, Grade 2, Section A'
+                  : 'Create stages first, then add classes to them.',
+              actionLabel: 'Add Class',
+              onAction: () => _navigateToCreate(context),
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                if (_isStageScoped) {
+                  ref.invalidate(classesByStageProvider(stageId!));
+                } else {
+                  ref.invalidate(classesByOrgProvider);
+                }
+              },
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: classes.length,
+                itemBuilder: (context, index) {
+                  final classData = classes[index];
+                  return _ClassCard(
+                    classData: classData,
+                    showStageName: !_isStageScoped,
+                    onTap: () {
+                      context.go(
+                        '/teacher/classes/${classData.id}/students',
+                      );
+                    },
+                    onEdit: () {
+                      context.go(
+                        '/teacher/classes/edit/${classData.id}',
+                        extra: classData,
+                      );
+                    },
+                    onArchive: () async {
+                      final confirmed = await showConfirmationDialog(
+                        context: context,
+                        title: 'Archive Class',
+                        message:
+                            'Archive "${classData.name}"? It will be hidden but data is preserved.',
+                        confirmLabel: 'Archive',
+                        isDangerous: true,
+                      );
+                      if (confirmed == true) {
+                        try {
+                          final userId = ref.read(userIdProvider) ?? '';
+                          await ref
+                              .read(classServiceProvider)
+                              .archiveClass(classData.id, archivedBy: userId);
+                          if (context.mounted) {
+                            showSnackBar(context, message: 'Class archived');
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            showSnackBar(context,
+                                message: 'Failed: $e', isError: true);
+                          }
                         }
                       }
-                    }
-                  },
-                );
-              },
+                    },
+                  );
+                },
+              ),
             ),
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/teacher/classes/create'),
+        onPressed: () => _navigateToCreate(context),
         icon: const Icon(Icons.add),
-        label: const Text('New Class'),
+        label: const Text('Add Class'),
       ),
     );
   }
-}
 
-/// Klasivo-styled inline error widget replacing ErrorWidgetCustom.
-class _KlasivoErrorWidget extends StatelessWidget {
-  final String message;
-  final VoidCallback? onRetry;
-
-  const _KlasivoErrorWidget({
-    required this.message,
-    this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.xxxl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-              decoration: const BoxDecoration(
-                color: KlasivoColors.errorSurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.error_outline_rounded,
-                size: 48,
-                color: KlasivoColors.error,
-              ),
-            ),
-            const SizedBox(height: KlasivoSpacing.xxl),
-            Text(
-              message,
-              style: KlasivoTypography.bodyMedium.copyWith(
-                color: isDark
-                    ? KlasivoColors.darkTextSecondary
-                    : KlasivoColors.lightTextSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: KlasivoSpacing.xxl),
-              OutlinedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Retry'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
+  void _navigateToCreate(BuildContext context) {
+    if (_isStageScoped) {
+      context.go(
+        '/academic/stages/$stageId/classes/create',
+        extra: stageId,
+      );
+    } else {
+      // Org-wide: go to class form with no stage pre-selected
+      context.go('/teacher/classes/create');
+    }
   }
 }
 
-class _ClassCard extends StatelessWidget {
+class _ClassCard extends ConsumerWidget {
   final ClassData classData;
+  final bool showStageName;
   final VoidCallback onTap;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
 
   const _ClassCard({
     required this.classData,
+    this.showStageName = false,
     required this.onTap,
     required this.onEdit,
-    required this.onDelete,
+    required this.onArchive,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final stageName = showStageName
+        ? (ref.watch(stageByIdProvider(classData.stageId))?.name ?? '')
+        : null;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: KlasivoSpacing.md),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 1,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
+          padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.md),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: KlasivoColors.primarySurface,
-                  borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                  color: KlasivoColors.secondary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.class_outlined,
-                  color: KlasivoColors.primary,
+                  color: KlasivoColors.secondary,
                   size: 28,
                 ),
               ),
-              const SizedBox(width: KlasivoSpacing.lg),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       classData.name,
-                      style: KlasivoTypography.titleMedium.copyWith(
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: KlasivoSpacing.xs),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        if (classData.grade != null) ...[
+                        if (stageName != null && stageName.isNotEmpty) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: KlasivoSpacing.sm,
-                              vertical: KlasivoSpacing.xs - 2,
+                              horizontal: 8,
+                              vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: KlasivoColors.accentSurface,
-                              borderRadius: BorderRadius.circular(KlasivoRadius.xs),
+                              color: KlasivoColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              classData.grade!,
-                              style: KlasivoTypography.labelSmall.copyWith(
-                                color: KlasivoColors.accentDark,
+                              stageName,
+                              style: TextStyle(
+                                color: KlasivoColors.primary,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          const SizedBox(width: KlasivoSpacing.sm),
+                          const SizedBox(width: 8),
+                        ],
+                        if (classData.code.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: KlasivoColors.accent.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              classData.code,
+                              style: TextStyle(
+                                color: Colors.orange[700],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (classData.capacity > 0) ...[
+                          Icon(Icons.event_seat_outlined,
+                              size: 14, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${classData.capacity}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                         ],
                         Icon(
                           Icons.people_outline,
                           size: 14,
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
+                          color: Colors.grey[500],
                         ),
-                        const SizedBox(width: KlasivoSpacing.xs),
+                        const SizedBox(width: 4),
                         Text(
                           '${classData.studentCount} students',
-                          style: KlasivoTypography.bodySmall.copyWith(
-                            color: isDark
-                                ? KlasivoColors.darkTextSecondary
-                                : KlasivoColors.lightTextSecondary,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
                           ),
                         ),
                       ],
@@ -264,68 +262,49 @@ class _ClassCard extends StatelessWidget {
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
-                  if (value == 'delete') onDelete();
+                  if (value == 'archive') onArchive();
                   if (value == 'qr') {
                     context.go(
                       '/teacher/classes/${classData.id}/students/qr',
                       extra: {
                         'className': classData.name,
-                        'grade': classData.grade,
+                        'code': classData.code,
                       },
                     );
                   }
                 },
                 itemBuilder: (context) => [
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 20,
-                          color: isDark
-                              ? KlasivoColors.darkIconDefault
-                              : KlasivoColors.lightIconDefault,
-                        ),
-                        const SizedBox(width: KlasivoSpacing.sm),
-                        Text(
-                          'Edit',
-                          style: KlasivoTypography.bodyMedium.copyWith(
-                            color: isDark
-                                ? KlasivoColors.darkTextPrimary
-                                : KlasivoColors.lightTextPrimary,
-                          ),
-                        ),
+                        Icon(Icons.edit_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text('Edit'),
                       ],
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'qr',
                     child: Row(
                       children: [
-                        const Icon(Icons.qr_code, size: 20, color: KlasivoColors.primary),
-                        const SizedBox(width: KlasivoSpacing.sm),
-                        Text(
-                          'QR Enrollment Code',
-                          style: KlasivoTypography.bodyMedium.copyWith(
-                            color: KlasivoColors.primary,
-                          ),
-                        ),
+                        Icon(Icons.qr_code,
+                            size: 20, color: KlasivoColors.primary),
+                        SizedBox(width: 8),
+                        Text('QR Enrollment Code',
+                            style: TextStyle(color: KlasivoColors.primary)),
                       ],
                     ),
                   ),
                   PopupMenuItem(
-                    value: 'delete',
+                    value: 'archive',
                     child: Row(
                       children: [
-                        const Icon(Icons.delete_outline, size: 20, color: KlasivoColors.error),
-                        const SizedBox(width: KlasivoSpacing.sm),
-                        Text(
-                          'Delete',
-                          style: KlasivoTypography.bodyMedium.copyWith(
-                            color: KlasivoColors.error,
-                          ),
-                        ),
+                        Icon(Icons.archive_outlined,
+                            size: 20, color: Colors.orange[700]),
+                        SizedBox(width: 8),
+                        Text('Archive',
+                            style: TextStyle(color: Colors.orange[700])),
                       ],
                     ),
                   ),
