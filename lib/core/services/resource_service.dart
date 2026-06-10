@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../config/app_constants.dart';
+import 'search_keyword_service.dart';
 
 class ResourceService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SearchKeywordService _searchKeywordService = SearchKeywordService();
 
   /// Create a new resource
   Future<String> createResource({
@@ -23,6 +25,8 @@ class ResourceService {
     String? createdByName,
   }) async {
     try {
+      final keywords = _searchKeywordService.generateKeywords(title);
+
       final docRef = await _firestore
           .collection(AppConstants.resourcesCollection)
           .add({
@@ -42,6 +46,10 @@ class ResourceService {
         'createdByName': createdByName,
         'version': 1,
         'downloadCount': 0,
+        'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
+        'searchKeywords': keywords,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -70,7 +78,10 @@ class ResourceService {
       final data = <String, dynamic>{};
       if (subjectId != null) data['subjectId'] = subjectId;
       if (gradeId != null) data['gradeId'] = gradeId;
-      if (title != null) data['title'] = title;
+      if (title != null) {
+        data['title'] = title;
+        data['searchKeywords'] = _searchKeywordService.generateKeywords(title);
+      }
       if (description != null) data['description'] = description;
       if (type != null) data['type'] = type;
       if (fileUrl != null) data['fileUrl'] = fileUrl;
@@ -87,6 +98,24 @@ class ResourceService {
           .update(data);
     } catch (e) {
       debugPrint('Error updating resource: $e');
+      rethrow;
+    }
+  }
+
+  /// Archive a resource (soft delete)
+  Future<void> archiveResource(String resourceId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.resourcesCollection)
+          .doc(resourceId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error archiving resource: $e');
       rethrow;
     }
   }

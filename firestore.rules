@@ -378,5 +378,26 @@ service cloud.firestore {
       allow update: if isTeacherOrOwner();
       allow delete: if isTeacherOrOwner();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.7 Ecosystem — Units & Content Progress
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Units Collection ======
+    match /units/{unitId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Content Progress Collection ======
+    // Tracks student progress through LMS content (materials viewed, lessons completed)
+    match /content_progress/{progressId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isTeacherOrOwner();
+    }
   }
 }

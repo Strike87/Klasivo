@@ -63,7 +63,8 @@ class AppConstants {
   static const String notificationsCollection = 'notifications';
   static const String announcementsCollection = 'announcements';
 
-  // v1.7 — Materials, Lessons, Lesson Plans, Resources
+  // v1.7 — LMS (Units → Lessons → Materials)
+  static const String unitsCollection = 'units';
   static const String materialsCollection = 'materials';
   static const String lessonsCollection = 'lessons';
   static const String lessonPlansCollection = 'lesson_plans';
@@ -72,6 +73,7 @@ class AppConstants {
   static const String auditLogsCollection = 'audit_logs';
   static const String progressTrackingCollection = 'progress_tracking';
   static const String moderationQueueCollection = 'moderation_queue';
+  static const String contentProgressCollection = 'content_progress';
 
   // ─── User Roles ──────────────────────────────────────────────────────────
 
@@ -325,21 +327,22 @@ class AppConstants {
 
   static const String defaultInstitutionId = 'default';
 
-  // Academic Years
-  static const String academicYearsCollection = 'academic_years';
-
-  // Audit Logs
-  static const String auditLogsCollection = 'audit_logs';
-
   // ─── Extra Collections (referenced by services) ─────────────────────────
 
   static const String examInstancesCollection = 'exam_instances';
+
+  // ─── LMS Route Paths ────────────────────────────────────────────────────
+
+  static const String routeLms = '/lms';
 
   // ─── Parent Route Paths ──────────────────────────────────────────────────
 
   static const String routeParentHome = '/parent';
   static const String routeParentResults = '/parent/results';
   static const String routeParentAttendance = '/parent/attendance';
+  static const String routeParentAssignments = '/parent/assignments';
+  static const String routeParentProgress = '/parent/progress';
+  static const String routeParentAnnouncements = '/parent/announcements';
   static const String routeParentProfile = '/parent/profile';
   static const String routeParentLogin = '/auth/parent-login';
   static const String routeParentLink = '/auth/parent-link';

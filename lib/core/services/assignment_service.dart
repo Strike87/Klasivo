@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'search_keyword_service.dart';
 
 class AssignmentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SearchKeywordService _searchKeywordService = SearchKeywordService();
 
   Future<String> createAssignment({
     required String organizationId,
@@ -16,6 +18,8 @@ class AssignmentService {
     String createdBy = '',
   }) async {
     try {
+      final keywords = _searchKeywordService.generateKeywords(title);
+
       final docRef = await _firestore
           .collection(AppConstants.assignmentsCollection)
           .add({
@@ -29,9 +33,11 @@ class AssignmentService {
         'status': AppConstants.assignmentStatusDraft,
         'attachments': attachments ?? [],
         'createdBy': createdBy,
+        'version': 1,
         'isArchived': false,
         'archivedAt': null,
         'archivedBy': null,
+        'searchKeywords': keywords,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -54,7 +60,10 @@ class AssignmentService {
       final data = <String, dynamic>{
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      if (title != null) data['title'] = title;
+      if (title != null) {
+        data['title'] = title;
+        data['searchKeywords'] = _searchKeywordService.generateKeywords(title);
+      }
       if (description != null) data['description'] = description;
       if (subjectId != null) data['subjectId'] = subjectId;
       if (groupId != null) data['groupId'] = groupId;
@@ -65,6 +74,21 @@ class AssignmentService {
           .collection(AppConstants.assignmentsCollection)
           .doc(assignmentId)
           .update(data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Increment version when assignment content changes significantly
+  Future<void> incrementVersion(String assignmentId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.assignmentsCollection)
+          .doc(assignmentId)
+          .update({
+        'version': FieldValue.increment(1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       rethrow;
     }

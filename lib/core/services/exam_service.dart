@@ -2,9 +2,11 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart' as notif_service;
+import 'search_keyword_service.dart';
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SearchKeywordService _searchKeywordService = SearchKeywordService();
 
   Future<String> createExam({
     required String teacherId,
@@ -20,6 +22,8 @@ class ExamService {
     String organizationId = AppConstants.defaultInstitutionId,
   }) async {
     try {
+      final keywords = _searchKeywordService.generateKeywords(title);
+
       final docRef =
           await _firestore.collection(AppConstants.examsCollection).add({
         'teacherId': teacherId,
@@ -36,6 +40,11 @@ class ExamService {
         'isRandomized': isRandomized,
         'allowRetake': allowRetake,
         'organizationId': organizationId,
+        'version': 1,
+        'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
+        'searchKeywords': keywords,
         'createdAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
@@ -57,6 +66,8 @@ class ExamService {
     bool? allowRetake,
   }) async {
     try {
+      final keywords = _searchKeywordService.generateKeywords(title);
+
       final data = <String, dynamic>{
         'title': title,
         'description': description,
@@ -65,6 +76,7 @@ class ExamService {
         'startDate': startDate,
         'endDate': endDate,
         'passingScore': passingScore,
+        'searchKeywords': keywords,
       };
       if (isRandomized != null) data['isRandomized'] = isRandomized;
       if (allowRetake != null) data['allowRetake'] = allowRetake;
@@ -73,6 +85,36 @@ class ExamService {
           .collection(AppConstants.examsCollection)
           .doc(examId)
           .update(data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Archive an exam (soft delete)
+  Future<void> archiveExam(String examId, {String archivedBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
+          .update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'archivedBy': archivedBy,
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Increment version when exam content changes significantly
+  Future<void> incrementVersion(String examId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
+          .update({
+        'version': FieldValue.increment(1),
+      });
     } catch (e) {
       rethrow;
     }

@@ -60,8 +60,13 @@ import 'features/parent/pages/parent_login_screen.dart';
 import 'features/parent/pages/parent_register_screen.dart';
 import 'features/parent/pages/parent_link_screen.dart';
 import 'features/parent/pages/parent_dashboard.dart';
+import 'features/parent/pages/parent_assignments_screen.dart';
+import 'features/parent/pages/parent_progress_screen.dart';
+import 'features/parent/pages/parent_announcements_screen.dart';
 import 'features/moderation/pages/moderation_queue_screen.dart';
 import 'features/progress/pages/progress_tracking_screen.dart';
+// ─── v1.7 LMS Imports ─────────────────────────────────────────────────────────
+import 'features/lms/pages/subject_content_screen.dart';
 
 // ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
 import 'features/announcements/pages/announcement_list_screen.dart';
@@ -169,7 +174,7 @@ final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
   return notifier;
 });
 
-// ─── GoRouter with Auth Guards & v1.6 Navigation ─────────────────────────────
+// ─── GoRouter with Auth Guards & v1.7 Complete Navigation ─────────────────────
 
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(authChangeNotifierProvider);
@@ -192,7 +197,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation.startsWith('/people') ||
           state.matchedLocation.startsWith('/inbox') ||
           state.matchedLocation.startsWith('/settings') ||
-          state.matchedLocation.startsWith('/teacher');
+          state.matchedLocation.startsWith('/teacher') ||
+          state.matchedLocation.startsWith('/lms');
       final isOnStudent = state.matchedLocation.startsWith('/student');
       final isOnParent = state.matchedLocation.startsWith('/parent') ||
           state.matchedLocation.startsWith('/auth/parent');
@@ -200,7 +206,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Splash → redirect based on auth state
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          // Owner hasn't completed setup → go to Welcome
           if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
@@ -218,7 +223,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!isLoggedIn) return '/auth';
         if (userRole != AppConstants.roleOwner) return '/dashboard';
         if (hasCompletedSetup) return '/dashboard';
-        return null; // Allow access
+        return null;
       }
 
       // Auth screens → redirect if already logged in
@@ -241,12 +246,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
 
-        // Owner setup check
         if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
           return '/welcome';
         }
 
-        // Role-based access
         if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
             isOnDashboard) {
           return null;
@@ -258,7 +261,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         }
 
-        // Redirect to correct dashboard
         if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
           return '/dashboard';
         }
@@ -379,7 +381,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'messages',
                 builder: (context, state) => const NotificationCenterScreen(),
               ),
-              // ─── Announcements ────────────────────────────────────────
               GoRoute(
                 path: 'announcements',
                 builder: (context, state) => const AnnouncementListScreen(),
@@ -416,6 +417,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
+      // ─── LMS Routes (outside shell for full-screen content browser) ───
+      GoRoute(
+        path: '/lms/subject/:subjectId',
+        builder: (context, state) {
+          final subjectId = state.pathParameters['subjectId']!;
+          final subjectName = state.uri.queryParameters['name'] ?? 'Subject';
+          final classId = state.uri.queryParameters['classId'] ?? '';
+          return SubjectContentScreen(
+            subjectId: subjectId,
+            subjectName: subjectName,
+            classId: classId,
+          );
+        },
+      ),
+
       // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
       GoRoute(
         path: '/teacher',
@@ -423,7 +439,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: 'classes',
-            builder: (context, state) => const ClassListScreen(), // org-wide view (stageId = null)
+            builder: (context, state) => const ClassListScreen(),
             routes: [
               GoRoute(
                 path: 'create',
@@ -652,6 +668,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/parent/attendance',
             builder: (context, state) => const ParentAttendanceView(),
           ),
+          GoRoute(
+            path: '/parent/assignments',
+            builder: (context, state) => const ParentAssignmentsScreen(),
+          ),
+          GoRoute(
+            path: '/parent/progress',
+            builder: (context, state) => const ParentProgressScreen(),
+          ),
+          GoRoute(
+            path: '/parent/announcements',
+            builder: (context, state) => const ParentAnnouncementsScreen(),
+          ),
         ],
       ),
 
@@ -694,7 +722,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-// ─── Placeholder Screens (will be replaced with full implementations) ────────
+// ─── Placeholder Screens ────────────────────────────────────────────────────
 
 class _NotificationDetailScreen extends ConsumerWidget {
   final String notificationId;
@@ -708,5 +736,3 @@ class _NotificationDetailScreen extends ConsumerWidget {
     );
   }
 }
-
-

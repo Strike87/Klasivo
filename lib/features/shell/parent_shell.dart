@@ -10,6 +10,9 @@ import '../../../providers/parent_link_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../parent/pages/parent_dashboard.dart';
+import '../parent/pages/parent_assignments_screen.dart';
+import '../parent/pages/parent_progress_screen.dart';
+import '../parent/pages/parent_announcements_screen.dart';
 
 // ─── Parent Navigation Shell ──────────────────────────────────────────────────
 
@@ -33,6 +36,12 @@ class _ParentShellState extends ConsumerState<ParentShell> {
       route: '/parent',
     ),
     _NavDestination(
+      label: 'Progress',
+      icon: Icons.trending_up_outlined,
+      selectedIcon: Icons.trending_up_rounded,
+      route: '/parent/progress',
+    ),
+    _NavDestination(
       label: 'Results',
       icon: Icons.assessment_outlined,
       selectedIcon: Icons.assessment_rounded,
@@ -44,6 +53,12 @@ class _ParentShellState extends ConsumerState<ParentShell> {
       selectedIcon: Icons.calendar_today_rounded,
       route: '/parent/attendance',
     ),
+    _NavDestination(
+      label: 'More',
+      icon: Icons.more_horiz_outlined,
+      selectedIcon: Icons.more_horiz_rounded,
+      route: '/parent/announcements',
+    ),
   ];
 
   @override
@@ -54,7 +69,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
 
   void _syncIndexWithRoute() {
     final location = GoRouterState.of(context).matchedLocation;
-    // Match the longest prefix (e.g., '/parent/results' before '/parent')
+    // Match the longest prefix
     int bestMatch = -1;
     int bestLength = 0;
     for (int i = 0; i < _destinations.length; i++) {
@@ -63,6 +78,10 @@ class _ParentShellState extends ConsumerState<ParentShell> {
         bestMatch = i;
         bestLength = route.length;
       }
+    }
+    // Special case: /parent/assignments also maps to "More" tab
+    if (location == '/parent/assignments' && bestMatch < 4) {
+      bestMatch = 4;
     }
     if (bestMatch != -1 && bestMatch != _currentIndex) {
       setState(() => _currentIndex = bestMatch);
