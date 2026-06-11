@@ -81,7 +81,13 @@ import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/feature_flag_provider.dart';
+import 'providers/event_bus_provider.dart';
+import 'providers/permission_provider.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/feature_flag_service.dart';
+import 'core/services/permission_service.dart';
+import 'core/services/event_bus.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -119,12 +125,78 @@ Future<void> main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeEnterpriseServices();
+  }
+
+  Future<void> _initializeEnterpriseServices() async {
+    try {
+      final box = Hive.box(AppConstants.authBox);
+      final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+      final orgId = box.get('organizationId') as String?;
+
+      if (isLoggedIn && orgId != null) {
+        // Load feature flags for the organization
+        final flagService = ref.read(featureFlagServiceProvider);
+        await flagService.loadFlags(orgId);
+
+        // Load custom permissions for the organization
+        final permService = ref.read(permissionServiceProvider);
+        await permService.loadPermissions(orgId);
+
+        debugPrint('[MyApp] Enterprise services initialized for org: $orgId');
+      }
+    } catch (e) {
+      debugPrint('[MyApp] Enterprise service initialization failed: $e');
+    }
+
+    if (mounted) {
+      setState(() => _initialized = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+
+    // Show splash while enterprise services are loading
+    if (!_initialized) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(strokeWidth: 3),
+                const SizedBox(height: KlasivoSpacing.lg),
+                Text(
+                  'Loading Klasivo...',
+                  style: KlasivoTypography.bodyMedium.copyWith(
+                    color: KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return MaterialApp.router(
       title: 'Klasivo',

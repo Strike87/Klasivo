@@ -38,17 +38,6 @@ class AppConstants {
   // Attendance
   static const String attendanceCollection = 'attendance';
 
-  // Gradebook
-  static const String gradebookCollection = 'gradebook';
-  static const String gradebookCategoriesCollection = 'gradebook_categories';
-  static const String gradebookEntriesCollection = 'gradebook_entries';
-
-  // Parent Links
-  static const String parentLinksCollection = 'parent_links';
-
-  // Exam Templates
-  static const String examTemplatesCollection = 'exam_templates';
-
   // Messaging
   static const String conversationsCollection = 'conversations';
   static const String messagesCollection = 'messages';
@@ -56,31 +45,53 @@ class AppConstants {
   // Analytics
   static const String analyticsCacheCollection = 'analytics_cache';
 
-  // Calendar
-  static const String calendarEventsCollection = 'calendar_events';
-
   // Communication
   static const String notificationsCollection = 'notifications';
-  static const String announcementsCollection = 'announcements';
 
-  // v1.7 — LMS (Units → Lessons → Materials)
+  // ─── v1.7+ Collections ──────────────────────────────────────────────────
+
+  // LMS (Units → Lessons → Materials)
   static const String unitsCollection = 'units';
   static const String materialsCollection = 'materials';
   static const String lessonsCollection = 'lessons';
   static const String lessonPlansCollection = 'lesson_plans';
   static const String resourcesCollection = 'resources';
-  static const String academicYearsCollection = 'academic_years';
-  static const String auditLogsCollection = 'audit_logs';
+  static const String contentProgressCollection = 'content_progress';
   static const String progressTrackingCollection = 'progress_tracking';
   static const String moderationQueueCollection = 'moderation_queue';
-  static const String contentProgressCollection = 'content_progress';
 
-  // ─── User Roles ──────────────────────────────────────────────────────────
+  // Parent Portal
+  static const String parentLinksCollection = 'parent_links';
+  static const String parentNotificationsCollection = 'parent_notifications';
+
+  // Enterprise
+  static const String featureFlagsCollection = 'feature_flags';
+  static const String permissionsCollection = 'permissions';
+  static const String auditLogCollection = 'audit_log';
+  static const String auditLogsCollection = 'audit_logs'; // Alias used by AuditLogService
+  static const String academicYearsCollection = 'academic_years';
+  static const String campusesCollection = 'campuses';
+  static const String announcementsCollection = 'announcements';
+  static const String calendarEventsCollection = 'calendar_events';
+  static const String gradebookCollection = 'gradebook';
+
+  // v1.9 ERP Collections
+  static const String feesCollection = 'fees';
+  static const String feeStructuresCollection = 'fee_structures';
+  static const String paymentsCollection = 'payments';
+  static const String payrollCollection = 'payroll';
+  static const String inventoryCollection = 'inventory';
+
+  // ─── User Roles (v1.7+: 8 roles for granular RBAC) ─────────────────────────
 
   static const String roleOwner = 'owner';
+  static const String roleAdmin = 'admin';
   static const String roleTeacher = 'teacher';
   static const String roleStudent = 'student';
   static const String roleParent = 'parent';
+  static const String roleCampusManager = 'campus_manager';
+  static const String roleObserver = 'observer';
+  static const String roleSuperAdmin = 'super_admin';
 
   // ─── Navigation Tabs ─────────────────────────────────────────────────────
   // Dashboard / Academic / People / Inbox / Settings
@@ -98,9 +109,7 @@ class AppConstants {
   static const String routeAuth = '/auth';
   static const String routeTeacherLogin = '/auth/teacher-login';
   static const String routeTeacherRegister = '/auth/teacher-register';
-  static const String routeOwnerRegister = '/auth/owner-register';
   static const String routeStudentLogin = '/auth/student-login';
-  static const String routeParentRegister = '/auth/parent-register';
   static const String routeWelcome = '/welcome'; // Post-login org naming
 
   // Owner/Teacher Shell
@@ -124,17 +133,6 @@ class AppConstants {
   static const String routeMessages = '/inbox/messages';
   static const String routeConversation = '/inbox/messages/:id';
   static const String routeAnnouncements = '/inbox/announcements';
-
-  // Calendar
-  static const String routeCalendar = '/calendar';
-  static const String routeCalendarEventCreate = '/calendar/create';
-
-  // Academic Years
-  static const String routeAcademicYears = '/academic/years';
-  static const String routeAcademicYearCreate = '/academic/years/create';
-
-  // Audit Logs
-  static const String routeAuditLog = '/settings/audit-log';
 
   // People sub-routes
   static const String routeTeachers = '/people/teachers';
@@ -160,6 +158,32 @@ class AppConstants {
   static const String routeReset = '/reset';
   static const String routeVerify = '/verify';
 
+  // ─── v1.7+ Route Paths ──────────────────────────────────────────────────
+
+  // LMS Routes
+  static const String routeLms = '/academic/lms';
+  static const String routeContentBrowser = '/academic/lms/content';
+  static const String routeLessonManager = '/academic/lms/lessons';
+  static const String routeLessonDetail = '/academic/lms/lessons/:lessonId';
+
+  // Parent Routes
+  static const String routeParentHome = '/parent';
+  static const String routeParentDashboard = '/parent';
+  static const String routeParentOnboarding = '/parent/onboarding';
+  static const String routeParentLink = '/auth/parent-link';
+  static const String routeParentLogin = '/auth/parent-login';
+  static const String routeParentResults = '/parent/results';
+  static const String routeParentAttendance = '/parent/attendance';
+  static const String routeParentAssignments = '/parent/assignments';
+  static const String routeParentProgress = '/parent/progress';
+  static const String routeParentAnnouncements = '/parent/announcements';
+  static const String routeParentProfile = '/parent/profile';
+
+  // v1.8 Routes
+  static const String routeGlobalSearch = '/search';
+  static const String routeSetupWizard = '/setup';
+  static const String routeCommunicationHub = '/inbox/communication';
+
   // ─── Exam Status ─────────────────────────────────────────────────────────
 
   static const String statusDraft = 'draft';
@@ -178,21 +202,6 @@ class AppConstants {
   static const String difficultyEasy = 'easy';
   static const String difficultyMedium = 'medium';
   static const String difficultyHard = 'hard';
-
-  // ─── Gradebook Category Types ────────────────────────────────────────────
-
-  static const String categoryExam = 'exam';
-  static const String categoryHomework = 'homework';
-  static const String categoryQuiz = 'quiz';
-  static const String categoryParticipation = 'participation';
-  static const String categoryProject = 'project';
-  static const String categoryFinal = 'final';
-
-  // ─── Parent Link Status ────────────────────────────────────────────────────
-
-  static const String parentLinkPending = 'pending';
-  static const String parentLinkApproved = 'approved';
-  static const String parentLinkRevoked = 'revoked';
 
   // ─── Submission Status ───────────────────────────────────────────────────
 
@@ -246,26 +255,14 @@ class AppConstants {
   static const String notificationStudentJoined = 'student_joined';
   static const String notificationOrgUpdate = 'org_update';
 
-  // ─── Calendar Event Types ──────────────────────────────────────────────
-
-  static const String calendarEventExam = 'exam';
-  static const String calendarEventAssignment = 'assignment';
-  static const String calendarEventHoliday = 'holiday';
-  static const String calendarEventEvent = 'event';
-  static const String calendarEventMeeting = 'meeting';
-  static const String calendarEventDeadline = 'deadline';
-
-  // ─── Audit Log Actions ────────────────────────────────────────────────
-
-  static const String auditActionCreate = 'create';
-  static const String auditActionUpdate = 'update';
-  static const String auditActionDelete = 'delete';
-  static const String auditActionPublish = 'publish';
-  static const String auditActionArchive = 'archive';
-  static const String auditActionSubmit = 'submit';
-  static const String auditActionGrade = 'grade';
-  static const String auditActionLink = 'link';
-  static const String auditActionRevoke = 'revoke';
+  // v1.7+ Notification Types
+  static const String notificationLessonCreated = 'lesson_created';
+  static const String notificationMaterialUploaded = 'material_uploaded';
+  static const String notificationProgressUpdate = 'progress_update';
+  static const String notificationParentLinked = 'parent_linked';
+  static const String notificationParentMessage = 'parent_message';
+  static const String notificationFeeDue = 'fee_due';
+  static const String notificationPaymentReceived = 'payment_received';
 
   // ─── Analytics Types ──────────────────────────────────────────────────────
 
@@ -331,19 +328,18 @@ class AppConstants {
 
   static const String examInstancesCollection = 'exam_instances';
 
-  // ─── LMS Route Paths ────────────────────────────────────────────────────
+  // ─── Material Types (v1.7 LMS) ──────────────────────────────────────────
 
-  static const String routeLms = '/lms';
+  static const String materialTypeVideo = 'video';
+  static const String materialTypeDocument = 'document';
+  static const String materialTypeLink = 'link';
+  static const String materialTypeImage = 'image';
+  static const String materialTypeAudio = 'audio';
+  static const String materialTypeEmbedded = 'embedded';
 
-  // ─── Parent Route Paths ──────────────────────────────────────────────────
+  // ─── Academic Year Status ────────────────────────────────────────────────
 
-  static const String routeParentHome = '/parent';
-  static const String routeParentResults = '/parent/results';
-  static const String routeParentAttendance = '/parent/attendance';
-  static const String routeParentAssignments = '/parent/assignments';
-  static const String routeParentProgress = '/parent/progress';
-  static const String routeParentAnnouncements = '/parent/announcements';
-  static const String routeParentProfile = '/parent/profile';
-  static const String routeParentLogin = '/auth/parent-login';
-  static const String routeParentLink = '/auth/parent-link';
+  static const String academicYearUpcoming = 'upcoming';
+  static const String academicYearActive = 'active';
+  static const String academicYearArchived = 'archived';
 }
