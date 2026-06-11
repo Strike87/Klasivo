@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/auth_service.dart';
+import '../core/services/event_bus.dart';
 
 // ─── Auth Service Provider ───────────────────────────────────────────────────
 
@@ -134,6 +135,13 @@ Future<void> saveTeacherAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
+
+  // Fire login event
+  KlasivoEventBus.instance.fire(UserLoggedInEvent(
+    userId: userId,
+    role: role,
+    orgId: organizationId,
+  ));
 }
 
 // ─── Helper: Save auth data locally (for STUDENT login) ──────────────────────
@@ -159,6 +167,13 @@ Future<void> saveStudentAuthData({
   if (organizationId != null) await box.put('organizationId', organizationId);
   await box.put('authMethod', 'student_code');
   await box.put('hasCompletedSetup', true);
+
+  // Fire login event
+  KlasivoEventBus.instance.fire(UserLoggedInEvent(
+    userId: userId,
+    role: AppConstants.roleStudent,
+    orgId: organizationId,
+  ));
 }
 
 // ─── Helper: Save auth data locally (for PARENT login) ───────────────────────
@@ -182,12 +197,26 @@ Future<void> saveParentAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
+
+  // Fire login event
+  KlasivoEventBus.instance.fire(UserLoggedInEvent(
+    userId: userId,
+    role: AppConstants.roleParent,
+    orgId: organizationId,
+  ));
 }
 
 // ─── Helper: Clear auth data ─────────────────────────────────────────────────
 
 Future<void> clearAuthData() async {
   final box = Hive.box(AppConstants.authBox);
+
+  // Fire logout event before clearing data
+  final userId = box.get('userId') as String?;
+  if (userId != null) {
+    KlasivoEventBus.instance.fire(UserLoggedOutEvent(userId: userId));
+  }
+
   await box.put('isLoggedIn', false);
   await box.delete('userRole');
   await box.delete('userName');
