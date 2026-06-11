@@ -7,17 +7,44 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper: Get user's organization ID
+    function getUserOrgId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+    }
+
+    // Helper: Check if user is in the same organization as the resource
+    function isInSameOrg() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        resource.data.organizationId == getUserOrgId();
+    }
+
     // Helper: Check if user is a teacher or owner
     function isTeacherOrOwner() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Helper: Check if user is an owner
+    function isOwner() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
 
     // Helper: Get user role
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: Check if user is a student
+    function isStudent() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
     }
 
     // Helper: Check if user is a parent
@@ -32,6 +59,11 @@ service cloud.firestore {
       return isParent() &&
         exists(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)) &&
         get(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)).data.status == 'approved';
+    }
+
+    // Helper: Check if user owns the resource
+    function isResourceOwner() {
+      return isAuth() && resource.data.createdBy == request.auth.uid;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -207,10 +239,10 @@ service cloud.firestore {
 
     // ====== Messages Collection ======
     match /messages/{messageId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isInSameOrg();
       allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if false;
+      allow update: if isAuth() && resource.data.senderId == request.auth.uid;
+      allow delete: if false; // Messages are never truly deleted — use soft delete
     }
 
     // ====== Analytics Cache Collection ======
@@ -219,6 +251,42 @@ service cloud.firestore {
       allow create: if isTeacherOrOwner();
       allow update: if isTeacherOrOwner();
       allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.9 Enterprise Collections (Feature Flags, Permissions, Audit)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Feature Flags Collection ======
+    match /feature_flags/{flagId} {
+      allow read: if isAuth();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
+    }
+
+    // ====== Permission Overrides Collection ======
+    match /permission_overrides/{overrideId} {
+      allow read: if isAuth();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
+    }
+
+    // ====== Search Keywords Collection ======
+    match /search_keywords/{keywordId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Deep Links Collection ======
+    match /deep_links/{linkId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -1,409 +1,166 @@
-# Smart Exam Pro - Development Roadmap
+# Klasivo — Development Roadmap
 
-## Phase 1: Project Setup & Authentication (Week 1-2)
+## Version History
 
-### Step 1.1: Flutter Project Initialization
-- [ ] Create Flutter project structure
-- [ ] Set up folder organization
-- [ ] Configure pubspec.yaml with all dependencies
-- [ ] Create analysis options
+### v1.0 — Foundation (Weeks 1-2)
+- [x] Flutter project with Riverpod + GoRouter
+- [x] Firebase Auth (Email/Password, Google Sign-In)
+- [x] Firestore backend with security rules
+- [x] Auth screens: Splash, Login, Register, Role Selection
+- [x] GoRouter with auth guards and redirect logic
 
-**Output**: Empty Flutter project with proper structure
+### v1.1–v1.3 — Core Exam System (Weeks 3-8)
+- [x] Teacher Dashboard with real-time stats
+- [x] Class & Student CRUD with invite codes
+- [x] Exam creation with question builder (MCQ, T/F, Short Answer)
+- [x] Student exam taking with auto-save & timer
+- [x] Auto-grading engine with partial credit
+- [x] Results screens (student & teacher views)
 
-### Step 1.2: Firebase Configuration
-- [ ] Create Firebase project
-- [ ] Add Android app to Firebase
-- [ ] Download google-services.json
-- [ ] Initialize Firebase in main.dart
-- [ ] Set up Firestore rules (security)
+### v1.4–v1.5 — Security & Notifications (Weeks 9-13)
+- [x] App leave detection & violation tracking
+- [x] Screen security (no screenshots during exam)
+- [x] Firebase Cloud Messaging setup
+- [x] Local notifications with type-specific triggers
+- [x] Violation dashboard for teachers
 
-**Output**: Firebase backend ready
+### v1.6 — Feature Complete (Week 14)
+- [x] Announcements (create, detail, list screens)
+- [x] Calendar with event creation
+- [x] Academic Years management
+- [x] Audit Logs (owner-only access)
+- [x] 6 new routes added
+- [x] Organization → Stage → Class → Group hierarchy
 
-### Step 1.3: Authentication Service
-- [ ] Create Firebase Auth service
-- [ ] Implement teacher registration
-- [ ] Implement teacher login
-- [ ] Implement student login
-- [ ] Create user session management
-- [ ] Add error handling
+### v1.7 — Enterprise Foundations (Week 15)
+- [x] Design Tokens system (6 files: colors, spacing, radius, typography, elevation, animation)
+- [x] Enterprise Component Library (7 widgets: KlasivoButton, KlasivoCard, KlasivoTextField, KlasivoBadge, KlasivoAvatar, KlasivoModal, KlasivoToast)
+- [x] KlasivoPermissionGate & KlasivoFeatureGate
+- [x] Feature Flag Service (27 flags, percentage rollout, user targeting)
+- [x] Event Bus (25+ typed events across 8 domains)
+- [x] Permission Service (8 roles, 80+ granular permissions, Firestore overrides)
+- [x] Enterprise service initialization on app startup
 
-**Output**: Authentication module complete
+### v1.8 — Feature Completion (Week 16)
+- [x] LessonDetailScreen (1,346 lines) — YouTube, Zoom, Google Drive, Recorded lesson types
+- [x] MaterialViewerScreen (918 lines) — File-type hero banner, metadata, open/share/download
+- [x] ConversationListScreen (703 lines) — WhatsApp-style list with search, FAB, unread indicators
+- [x] ChatScreen (717 lines) — Full chat UI with message bubbles, read receipts, auto-scroll
+- [x] Fixed TODO navigation in SubjectContentScreen
+- [x] Removed 3 orphaned GradeService files
+- [x] 4 new routes: /lms/lessons/:lessonId, /lms/materials/:materialId, /inbox/messages, /inbox/messages/:conversationId
 
-### Step 1.4: UI Screens - Authentication
-- [ ] Splash screen
-- [ ] Teacher registration screen
-- [ ] Teacher login screen
-- [ ] Student login screen
-- [ ] Loading and error states
-
-**Output**: Authentication UI complete
-
-### Step 1.5: Navigation Setup
-- [ ] Configure Go Router
-- [ ] Set up route guards
-- [ ] Create navigation flow
-- [ ] Handle authentication state changes
-
-**Output**: Navigation infrastructure ready
-
----
-
-## Phase 2: Teacher Dashboard & Management (Week 3-4)
-
-### Step 2.1: Teacher Dashboard
-- [ ] Create dashboard screen
-- [ ] Display total students card
-- [ ] Display total classes card
-- [ ] Display upcoming exams card
-- [ ] Display completed exams card
-- [ ] Add refresh functionality
-
-**Output**: Teacher dashboard complete
-
-### Step 2.2: Class Management
-- [ ] Create class list screen
-- [ ] Create class creation screen
-- [ ] Create class editing screen
-- [ ] Implement class deletion
-- [ ] Set up Firestore collection for classes
-- [ ] Add form validation
-
-**Output**: Class CRUD operations complete
-
-### Step 2.3: Student Management
-- [ ] Create student list screen
-- [ ] Create add student screen
-- [ ] Create edit student screen
-- [ ] Implement student deletion
-- [ ] Set up Firestore collection for students
-- [ ] Generate student codes
-- [ ] Add form validation
-
-**Output**: Student CRUD operations complete
-
-### Step 2.4: Providers Setup
-- [ ] Create Riverpod providers for authentication
-- [ ] Create providers for classes management
-- [ ] Create providers for students management
-- [ ] Add caching and state management logic
-
-**Output**: State management infrastructure ready
+### v1.9 — Polish & Production Readiness (Current)
+- [x] Owner Shell — role-aware shell that switches between OwnerShell and TeacherShell
+- [x] Messaging UI integrated with ConversationListScreen + ChatScreen
+- [x] LMS detail screens integrated (LessonDetailScreen + MaterialViewerScreen)
+- [x] Firestore security rules hardened:
+  - Added `isOwner()`, `isStudent()`, `isInSameOrg()`, `isResourceOwner()` helpers
+  - Admin role included in `isTeacherOrOwner()`
+  - Messages restricted to same-organization reads
+  - Message updates restricted to sender only
+  - Feature flags & permission overrides restricted to owner-only writes
+  - Added search_keywords and deep_links collections
+- [x] Removed orphaned grade_service.dart, grade_provider.dart, grade_list_screen.dart
+- [x] Added url_launcher dependency for LMS external links
+- [x] Version bumped to 1.9.0+6
 
 ---
 
-## Phase 3: Exam Creation & Management (Week 5-6)
+## v2.0 — Next Phase (Planned)
 
-### Step 3.1: Exam Management UI
-- [ ] Create exam list screen
-- [ ] Create exam creation screen
-- [ ] Create exam editing screen
-- [ ] Implement exam deletion
-- [ ] Create exam publishing flow
+### Component Migration
+- [ ] Migrate remaining screens from raw Material widgets to KlasivoButton/KlasivoCard/KlasivoTextField
+- [ ] Standardize all confirmation dialogs to use KlasivoModal.confirm()
+- [ ] Replace all SnackBar usage with KlasivoToast
 
-**Output**: Exam management UI complete
+### Testing
+- [ ] Unit tests for ExamService (create, publish, grade)
+- [ ] Unit tests for AuthService (login, register, role routing)
+- [ ] Unit tests for GradingEngine (MCQ, T/F, short answer)
+- [ ] Integration tests for exam creation → taking → grading cycle
+- [ ] Widget tests for KlasivoButton variants and states
 
-### Step 3.2: Question Builder
-- [ ] Create question builder screen
-- [ ] Add multiple choice question type
-- [ ] Add true/false question type
-- [ ] Add short answer question type
-- [ ] Implement question ordering
-- [ ] Add question preview
-- [ ] Set up form validation
+### Performance & Quality
+- [ ] Firestore composite indexes for common queries
+- [ ] Lazy loading / pagination for large lists (students, exams, messages)
+- [ ] Image caching for avatars and thumbnails
+- [ ] Offline mode with Firestore cache persistence
+- [ ] Error boundary wrapper for all screens
 
-**Output**: Question builder complete
-
-### Step 3.3: Exam Configuration
-- [ ] Implement exam settings
-- [ ] Add duration configuration
-- [ ] Add start/end date selection
-- [ ] Add passing score configuration
-- [ ] Add description field
-- [ ] Connect to Firestore collections
-
-**Output**: Exam creation flow complete
-
-### Step 3.4: Firestore Data Models
-- [ ] Create exams collection model
-- [ ] Create questions collection model
-- [ ] Create submissions collection model
-- [ ] Create answers collection model
-- [ ] Set up Firestore security rules
-
-**Output**: Backend data structure ready
+### Infrastructure
+- [ ] CI/CD pipeline (GitHub Actions)
+- [ ] Firebase Crashlytics integration (already wired, needs testing)
+- [ ] App store listing (Google Play)
+- [ ] Environment-based Firebase config (dev/staging/prod)
 
 ---
 
-## Phase 4: Student Exam Features (Week 7-8)
+## Route Map (70+ routes)
 
-### Step 4.1: Student Dashboard
-- [ ] Create student dashboard screen
-- [ ] Display upcoming exams section
-- [ ] Display active exams section
-- [ ] Display completed exams section
-- [ ] Add auto-refresh
-
-**Output**: Student dashboard complete
-
-### Step 4.2: Exam List & Start Flow
-- [ ] Create exam list screen for students
-- [ ] Display exam information (title, time, duration)
-- [ ] Implement start exam validation
-- [ ] Create exam start confirmation dialog
-- [ ] Handle exam status checks
-
-**Output**: Exam start flow complete
-
-### Step 4.3: Exam Screen
-- [ ] Create main exam screen
-- [ ] Implement question display
-- [ ] Add timer with countdown
-- [ ] Create answer options display
-- [ ] Implement previous/next navigation
-- [ ] Create submit button
-- [ ] Add question progress indicator
-
-**Output**: Exam screen UI complete
-
-### Step 4.4: Auto-Save & Timer
-- [ ] Implement auto-save every 5 seconds
-- [ ] Save on answer change
-- [ ] Implement countdown timer
-- [ ] Handle timer completion (auto-submit)
-- [ ] Show time warnings
-- [ ] Add connectivity handling
-
-**Output**: Auto-save and timer complete
-
-### Step 4.5: Exam Submission
-- [ ] Create submission logic
-- [ ] Implement answer validation
-- [ ] Handle final submission
-- [ ] Show submission confirmation
-- [ ] Navigate to results screen
-- [ ] Handle errors gracefully
-
-**Output**: Exam submission flow complete
+| Path | Screen | Shell |
+|------|--------|-------|
+| `/` | SplashScreen | — |
+| `/auth` | RoleSelectionScreen | — |
+| `/auth/teacher-login` | TeacherLoginScreen | — |
+| `/auth/teacher-register` | TeacherRegistrationScreen | — |
+| `/auth/student-login` | StudentLoginScreen | — |
+| `/auth/parent-login` | ParentLoginScreen | — |
+| `/auth/parent-register` | ParentRegisterScreen | — |
+| `/auth/parent-link` | ParentLinkScreen | — |
+| `/welcome` | WelcomeScreen | — |
+| `/dashboard` | OwnerDashboard | Owner/Teacher Shell |
+| `/academic` | StageListScreen | Owner/Teacher Shell |
+| `/academic/stages/:stageId/classes` | ClassListScreen | Owner/Teacher Shell |
+| `/people` | AllStudentsScreen | Owner/Teacher Shell |
+| `/inbox` | NotificationCenterScreen | Owner/Teacher Shell |
+| `/inbox/messages` | ConversationListScreen | Owner/Teacher Shell |
+| `/inbox/messages/:conversationId` | ChatScreen | Owner/Teacher Shell |
+| `/inbox/announcements` | AnnouncementListScreen | Owner/Teacher Shell |
+| `/settings` | SettingsScreen | Owner/Teacher Shell |
+| `/lms/subject/:subjectId` | SubjectContentScreen | — |
+| `/lms/lessons/:lessonId` | LessonDetailScreen | — |
+| `/lms/materials/:materialId` | MaterialViewerScreen | — |
+| `/student` | StudentDashboard | Student Shell |
+| `/student/exams` | StudentExamListScreen | — |
+| `/student/exams/:examId/take` | ExamTakingScreen | — |
+| `/student/results` | StudentResultsScreen | — |
+| `/parent` | ParentDashboard | Parent Shell |
+| `/parent/assignments` | ParentAssignmentsScreen | Parent Shell |
+| `/parent/progress` | ParentProgressScreen | Parent Shell |
+| `/parent/announcements` | ParentAnnouncementsScreen | Parent Shell |
+| `/teacher/exams` | ExamListScreen | — |
+| `/teacher/calendar` | CalendarScreen | — |
+| `/teacher/academic-years` | AcademicYearListScreen | — |
+| `/teacher/assignments` | AssignmentListScreen | — |
+| `/teacher/gradebook` | GradebookScreen | — |
+| `/teacher/attendance` | AttendanceScreen | — |
+| `/teacher/analytics` | TeacherAnalyticsDashboard | — |
+| `/teacher/reports` | ReportGenerationScreen | — |
+| `/teacher/integrity` | ExamIntegrityDashboard | — |
+| `/teacher/audit-log` | AuditLogScreen | — |
+| `/teacher/moderation` | ModerationQueueScreen | — |
+| `/teacher/question-bank` | QuestionBankScreen | — |
 
 ---
 
-## Phase 5: Grading & Results (Week 9-10)
+## Architecture Summary
 
-### Step 5.1: Auto-Grading Engine
-- [ ] Implement multiple choice grading (exact match)
-- [ ] Implement true/false grading (exact match)
-- [ ] Implement short answer grading (case-insensitive)
-- [ ] Calculate total score
-- [ ] Calculate percentage
-- [ ] Handle partial credit logic
+| Layer | Technology | Count |
+|-------|-----------|-------|
+| Services | FirebaseFirestore CRUD | 44 |
+| Providers | Riverpod StateNotifier/Stream | 40 |
+| Screens | ConsumerWidget/StatefulWidget | 67 |
+| Routes | GoRouter | 70+ |
+| Data Models | Firestore-mapped classes | 30+ |
+| Widgets | Klasivo Component Library | 11 |
+| Tokens | Design system constants | 7 files |
 
-**Output**: Grading engine complete
+## Design System
 
-### Step 5.2: Student Results Screen
-- [ ] Create results display screen
-- [ ] Show overall score
-- [ ] Show percentage
-- [ ] Show correct answers count
-- [ ] Show wrong answers count
-- [ ] Show answer review (answers vs correct)
-- [ ] Add print functionality
-
-**Output**: Student results complete
-
-### Step 5.3: Teacher Results Screen
-- [ ] Create teacher results screen
-- [ ] Display student results table
-- [ ] Show student names
-- [ ] Show scores and percentages
-- [ ] Show submission times
-- [ ] Add filtering and sorting
-- [ ] Export functionality
-
-**Output**: Teacher results management complete
-
-### Step 5.4: Reports
-- [ ] Create exam reports screen
-- [ ] Calculate total students
-- [ ] Calculate submitted count
-- [ ] Calculate absent count
-- [ ] Calculate average score
-- [ ] Show highest score
-- [ ] Show lowest score
-- [ ] Add visualization charts
-
-**Output**: Reports module complete
-
----
-
-## Phase 6: Security & Monitoring (Week 11-12)
-
-### Step 6.1: App Leave Detection
-- [ ] Detect home button press
-- [ ] Detect recent apps access
-- [ ] Detect app minimize
-- [ ] Implement violation counter
-- [ ] Store violations in Firestore
-- [ ] Show warning to student
-
-**Output**: App leave detection complete
-
-### Step 6.2: Screen Security
-- [ ] Disable screen capture
-- [ ] Keep screen awake during exam
-- [ ] Prevent screenshots
-- [ ] Handle screen off events
-- [ ] Lock orientation during exam
-
-**Output**: Screen security complete
-
-### Step 6.3: Violation Tracking
-- [ ] Create violation counter logic
-- [ ] Flag suspicious activity (>3 violations)
-- [ ] Show violations in teacher view
-- [ ] Allow teachers to review violations
-- [ ] Add violation details/timestamps
-
-**Output**: Violation tracking complete
-
-### Step 6.4: Firestore Security Rules
-- [ ] Implement authentication rules
-- [ ] Set up data access rules by role
-- [ ] Protect student data
-- [ ] Protect teacher data
-- [ ] Implement field-level security
-
-**Output**: Security hardened
-
----
-
-## Phase 7: Notifications (Week 13)
-
-### Step 7.1: Firebase Cloud Messaging Setup
-- [ ] Configure FCM in Firebase
-- [ ] Request notification permissions
-- [ ] Handle token refresh
-- [ ] Store user FCM tokens
-
-**Output**: FCM infrastructure ready
-
-### Step 7.2: Local Notifications
-- [ ] Initialize local notifications
-- [ ] Configure notification channels
-- [ ] Handle notification taps
-- [ ] Show foreground notifications
-
-**Output**: Local notifications ready
-
-### Step 7.3: Notification Triggers
-- [ ] Send "Exam Published" notification
-- [ ] Send "Exam Starting Soon" notification (30 mins before)
-- [ ] Send "Exam Started" notification
-- [ ] Send "Result Published" notification
-
-**Output**: Notification system complete
-
----
-
-## Phase 8: Testing & Optimization (Week 14-15)
-
-### Step 8.1: Unit Tests
-- [ ] Test authentication service
-- [ ] Test grading engine
-- [ ] Test data models
-- [ ] Test validation logic
-
-**Output**: Unit tests complete
-
-### Step 8.2: Integration Tests
-- [ ] Test authentication flow
-- [ ] Test exam creation flow
-- [ ] Test exam taking flow
-- [ ] Test submission flow
-
-**Output**: Integration tests complete
-
-### Step 8.3: Performance Optimization
-- [ ] Optimize Firestore queries
-- [ ] Lazy load data
-- [ ] Optimize images
-- [ ] Profile app performance
-- [ ] Reduce build size
-
-**Output**: App optimized
-
-### Step 8.4: Security Audit
-- [ ] Review all security measures
-- [ ] Test permission handling
-- [ ] Verify data encryption
-- [ ] Test error handling
-- [ ] Security code review
-
-**Output**: Security audit complete
-
----
-
-## Phase 9: Deployment (Week 16)
-
-### Step 9.1: Release Build
-- [ ] Configure release signing
-- [ ] Build release APK
-- [ ] Test on multiple devices
-- [ ] Fix any issues
-
-### Step 9.2: Documentation
-- [ ] API documentation
-- [ ] User guide
-- [ ] Teacher guide
-- [ ] Installation guide
-
-### Step 9.3: Launch
-- [ ] Deploy to Play Store (optional)
-- [ ] Share APK for testing
-- [ ] Gather feedback
-
----
-
-## Success Criteria
-
-- [x] Teacher can create a class
-- [x] Teacher can add students
-- [x] Teacher can create and publish exams
-- [x] Student can login and take exams
-- [x] System auto-grades exams
-- [x] Students cannot leave exam screen
-- [x] Violations are tracked
-- [x] Notifications are sent
-- [x] All data is stored securely
-
----
-
-## Key Implementation Notes
-
-1. **Use Freezed** for immutable data models
-2. **Use Riverpod** for all state management
-3. **Follow Clean Architecture** principles
-4. **Implement error handling** at each layer
-5. **Use Firebase best practices** for security
-6. **Test thoroughly** at each phase
-7. **Document code** as you go
-8. **Keep UI responsive** with async operations
-9. **Handle network errors** gracefully
-10. **Cache data** intelligently
-
----
-
-## Timeline Summary
-
-| Phase | Duration | Status |
-|-------|----------|--------|
-| 1. Setup & Auth | 2 weeks | Not Started |
-| 2. Teacher Dashboard | 2 weeks | Not Started |
-| 3. Exam Creation | 2 weeks | Not Started |
-| 4. Student Exams | 2 weeks | Not Started |
-| 5. Grading & Results | 2 weeks | Not Started |
-| 6. Security | 2 weeks | Not Started |
-| 7. Notifications | 1 week | Not Started |
-| 8. Testing | 2 weeks | Not Started |
-| 9. Deployment | 1 week | Not Started |
-| **Total** | **16 weeks** | |
-
+- **Primary**: #3B5BDB (Royal Indigo)
+- **Secondary**: #12B886 (Emerald)
+- **Accent**: #F59F00 (Amber Gold)
+- **Font**: PlusJakartaSans (Latin) + NotoSansArabic (Arabic)
+- **Spacing**: 4px base grid
+- **Radius**: sm=6, md=8, lg=12, xl=16, pill=999

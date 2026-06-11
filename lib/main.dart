@@ -21,6 +21,7 @@ import 'features/auth/pages/owner_register_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
 import 'features/shell/parent_shell.dart';
+import 'features/shell/owner_shell.dart';
 import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
@@ -71,6 +72,12 @@ import 'features/moderation/pages/moderation_queue_screen.dart';
 import 'features/progress/pages/progress_tracking_screen.dart';
 // ─── v1.7 LMS Imports ─────────────────────────────────────────────────────────
 import 'features/lms/pages/subject_content_screen.dart';
+import 'features/lms/pages/lesson_detail_screen.dart';
+import 'features/lms/pages/material_viewer_screen.dart';
+
+// ─── v1.8 Messaging Imports ────────────────────────────────────────────────────
+import 'features/messaging/pages/conversation_list_screen.dart';
+import 'features/messaging/pages/chat_screen.dart';
 
 // ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
 import 'features/announcements/pages/announcement_list_screen.dart';
@@ -418,9 +425,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ParentLinkScreen(),
       ),
 
-      // ─── Teacher/Owner Shell Navigation ──────────────────────────────
+      // ─── Owner Shell Navigation (role-aware wrapper) ────────────────
       ShellRoute(
-        builder: (context, state, child) => TeacherShell(child: child),
+        builder: (context, state, child) {
+          final box = Hive.box(AppConstants.authBox);
+          final userRole = box.get('userRole', defaultValue: '') as String;
+          if (userRole == AppConstants.roleOwner) {
+            return OwnerShell(child: child);
+          }
+          return TeacherShell(child: child);
+        },
         routes: [
           // Dashboard
           GoRoute(
@@ -480,7 +494,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
               GoRoute(
                 path: 'messages',
-                builder: (context, state) => const NotificationCenterScreen(),
+                builder: (context, state) => const ConversationListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':conversationId',
+                    builder: (context, state) {
+                      final conversationId = state.pathParameters['conversationId']!;
+                      return ChatScreen(conversationId: conversationId);
+                    },
+                  ),
+                ],
               ),
               GoRoute(
                 path: 'announcements',
@@ -533,6 +556,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             subjectId: subjectId,
             subjectName: subjectName,
             classId: classId,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/lms/lessons/:lessonId',
+        builder: (context, state) {
+          final lessonId = state.pathParameters['lessonId']!;
+          final subjectId = state.uri.queryParameters['subjectId'] ?? '';
+          return LessonDetailScreen(
+            lessonId: lessonId,
+            subjectId: subjectId,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/lms/materials/:materialId',
+        builder: (context, state) {
+          final materialId = state.pathParameters['materialId']!;
+          final subjectId = state.uri.queryParameters['subjectId'];
+          return MaterialViewerScreen(
+            materialId: materialId,
+            subjectId: subjectId,
           );
         },
       ),
