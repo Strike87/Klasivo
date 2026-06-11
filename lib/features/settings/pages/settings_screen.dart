@@ -10,6 +10,7 @@ import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 
@@ -104,41 +105,56 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── Organization Section (Owner only) ──
-            if (userRole == AppConstants.roleOwner) ...[
-              _SectionHeader(title: 'Organization'),
-              Card(
-                margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-                child: Column(
-                  children: [
-                    _SettingsTile(
-                      icon: Icons.business_outlined,
-                      iconColor: KlasivoColors.primary,
-                      title: 'Workspace Settings',
-                      subtitle: 'Name, details, and preferences',
-                      onTap: () => context.go('/settings/organization'),
+            // ── Organization Section (Owner/Admin only) ──
+            KlasivoRoleGate(
+              allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
+              fallback: const SizedBox.shrink(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SectionHeader(title: 'Organization'),
+                  Card(
+                    margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+                    child: Column(
+                      children: [
+                        _SettingsTile(
+                          icon: Icons.business_outlined,
+                          iconColor: KlasivoColors.primary,
+                          title: 'Workspace Settings',
+                          subtitle: 'Name, details, and preferences',
+                          onTap: () => context.go('/settings/organization'),
+                        ),
+                        const Divider(height: 1, indent: 56),
+                        _SettingsTile(
+                          icon: Icons.vpn_key_outlined,
+                          iconColor: KlasivoColors.accent,
+                          title: 'Invite Codes',
+                          subtitle: 'Generate and manage teacher invite codes',
+                          onTap: () => _showInviteCodes(context, ref, orgId),
+                        ),
+                        const Divider(height: 1, indent: 56),
+                        _SettingsTile(
+                          icon: Icons.people_outline_rounded,
+                          iconColor: KlasivoColors.secondary,
+                          title: 'Teachers',
+                          subtitle: 'Manage teachers in your workspace',
+                          onTap: () => _showTeacherList(context, orgId),
+                        ),
+                        const Divider(height: 1, indent: 56),
+                        _SettingsTile(
+                          icon: Icons.tune_outlined,
+                          iconColor: const Color(0xFF845EF7),
+                          title: 'Feature Flags',
+                          subtitle: 'Control which features are enabled',
+                          onTap: () => context.go('/settings/feature-flags'),
+                        ),
+                      ],
                     ),
-                    const Divider(height: 1, indent: 56),
-                    _SettingsTile(
-                      icon: Icons.vpn_key_outlined,
-                      iconColor: KlasivoColors.accent,
-                      title: 'Invite Codes',
-                      subtitle: 'Generate and manage teacher invite codes',
-                      onTap: () => _showInviteCodes(context, ref, orgId),
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    _SettingsTile(
-                      icon: Icons.people_outline_rounded,
-                      iconColor: KlasivoColors.secondary,
-                      title: 'Teachers',
-                      subtitle: 'Manage teachers in your workspace',
-                      onTap: () => _showTeacherList(context, orgId),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
               ),
-              const SizedBox(height: KlasivoSpacing.lg),
-            ],
+            ),
 
             // ── Account Section ──
             _SectionHeader(title: 'Account'),
@@ -204,7 +220,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.info_outline_rounded,
                     iconColor: KlasivoColors.primary,
                     title: 'About Klasivo',
-                    subtitle: 'Version 1.7.0',
+                    subtitle: 'Version 1.7.1',
                     onTap: () => _showAbout(context),
                   ),
                 ],
@@ -501,7 +517,7 @@ class SettingsScreen extends ConsumerWidget {
     showAboutDialog(
       context: context,
       applicationName: 'Klasivo',
-      applicationVersion: '1.6.0',
+      applicationVersion: '1.7.1',
       applicationIcon: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.md),
         decoration: BoxDecoration(

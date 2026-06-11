@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/feature_flag_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/student_provider.dart';
-import '../../../providers/exam_provider.dart';
+import '../../../providers/permission_provider.dart';
+import '../../../providers/feature_flag_provider.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 class OwnerDashboard extends ConsumerWidget {
   const OwnerDashboard({Key? key}) : super(key: key);
 
@@ -184,6 +187,84 @@ class OwnerDashboard extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: KlasivoSpacing.xxl),
+
+                    // ── Permission-Gated Admin Section (Owner/Admin only) ──
+                    KlasivoRoleGate(
+                      allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
+                      fallback: const SizedBox.shrink(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const KlasivoSectionHeader(title: 'Administration'),
+                          const SizedBox(height: KlasivoSpacing.md),
+                          Row(
+                            children: [
+                              _QuickActionChip(
+                                icon: Icons.shield_outlined,
+                                label: 'Audit Log',
+                                color: KlasivoColors.error,
+                                onTap: () => context.go('/teacher/audit-log'),
+                              ),
+                              const SizedBox(width: KlasivoSpacing.md),
+                              _QuickActionChip(
+                                icon: Icons.tune_outlined,
+                                label: 'Feature Flags',
+                                color: const Color(0xFF845EF7),
+                                onTap: () => context.go('/settings/feature-flags'),
+                              ),
+                              const SizedBox(width: KlasivoSpacing.md),
+                              _QuickActionChip(
+                                icon: Icons.moderator_outlined,
+                                label: 'Moderation',
+                                color: KlasivoColors.accent,
+                                onTap: () => context.go('/teacher/moderation'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: KlasivoSpacing.xxl),
+                        ],
+                      ),
+                    ),
+
+                    // ── Feature-Preview Section (upcoming features) ──
+                    KlasivoFeaturePreview(
+                      featureFlag: FeatureFlags.globalSearch,
+                      featureName: 'Global Search',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const KlasivoSectionHeader(title: 'Coming Soon'),
+                          const SizedBox(height: KlasivoSpacing.md),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.search_outlined, color: KlasivoColors.primary, size: 28),
+                                  const SizedBox(width: KlasivoSpacing.md),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Global Search', style: KlasivoTypography.titleMedium),
+                                        const SizedBox(height: KlasivoSpacing.xs),
+                                        Text(
+                                          'Search across students, classes, exams, and assignments',
+                                          style: KlasivoTypography.bodySmall.copyWith(
+                                            color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: KlasivoSpacing.xxl),
+                        ],
+                      ),
+                    ),
 
                     // ── Recent Notifications ──
                     const KlasivoSectionHeader(
