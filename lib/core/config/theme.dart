@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../tokens/tokens.dart';
 
 import '../tokens/tokens.dart';
 
@@ -10,6 +11,9 @@ import '../tokens/tokens.dart';
 // Token classes have been extracted to lib/core/tokens/ for modularity.
 // Legacy aliases below ensure backward compatibility with existing imports.
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// Token classes have been extracted to lib/core/tokens/ for modularity.
+// Legacy aliases below ensure backward compatibility with existing imports.
 
 // ─── Legacy Aliases (backward compatibility) ──────────────────────────────
 // Existing code imports KlasivoColors, KlasivoRadius, etc. from theme.dart.
