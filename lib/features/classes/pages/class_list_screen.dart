@@ -6,6 +6,9 @@ import '../../../providers/class_provider.dart';
 import '../../../providers/stage_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 import '../../../core/config/theme.dart';
 
 /// Shows classes filtered by a specific stage, or all classes org-wide
@@ -75,7 +78,7 @@ class ClassListScreen extends ConsumerWidget {
                       );
                     },
                     onArchive: () async {
-                      final confirmed = await showConfirmationDialog(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
                         title: 'Archive Class',
                         message:
@@ -90,12 +93,12 @@ class ClassListScreen extends ConsumerWidget {
                               .read(classServiceProvider)
                               .archiveClass(classData.id, archivedBy: userId);
                           if (context.mounted) {
-                            showSnackBar(context, message: 'Class archived');
+                            KlasivoToast.success(context, message: 'Class archived');
                           }
                         } catch (e) {
                           if (context.mounted) {
-                            showSnackBar(context,
-                                message: 'Failed: $e', isError: true);
+                            KlasivoToast.error(context,
+                                message: 'Failed: $e');
                           }
                         }
                       }
@@ -147,172 +150,164 @@ class _ClassCard extends ConsumerWidget {
         ? (ref.watch(stageByIdProvider(classData.stageId))?.name ?? '')
         : null;
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: KlasivoColors.secondary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.all(16),
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: KlasivoColors.secondary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.class_outlined,
+              color: KlasivoColors.secondary,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  classData.name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.class_outlined,
-                  color: KlasivoColors.secondary,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 4),
+                Row(
                   children: [
-                    Text(
-                      classData.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (stageName != null && stageName.isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: KlasivoColors.primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              stageName,
-                              style: TextStyle(
-                                color: KlasivoColors.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        if (classData.code.isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: KlasivoColors.accent.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              classData.code,
-                              style: TextStyle(
-                                color: Colors.orange[700],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        if (classData.capacity > 0) ...[
-                          Icon(Icons.event_seat_outlined,
-                              size: 14, color: Colors.grey[500]),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${classData.capacity}',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Icon(
-                          Icons.people_outline,
-                          size: 14,
-                          color: Colors.grey[500],
+                    if (stageName != null && stageName.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${classData.studentCount} students',
+                        decoration: BoxDecoration(
+                          color: KlasivoColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          stageName,
                           style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
+                            color: KlasivoColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (classData.code.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: KlasivoColors.accent.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          classData.code,
+                          style: TextStyle(
+                            color: Colors.orange[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (classData.capacity > 0) ...[
+                      Icon(Icons.event_seat_outlined,
+                          size: 14, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${classData.capacity}',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Icon(
+                      Icons.people_outline,
+                      size: 14,
+                      color: Colors.grey[500],
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${classData.studentCount} students',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
+              ],
+            ),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'edit') onEdit();
+              if (value == 'archive') onArchive();
+              if (value == 'qr') {
+                context.go(
+                  '/teacher/classes/${classData.id}/students/qr',
+                  extra: {
+                    'className': classData.name,
+                    'code': classData.code,
+                  },
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('Edit'),
+                  ],
+                ),
               ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'edit') onEdit();
-                  if (value == 'archive') onArchive();
-                  if (value == 'qr') {
-                    context.go(
-                      '/teacher/classes/${classData.id}/students/qr',
-                      extra: {
-                        'className': classData.name,
-                        'code': classData.code,
-                      },
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined, size: 20),
-                        SizedBox(width: 8),
-                        Text('Edit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'qr',
-                    child: Row(
-                      children: [
-                        Icon(Icons.qr_code,
-                            size: 20, color: KlasivoColors.primary),
-                        SizedBox(width: 8),
-                        Text('QR Enrollment Code',
-                            style: TextStyle(color: KlasivoColors.primary)),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'archive',
-                    child: Row(
-                      children: [
-                        Icon(Icons.archive_outlined,
-                            size: 20, color: Colors.orange[700]),
-                        SizedBox(width: 8),
-                        Text('Archive',
-                            style: TextStyle(color: Colors.orange[700])),
-                      ],
-                    ),
-                  ),
-                ],
+              const PopupMenuItem(
+                value: 'qr',
+                child: Row(
+                  children: [
+                    Icon(Icons.qr_code,
+                        size: 20, color: KlasivoColors.primary),
+                    SizedBox(width: 8),
+                    Text('QR Enrollment Code',
+                        style: TextStyle(color: KlasivoColors.primary)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'archive',
+                child: Row(
+                  children: [
+                    Icon(Icons.archive_outlined,
+                        size: 20, color: Colors.orange[700]),
+                    SizedBox(width: 8),
+                    Text('Archive',
+                        style: TextStyle(color: Colors.orange[700])),
+                  ],
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

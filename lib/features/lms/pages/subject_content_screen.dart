@@ -12,6 +12,11 @@ import '../../../widgets/klasivo_components.dart';
 import '../../../core/services/unit_service.dart';
 import '../../../core/services/lesson_service.dart';
 import '../../../core/services/material_service.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBJECT CONTENT SCREEN — LMS Content Browser
@@ -256,123 +261,92 @@ class _SubjectContentScreenState extends ConsumerState<SubjectContentScreen> {
     final formKey = GlobalKey<FormState>();
     bool isCreating = false;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            'Create New Unit',
-            style: KlasivoTypography.titleLarge,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-          ),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit Title',
-                    hintText: 'e.g. Unit 1: Introduction',
-                    prefixIcon: Icon(Icons.title_outlined),
+      title: 'Create New Unit',
+      child: StatefulBuilder(
+        builder: (context, setDialogState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              KlasivoTextField(
+                label: 'Unit Title',
+                hint: 'e.g. Unit 1: Introduction',
+                controller: titleController,
+                prefixIcon: Icons.title_outlined,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Title is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+              KlasivoTextField(
+                label: 'Description (optional)',
+                hint: 'Brief description of this unit',
+                controller: descController,
+                prefixIcon: Icons.description_outlined,
+                maxLines: 3,
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Cancel',
+                    onPressed: isCreating ? null : () => Navigator.pop(context),
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Title is required';
-                    }
-                    return null;
-                  },
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-                const SizedBox(height: KlasivoSpacing.md),
-                TextFormField(
-                  controller: descController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    hintText: 'Brief description of this unit',
-                    prefixIcon: Icon(Icons.description_outlined),
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  KlasivoButton(
+                    label: 'Create',
+                    onPressed: isCreating
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+
+                            setDialogState(() => isCreating = true);
+
+                            try {
+                              final unitService =
+                                  ref.read(unitServiceProvider);
+                              await unitService.createUnit(
+                                organizationId: '', // populated by service
+                                subjectId: widget.subjectId,
+                                classId: widget.classId,
+                                title: titleController.text.trim(),
+                                description: descController.text.trim().isEmpty
+                                    ? null
+                                    : descController.text.trim(),
+                              );
+
+                              if (mounted) {
+                                Navigator.pop(context);
+                                KlasivoToast.success(
+                                  context,
+                                  message: 'Unit "${titleController.text.trim()}" created',
+                                );
+                                ref.invalidate(
+                                    unitsBySubjectProvider(widget.subjectId));
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                setDialogState(() => isCreating = false);
+                                KlasivoToast.error(
+                                  context,
+                                  message: 'Failed to create unit: $e',
+                                );
+                              }
+                            }
+                          },
+                    loading: isCreating,
                   ),
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed:
-                  isCreating ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isCreating
-                  ? null
-                  : () async {
-                      if (!formKey.currentState!.validate()) return;
-
-                      setDialogState(() => isCreating = true);
-
-                      try {
-                        final unitService =
-                            ref.read(unitServiceProvider);
-                        await unitService.createUnit(
-                          organizationId: '', // populated by service
-                          subjectId: widget.subjectId,
-                          classId: widget.classId,
-                          title: titleController.text.trim(),
-                          description: descController.text.trim().isEmpty
-                              ? null
-                              : descController.text.trim(),
-                        );
-
-                        if (mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Unit "${titleController.text.trim()}" created'),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                          ref.invalidate(
-                              unitsBySubjectProvider(widget.subjectId));
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          setDialogState(() => isCreating = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Failed to create unit: $e'),
-                              behavior: SnackBarBehavior.floating,
-                              backgroundColor: KlasivoColors.error,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    },
-              child: isCreating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Create'),
-            ),
-          ],
         ),
       ),
     );
@@ -502,7 +476,9 @@ class _UnitCard extends ConsumerWidget {
         horizontal: KlasivoSpacing.lg,
         vertical: KlasivoSpacing.sm,
       ),
-      child: Card(
+      child: KlasivoCard(
+        padding: EdgeInsets.zero,
+        margin: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -760,141 +736,90 @@ class _UnitCard extends ConsumerWidget {
     final formKey = GlobalKey<FormState>();
     bool isSaving = false;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Edit Unit', style: KlasivoTypography.titleLarge),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-          ),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit Title',
-                    prefixIcon: Icon(Icons.title_outlined),
+      title: 'Edit Unit',
+      child: StatefulBuilder(
+        builder: (context, setDialogState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              KlasivoTextField(
+                label: 'Unit Title',
+                controller: titleController,
+                prefixIcon: Icons.title_outlined,
+                validator: (value) =>
+                    value == null || value.trim().isEmpty
+                        ? 'Title is required'
+                        : null,
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+              KlasivoTextField(
+                label: 'Description (optional)',
+                controller: descController,
+                prefixIcon: Icons.description_outlined,
+                maxLines: 3,
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Cancel',
+                    onPressed: isSaving ? null : () => Navigator.pop(context),
                   ),
-                  validator: (value) =>
-                      value == null || value.trim().isEmpty
-                          ? 'Title is required'
-                          : null,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-                const SizedBox(height: KlasivoSpacing.md),
-                TextFormField(
-                  controller: descController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    prefixIcon: Icon(Icons.description_outlined),
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  KlasivoButton(
+                    label: 'Save',
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+
+                            setDialogState(() => isSaving = true);
+
+                            try {
+                              final service = ref.read(unitServiceProvider);
+                              await service.updateUnit(
+                                unit.id,
+                                title: titleController.text.trim(),
+                                description: descController.text.trim().isEmpty
+                                    ? null
+                                    : descController.text.trim(),
+                              );
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                KlasivoToast.success(context, message: 'Unit updated');
+                                ref.invalidate(unitsBySubjectProvider(subjectId));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                setDialogState(() => isSaving = false);
+                                KlasivoToast.error(context, message: 'Failed: $e');
+                              }
+                            }
+                          },
+                    loading: isSaving,
                   ),
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed:
-                  isSaving ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      if (!formKey.currentState!.validate()) return;
-
-                      setDialogState(() => isSaving = true);
-
-                      try {
-                        final service = ref.read(unitServiceProvider);
-                        await service.updateUnit(
-                          unit.id,
-                          title: titleController.text.trim(),
-                          description: descController.text.trim().isEmpty
-                              ? null
-                              : descController.text.trim(),
-                        );
-
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Unit updated'),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                          ref.invalidate(unitsBySubjectProvider(subjectId));
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          setDialogState(() => isSaving = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Failed: $e'),
-                              backgroundColor: KlasivoColors.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    },
-              child: isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Save'),
-            ),
-          ],
         ),
       ),
     );
   }
 
   void _archiveUnit(WidgetRef ref, BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Archive Unit'),
-        content: Text(
-          'Are you sure you want to archive "${unit.title}"? This unit and its content will be hidden.',
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: KlasivoColors.error,
-            ),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
+      title: 'Archive Unit',
+      message: 'Are you sure you want to archive "${unit.title}"? This unit and its content will be hidden.',
+      confirmLabel: 'Archive',
+      isDangerous: true,
     );
 
     if (confirmed == true) {
@@ -902,31 +827,12 @@ class _UnitCard extends ConsumerWidget {
         final service = ref.read(unitServiceProvider);
         await service.archiveUnit(unit.id);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('"${unit.title}" archived'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.success(context, message: '"${unit.title}" archived');
           ref.invalidate(unitsBySubjectProvider(subjectId));
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to archive: $e'),
-              backgroundColor: KlasivoColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.error(context, message: 'Failed to archive: $e');
         }
       }
     }
@@ -938,150 +844,120 @@ class _UnitCard extends ConsumerWidget {
     String selectedType = 'recorded';
     bool isCreating = false;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Add Lesson', style: KlasivoTypography.titleLarge),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-          ),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Lesson Title',
-                    hintText: 'e.g. Introduction to Algebra',
-                    prefixIcon: Icon(Icons.title_outlined),
-                  ),
-                  validator: (value) =>
-                      value == null || value.trim().isEmpty
-                          ? 'Title is required'
-                          : null,
-                  textCapitalization: TextCapitalization.sentences,
+      title: 'Add Lesson',
+      child: StatefulBuilder(
+        builder: (context, setDialogState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              KlasivoTextField(
+                label: 'Lesson Title',
+                hint: 'e.g. Introduction to Algebra',
+                controller: titleController,
+                prefixIcon: Icons.title_outlined,
+                validator: (value) =>
+                    value == null || value.trim().isEmpty
+                        ? 'Title is required'
+                        : null,
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Lesson Type',
+                  prefixIcon: Icon(Icons.category_outlined),
                 ),
-                const SizedBox(height: KlasivoSpacing.md),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: const InputDecoration(
-                    labelText: 'Lesson Type',
-                    prefixIcon: Icon(Icons.category_outlined),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'recorded',
+                    child: Row(
+                      children: [
+                        Icon(Icons.videocam_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Recorded Lesson'),
+                      ],
+                    ),
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'recorded',
-                      child: Row(
-                        children: [
-                          Icon(Icons.videocam_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Recorded Lesson'),
-                        ],
-                      ),
+                  DropdownMenuItem(
+                    value: 'youtube',
+                    child: Row(
+                      children: [
+                        Icon(Icons.play_circle_outline, size: 18),
+                        SizedBox(width: 8),
+                        Text('YouTube'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'youtube',
-                      child: Row(
-                        children: [
-                          Icon(Icons.play_circle_outline, size: 18),
-                          SizedBox(width: 8),
-                          Text('YouTube'),
-                        ],
-                      ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'zoom',
+                    child: Row(
+                      children: [
+                        Icon(Icons.video_call_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Zoom Meeting'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'zoom',
-                      child: Row(
-                        children: [
-                          Icon(Icons.video_call_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Zoom Meeting'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => selectedType = value);
-                    }
-                  },
-                ),
-              ],
-            ),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedType = value);
+                  }
+                },
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Cancel',
+                    onPressed: isCreating ? null : () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  KlasivoButton(
+                    label: 'Add',
+                    onPressed: isCreating
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+
+                            setDialogState(() => isCreating = true);
+
+                            try {
+                              final service =
+                                  ref.read(lessonServiceProvider);
+                              await service.createLesson(
+                                organizationId: unit.organizationId,
+                                subjectId: subjectId,
+                                classId: unit.classId,
+                                chapterId: unit.id,
+                                title: titleController.text.trim(),
+                                type: selectedType,
+                              );
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                KlasivoToast.success(context, message: 'Lesson added');
+                                ref.invalidate(
+                                    lessonsBySubjectProvider(subjectId));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                setDialogState(() => isCreating = false);
+                                KlasivoToast.error(context, message: 'Failed: $e');
+                              }
+                            }
+                          },
+                    loading: isCreating,
+                  ),
+                ],
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed:
-                  isCreating ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isCreating
-                  ? null
-                  : () async {
-                      if (!formKey.currentState!.validate()) return;
-
-                      setDialogState(() => isCreating = true);
-
-                      try {
-                        final service =
-                            ref.read(lessonServiceProvider);
-                        await service.createLesson(
-                          organizationId: unit.organizationId,
-                          subjectId: subjectId,
-                          classId: unit.classId,
-                          chapterId: unit.id,
-                          title: titleController.text.trim(),
-                          type: selectedType,
-                        );
-
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Lesson added'),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                          ref.invalidate(
-                              lessonsBySubjectProvider(subjectId));
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          setDialogState(() => isCreating = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Failed: $e'),
-                              backgroundColor: KlasivoColors.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    },
-              child: isCreating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Add'),
-            ),
-          ],
         ),
       ),
     );
@@ -1093,181 +969,150 @@ class _UnitCard extends ConsumerWidget {
     String selectedType = 'pdf';
     bool isCreating = false;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title:
-              Text('Add Material', style: KlasivoTypography.titleLarge),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-          ),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Material Title',
-                    hintText: 'e.g. Chapter 1 Notes',
-                    prefixIcon: Icon(Icons.title_outlined),
-                  ),
-                  validator: (value) =>
-                      value == null || value.trim().isEmpty
-                          ? 'Title is required'
-                          : null,
-                  textCapitalization: TextCapitalization.sentences,
+      title: 'Add Material',
+      child: StatefulBuilder(
+        builder: (context, setDialogState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              KlasivoTextField(
+                label: 'Material Title',
+                hint: 'e.g. Chapter 1 Notes',
+                controller: titleController,
+                prefixIcon: Icons.title_outlined,
+                validator: (value) =>
+                    value == null || value.trim().isEmpty
+                        ? 'Title is required'
+                        : null,
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Material Type',
+                  prefixIcon: Icon(Icons.category_outlined),
                 ),
-                const SizedBox(height: KlasivoSpacing.md),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: const InputDecoration(
-                    labelText: 'Material Type',
-                    prefixIcon: Icon(Icons.category_outlined),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'pdf',
+                    child: Row(
+                      children: [
+                        Icon(Icons.picture_as_pdf_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('PDF'),
+                      ],
+                    ),
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'pdf',
-                      child: Row(
-                        children: [
-                          Icon(Icons.picture_as_pdf_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('PDF'),
-                        ],
-                      ),
+                  DropdownMenuItem(
+                    value: 'word',
+                    child: Row(
+                      children: [
+                        Icon(Icons.description_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Word Document'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'word',
-                      child: Row(
-                        children: [
-                          Icon(Icons.description_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Word Document'),
-                        ],
-                      ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'powerpoint',
+                    child: Row(
+                      children: [
+                        Icon(Icons.slideshow_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('PowerPoint'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'powerpoint',
-                      child: Row(
-                        children: [
-                          Icon(Icons.slideshow_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('PowerPoint'),
-                        ],
-                      ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'image',
+                    child: Row(
+                      children: [
+                        Icon(Icons.image_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Image'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'image',
-                      child: Row(
-                        children: [
-                          Icon(Icons.image_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Image'),
-                        ],
-                      ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'video',
+                    child: Row(
+                      children: [
+                        Icon(Icons.videocam_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Video'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'video',
-                      child: Row(
-                        children: [
-                          Icon(Icons.videocam_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Video'),
-                        ],
-                      ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'link',
+                    child: Row(
+                      children: [
+                        Icon(Icons.link_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('External Link'),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: 'link',
-                      child: Row(
-                        children: [
-                          Icon(Icons.link_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('External Link'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => selectedType = value);
-                    }
-                  },
-                ),
-              ],
-            ),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedType = value);
+                  }
+                },
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Cancel',
+                    onPressed: isCreating ? null : () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  KlasivoButton(
+                    label: 'Add',
+                    onPressed: isCreating
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+
+                            setDialogState(() => isCreating = true);
+
+                            try {
+                              final service =
+                                  ref.read(materialServiceProvider);
+                              await service.createMaterial(
+                                organizationId: unit.organizationId,
+                                subjectId: subjectId,
+                                classId: unit.classId,
+                                chapterId: unit.id,
+                                title: titleController.text.trim(),
+                                type: selectedType,
+                              );
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                KlasivoToast.success(context, message: 'Material added');
+                                ref.invalidate(
+                                    materialsBySubjectProvider(subjectId));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                setDialogState(() => isCreating = false);
+                                KlasivoToast.error(context, message: 'Failed: $e');
+                              }
+                            }
+                          },
+                    loading: isCreating,
+                  ),
+                ],
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed:
-                  isCreating ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isCreating
-                  ? null
-                  : () async {
-                      if (!formKey.currentState!.validate()) return;
-
-                      setDialogState(() => isCreating = true);
-
-                      try {
-                        final service =
-                            ref.read(materialServiceProvider);
-                        await service.createMaterial(
-                          organizationId: unit.organizationId,
-                          subjectId: subjectId,
-                          classId: unit.classId,
-                          chapterId: unit.id,
-                          title: titleController.text.trim(),
-                          type: selectedType,
-                        );
-
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Material added'),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                          ref.invalidate(
-                              materialsBySubjectProvider(subjectId));
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          setDialogState(() => isCreating = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Failed: $e'),
-                              backgroundColor: KlasivoColors.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(KlasivoRadius.md),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    },
-              child: isCreating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Add'),
-            ),
-          ],
         ),
       ),
     );
@@ -1293,8 +1138,6 @@ class _SubsectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Row(
       children: [
         Icon(

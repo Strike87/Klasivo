@@ -13,6 +13,10 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/services/exam_security_service.dart';
 import '../../../core/services/exam_instance_service.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ExamTakingScreen extends ConsumerStatefulWidget {
   final String examId;
@@ -98,9 +102,8 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
               _hasSubmitted = true;
               _isLoading = false;
             });
-            showSnackBar(context,
-                message: 'You have already submitted this exam',
-                isError: true);
+            KlasivoToast.error(context,
+                message: 'You have already submitted this exam');
             context.go('/student/exams');
           }
           return;
@@ -162,8 +165,8 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showSnackBar(context,
-            message: 'Failed to start exam: $e', isError: true);
+        KlasivoToast.error(context,
+            message: 'Failed to start exam: $e');
         context.go('/student/exams');
       }
     }
@@ -264,10 +267,9 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       await submissionService.incrementViolationCount(_submissionId!);
 
       if (mounted) {
-        showSnackBar(context,
+        KlasivoToast.warning(context,
             message:
-                'Warning: Leaving the exam screen is recorded. More than ${AppConstants.violationThreshold} violations will flag your submission.',
-            isError: true);
+                'Warning: Leaving the exam screen is recorded. More than ${AppConstants.violationThreshold} violations will flag your submission.');
       }
     } catch (_) {}
   }
@@ -280,7 +282,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
   }
 
   Future<void> _manualSubmit() async {
-    final confirmed = await showConfirmationDialog(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
       title: 'Submit Exam',
       message:
@@ -316,14 +318,14 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       await ExamSecurityService.disableAll();
 
       if (mounted) {
-        showSnackBar(context, message: 'Exam submitted successfully!');
+        KlasivoToast.success(context, message: 'Exam submitted successfully!');
         // Navigate to results
         context.go('/student/results/$_submissionId');
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context,
-            message: 'Failed to submit: $e', isError: true);
+        KlasivoToast.error(context,
+            message: 'Failed to submit: $e');
         // Restart timers if submission failed
         _startCountdownTimer();
         _startAutoSaveTimer();
@@ -368,10 +370,9 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
         if (didPop) return;
         // Prevent back navigation — warn the student
         _handleLeaveDetection();
-        showSnackBar(context,
+        KlasivoToast.warning(context,
             message:
-                'You cannot go back during an exam. Use the submit button when done.',
-            isError: true);
+                'You cannot go back during an exam. Use the submit button when done.');
       },
       child: questionsAsync.when(
         loading: () => Scaffold(
@@ -568,16 +569,12 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                               // Previous button
                               if (_currentQuestionIndex > 0)
                                 Expanded(
-                                  child: OutlinedButton.icon(
+                                  child: KlasivoButton(
+                                    label: 'Previous',
+                                    icon: Icons.arrow_back,
+                                    variant: KlasivoButtonVariant.secondary,
                                     onPressed: () => setState(() =>
                                         _currentQuestionIndex--),
-                                    icon: const Icon(Icons.arrow_back,
-                                        size: 18),
-                                    label: const Text('Previous'),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
                                   ),
                                 )
                               else
@@ -653,28 +650,16 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
                               // Next / Submit button
                               Expanded(
                                 child: isLastQuestion
-                                    ? ElevatedButton.icon(
+                                    ? KlasivoButton(
+                                        label: 'Submit',
+                                        icon: Icons.send,
                                         onPressed: _manualSubmit,
-                                        icon: const Icon(Icons.send,
-                                            size: 18),
-                                        label: const Text('Submit'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 12),
-                                        ),
                                       )
-                                    : ElevatedButton.icon(
+                                    : KlasivoButton(
+                                        label: 'Next',
+                                        icon: Icons.arrow_forward,
                                         onPressed: () => setState(() =>
                                             _currentQuestionIndex++),
-                                        icon: const Icon(Icons.arrow_forward,
-                                            size: 18),
-                                        label: const Text('Next'),
-                                        style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 12),
-                                        ),
                                       ),
                               ),
                             ],
@@ -885,15 +870,10 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       text: _answers[question.id] ?? '',
     );
 
-    return TextFormField(
+    return KlasivoTextField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: 'Your Answer',
-        hintText: 'Type your answer here',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
+      label: 'Your Answer',
+      hint: 'Type your answer here',
       maxLines: 3,
       onChanged: (value) => _saveAnswer(question.id, value),
     );

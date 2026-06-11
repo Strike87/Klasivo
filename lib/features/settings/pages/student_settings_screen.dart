@@ -8,6 +8,10 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Student Settings Screen ───────────────────────────────────────────────────
 
@@ -31,57 +35,56 @@ class StudentSettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Profile Card ──
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.all(KlasivoSpacing.lg),
-              child: Padding(
-                padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
-                      child: Text(
-                        userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                        style: KlasivoTypography.headlineSmall.copyWith(
-                          color: KlasivoColors.secondary,
-                        ),
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
+                    child: Text(
+                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                      style: KlasivoTypography.headlineSmall.copyWith(
+                        color: KlasivoColors.secondary,
                       ),
                     ),
-                    const SizedBox(width: KlasivoSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(userName, style: KlasivoTypography.titleLarge),
-                          const SizedBox(height: KlasivoSpacing.xs),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: KlasivoSpacing.sm,
-                              vertical: KlasivoSpacing.xs,
-                            ),
-                            decoration: BoxDecoration(
-                              color: KlasivoColors.secondary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                            ),
-                            child: Text(
-                              'Student',
-                              style: KlasivoTypography.labelSmall.copyWith(
-                                color: KlasivoColors.secondary,
-                              ),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(userName, style: KlasivoTypography.titleLarge),
+                        const SizedBox(height: KlasivoSpacing.xs),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: KlasivoSpacing.sm,
+                            vertical: KlasivoSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: KlasivoColors.secondary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                          ),
+                          child: Text(
+                            'Student',
+                            style: KlasivoTypography.labelSmall.copyWith(
+                              color: KlasivoColors.secondary,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
 
             // ── Student Info ──
             _SectionHeader(title: 'Student Info'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   ListTile(
@@ -121,8 +124,9 @@ class StudentSettingsScreen extends ConsumerWidget {
 
             // ── Preferences ──
             _SectionHeader(title: 'Preferences'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   ListTile(
@@ -142,12 +146,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     trailing: Switch(
                       value: isDark,
                       onChanged: (v) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Theme follows your system settings'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                        KlasivoToast.info(context, message: 'Theme follows your system settings');
                       },
                     ),
                   ),
@@ -168,9 +167,7 @@ class StudentSettingsScreen extends ConsumerWidget {
                     trailing: Icon(Icons.chevron_right_rounded,
                       color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary, size: 20),
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Notification settings coming soon')),
-                      );
+                      KlasivoToast.info(context, message: 'Notification settings coming soon');
                     },
                   ),
                 ],
@@ -180,8 +177,9 @@ class StudentSettingsScreen extends ConsumerWidget {
 
             // ── Support ──
             _SectionHeader(title: 'Support'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   ListTile(
@@ -253,57 +251,29 @@ class StudentSettingsScreen extends ConsumerWidget {
             // ── Logout ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Logout'),
-                        content: const Text('Are you sure you want to logout?'),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(true),
-                            style: TextButton.styleFrom(foregroundColor: KlasivoColors.error),
-                            child: const Text('Logout'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirmed == true && context.mounted) {
-                      try {
-                        final authService = ref.read(authServiceProvider);
-                        await authService.logout();
-                      } catch (_) {}
-                      await clearAuthData();
-                      if (context.mounted) context.go('/auth');
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: KlasivoColors.error,
-                    side: const BorderSide(color: KlasivoColors.error, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.logout_rounded, size: 20),
-                      SizedBox(width: KlasivoSpacing.sm),
-                      Text('Logout'),
-                    ],
-                  ),
-                ),
+              child: KlasivoButton(
+                label: 'Logout',
+                icon: Icons.logout_rounded,
+                variant: KlasivoButtonVariant.danger,
+                fullWidth: true,
+                onPressed: () async {
+                  final confirmed = await KlasivoModal.confirm(
+                    context: context,
+                    title: 'Logout',
+                    message: 'Are you sure you want to logout?',
+                    confirmLabel: 'Logout',
+                    cancelLabel: 'Cancel',
+                    isDangerous: true,
+                  );
+                  if (confirmed == true && context.mounted) {
+                    try {
+                      final authService = ref.read(authServiceProvider);
+                      await authService.logout();
+                    } catch (_) {}
+                    await clearAuthData();
+                    if (context.mounted) context.go('/auth');
+                  }
+                },
               ),
             ),
             const SizedBox(height: KlasivoSpacing.xxxl),

@@ -5,6 +5,9 @@ import '../../../core/config/theme.dart';
 import '../../../providers/announcement_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class AnnouncementFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -86,9 +89,7 @@ class _AnnouncementFormScreenState extends ConsumerState<AnnouncementFormScreen>
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: KlasivoColors.error),
-        );
+        KlasivoToast.error(context, message: 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -103,12 +104,12 @@ class _AnnouncementFormScreenState extends ConsumerState<AnnouncementFormScreen>
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Edit Announcement' : 'New Announcement'),
         actions: [
-          TextButton.icon(
+          KlasivoButton(
+            label: 'Save',
             onPressed: _isLoading ? null : _save,
-            icon: _isLoading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.check),
-            label: const Text('Save'),
+            variant: KlasivoButtonVariant.tertiary,
+            icon: Icons.check,
+            loading: _isLoading,
           ),
         ],
       ),
@@ -118,26 +119,19 @@ class _AnnouncementFormScreenState extends ConsumerState<AnnouncementFormScreen>
           padding: const EdgeInsets.all(KlasivoSpacing.lg),
           children: [
             // Title
-            TextFormField(
+            KlasivoTextField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'e.g., School Closed Tomorrow',
-                border: OutlineInputBorder(),
-              ),
+              label: 'Title',
+              hint: 'e.g., School Closed Tomorrow',
               validator: (v) => v?.trim().isEmpty == true ? 'Title is required' : null,
             ),
             const SizedBox(height: KlasivoSpacing.lg),
 
             // Content
-            TextFormField(
+            KlasivoTextField(
               controller: _contentController,
-              decoration: const InputDecoration(
-                labelText: 'Content',
-                hintText: 'Write your announcement...',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
+              label: 'Content',
+              hint: 'Write your announcement...',
               maxLines: 5,
               validator: (v) => v?.trim().isEmpty == true ? 'Content is required' : null,
             ),

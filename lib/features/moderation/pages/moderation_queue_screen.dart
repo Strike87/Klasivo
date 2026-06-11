@@ -7,6 +7,8 @@ import '../../../core/services/moderation_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Moderation Service Provider ──────────────────────────────────────────────
 
@@ -155,16 +157,16 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
               itemId: itemId,
               reviewedBy: userId,
             );
-        if (mounted) showSnackBar(context, message: 'Resource approved');
+        if (mounted) KlasivoToast.success(context, message: 'Resource approved');
       } else {
         await ref.read(moderationServiceProvider).rejectItem(
               itemId: itemId,
               reviewedBy: userId,
             );
-        if (mounted) showSnackBar(context, message: 'Resource rejected');
+        if (mounted) KlasivoToast.success(context, message: 'Resource rejected');
       }
     } catch (e) {
-      if (mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
+      if (mounted) KlasivoToast.error(context, message: 'Failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -211,55 +213,51 @@ class _ModerationCard extends StatelessWidget {
         statusLabel = 'Pending';
     }
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(statusIcon, color: statusColor, size: 20),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${resourceType.toUpperCase()} · $statusLabel',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  ),
+                child: Icon(statusIcon, color: statusColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${resourceType.toUpperCase()} · $statusLabel',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
                 ),
-                if (status == 'pending') ...[
-                  IconButton(
-                    icon: const Icon(Icons.check_circle_outline, color: KlasivoColors.secondary),
-                    tooltip: 'Approve',
-                    onPressed: onApprove,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel_outlined, color: KlasivoColors.error),
-                    tooltip: 'Reject',
-                    onPressed: onReject,
-                  ),
-                ],
+              ),
+              if (status == 'pending') ...[
+                IconButton(
+                  icon: const Icon(Icons.check_circle_outline, color: KlasivoColors.secondary),
+                  tooltip: 'Approve',
+                  onPressed: onApprove,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.cancel_outlined, color: KlasivoColors.error),
+                  tooltip: 'Reject',
+                  onPressed: onReject,
+                ),
               ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

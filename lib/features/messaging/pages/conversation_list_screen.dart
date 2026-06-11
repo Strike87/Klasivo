@@ -12,6 +12,10 @@ import '../../../providers/organization_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_badge.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONVERSATION LIST SCREEN — WhatsApp-style conversation list
@@ -150,9 +154,8 @@ class _ConversationListScreenState
                 onTap: () {
                   Navigator.pop(context);
                   // TODO: Navigate to class selection
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Class chat coming soon')),
-                  );
+                  KlasivoToast.info(context,
+                      message: 'Class chat coming soon');
                 },
               ),
               const SizedBox(height: KlasivoSpacing.md),
@@ -165,9 +168,8 @@ class _ConversationListScreenState
                 onTap: () {
                   Navigator.pop(context);
                   // TODO: Navigate to group selection
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Group chat coming soon')),
-                  );
+                  KlasivoToast.info(context,
+                      message: 'Group chat coming soon');
                 },
               ),
               const SizedBox(height: KlasivoSpacing.lg),
@@ -183,77 +185,70 @@ class _ConversationListScreenState
     final isDark = theme.brightness == Brightness.dark;
     final userIdController = TextEditingController();
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'New Direct Message',
-          style: KlasivoTypography.titleLarge.copyWith(
-            color: isDark
-                ? KlasivoColors.darkTextPrimary
-                : KlasivoColors.lightTextPrimary,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Enter the user ID of the person you want to message',
-              style: KlasivoTypography.bodySmall.copyWith(
-                color: isDark
-                    ? KlasivoColors.darkTextTertiary
-                    : KlasivoColors.lightTextTertiary,
-              ),
+      title: 'New Direct Message',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Enter the user ID of the person you want to message',
+            style: KlasivoTypography.bodySmall.copyWith(
+              color: isDark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
             ),
-            const SizedBox(height: KlasivoSpacing.lg),
-            TextField(
-              controller: userIdController,
-              decoration: const InputDecoration(
-                labelText: 'User ID',
-                hintText: 'Paste user ID here',
-                prefixIcon: Icon(Icons.person_outline, size: 20),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final otherUserId = userIdController.text.trim();
-              if (otherUserId.isEmpty) return;
+          const SizedBox(height: KlasivoSpacing.lg),
+          KlasivoTextField(
+            controller: userIdController,
+            label: 'User ID',
+            hint: 'Paste user ID here',
+            prefixIcon: Icons.person_outline,
+          ),
+          const SizedBox(height: KlasivoSpacing.xxl),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              KlasivoButton(
+                label: 'Cancel',
+                variant: KlasivoButtonVariant.tertiary,
+                onPressed: () => Navigator.pop(context),
+              ),
+              const SizedBox(width: KlasivoSpacing.sm),
+              KlasivoButton(
+                label: 'Start Chat',
+                onPressed: () async {
+                  final otherUserId = userIdController.text.trim();
+                  if (otherUserId.isEmpty) return;
 
-              final currentUserId = ref.read(currentUserIdProvider);
-              final orgId = ref.read(currentOrganizationIdProvider);
-              if (currentUserId == null || orgId == null) return;
+                  final currentUserId = ref.read(currentUserIdProvider);
+                  final orgId = ref.read(currentOrganizationIdProvider);
+                  if (currentUserId == null || orgId == null) return;
 
-              Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Close bottom sheet
 
-              try {
-                final conversationId = await ref
-                    .read(messagingServiceProvider)
-                    .getOrCreateDirectConversation(
-                      organizationId: orgId,
-                      userId1: currentUserId,
-                      userId2: otherUserId,
-                    );
+                  try {
+                    final conversationId = await ref
+                        .read(messagingServiceProvider)
+                        .getOrCreateDirectConversation(
+                          organizationId: orgId,
+                          userId1: currentUserId,
+                          userId2: otherUserId,
+                        );
 
-                if (mounted) {
-                  context.go(
-                      '/inbox/messages/$conversationId');
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to create conversation: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Start Chat'),
+                    if (mounted) {
+                      context.go('/inbox/messages/$conversationId');
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      KlasivoToast.error(context,
+                          message: 'Failed to create conversation: $e');
+                    }
+                  }
+                },
+              ),
+            ],
           ),
         ],
       ),

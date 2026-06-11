@@ -7,6 +7,9 @@ import '../../../providers/exam_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ExamListScreen extends ConsumerWidget {
   const ExamListScreen({Key? key}) : super(key: key);
@@ -135,7 +138,7 @@ class _ExamTabList extends ConsumerWidget {
             className: exam.getClassName(classes),
             onTap: () => context.go('/teacher/exams/${exam.id}'),
             onDelete: () async {
-              final confirmed = await showConfirmationDialog(
+              final confirmed = await KlasivoModal.confirm(
                 context: context,
                 title: 'Delete Exam',
                 message:
@@ -147,12 +150,12 @@ class _ExamTabList extends ConsumerWidget {
                 try {
                   await ref.read(examServiceProvider).deleteExam(exam.id);
                   if (context.mounted) {
-                    showSnackBar(context, message: 'Exam deleted');
+                    KlasivoToast.success(context, message: 'Exam deleted');
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    showSnackBar(context,
-                        message: 'Failed: $e', isError: true);
+                    KlasivoToast.error(context,
+                        message: 'Failed: $e');
                   }
                 }
               }
@@ -183,117 +186,109 @@ class _ExamCard extends StatelessWidget {
     final dateFormat = DateFormat('MMM dd, yyyy');
     final timeFormat = DateFormat('hh:mm a');
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(16),
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header: Title + Status Badge ──
+          Row(
             children: [
-              // ── Header: Title + Status Badge ──
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      exam.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              Expanded(
+                child: Text(
+                  exam.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
-                  _StatusBadge(status: exam.status),
-                ],
-              ),
-
-              if (exam.description != null &&
-                  exam.description!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  exam.description!,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
-
-              const SizedBox(height: 12),
-
-              // ── Info Row ──
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  _InfoChip(
-                    icon: Icons.class_outlined,
-                    label: className,
-                    color: Colors.blue,
-                  ),
-                  _InfoChip(
-                    icon: Icons.timer_outlined,
-                    label: '${exam.durationMinutes} min',
-                    color: Colors.orange,
-                  ),
-                  _InfoChip(
-                    icon: Icons.quiz_outlined,
-                    label: '${exam.questionCount} Q',
-                    color: Colors.green,
-                  ),
-                  _InfoChip(
-                    icon: Icons.stars_outlined,
-                    label: '${exam.totalMarks} marks',
-                    color: Colors.purple,
-                  ),
-                ],
               ),
+              _StatusBadge(status: exam.status),
+            ],
+          ),
 
-              const SizedBox(height: 12),
+          if (exam.description != null &&
+              exam.description!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              exam.description!,
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
 
-              // ── Date Row ──
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(Icons.arrow_forward, size: 12, color: Colors.grey[500]),
-                  ),
-                  Flexible(
-                    child: Text(
-                      '${dateFormat.format(exam.endDate)} ${timeFormat.format(exam.endDate)}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        size: 20, color: Colors.red[400]),
-                    onPressed: onDelete,
-                    tooltip: 'Delete',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
+          const SizedBox(height: 12),
+
+          // ── Info Row ──
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _InfoChip(
+                icon: Icons.class_outlined,
+                label: className,
+                color: Colors.blue,
+              ),
+              _InfoChip(
+                icon: Icons.timer_outlined,
+                label: '${exam.durationMinutes} min',
+                color: Colors.orange,
+              ),
+              _InfoChip(
+                icon: Icons.quiz_outlined,
+                label: '${exam.questionCount} Q',
+                color: Colors.green,
+              ),
+              _InfoChip(
+                icon: Icons.stars_outlined,
+                label: '${exam.totalMarks} marks',
+                color: Colors.purple,
               ),
             ],
           ),
-        ),
+
+          const SizedBox(height: 12),
+
+          // ── Date Row ──
+          Row(
+            children: [
+              Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.arrow_forward, size: 12, color: Colors.grey[500]),
+              ),
+              Flexible(
+                child: Text(
+                  '${dateFormat.format(exam.endDate)} ${timeFormat.format(exam.endDate)}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: Icon(Icons.delete_outline,
+                    size: 20, color: Colors.red[400]),
+                onPressed: onDelete,
+                tooltip: 'Delete',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
 
 // ─── Forgot Password Screen ────────────────────────────────────────────────────
 
@@ -115,18 +117,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
                 if (!_emailSent) ...[
                   // ── Email Input ──
-                  Text('Email', style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                  )),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
+                    label: 'Email',
                     controller: _emailController,
+                    hint: 'you@example.com',
+                    prefixIcon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      hintText: 'you@example.com',
-                      prefixIcon: Icon(Icons.email_outlined, size: 20),
-                    ),
                     validator: (value) {
                       if (value == null || value.isEmpty) return 'Email is required';
                       if (!value.contains('@')) return 'Enter a valid email';
@@ -136,18 +132,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   const SizedBox(height: KlasivoSpacing.xxl),
 
                   // ── Send Reset Button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _sendResetEmail,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20, width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text('Send Reset Link'),
-                    ),
+                  KlasivoButton(
+                    label: 'Send Reset Link',
+                    onPressed: _isLoading ? null : _sendResetEmail,
+                    loading: _isLoading,
+                    fullWidth: true,
+                    size: KlasivoButtonSize.lg,
                   ),
                 ] else ...[
                   // ── Success State ──
@@ -198,16 +188,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
                 // ── Back to Login ──
                 Center(
-                  child: TextButton(
+                  child: KlasivoButton(
+                    label: 'Back to Login',
+                    variant: KlasivoButtonVariant.tertiary,
                     onPressed: () => context.go('/auth/teacher-login'),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.arrow_back_ios_new_rounded, size: 14),
-                        SizedBox(width: KlasivoSpacing.xs),
-                        Text('Back to Login'),
-                      ],
-                    ),
+                    icon: Icons.arrow_back_ios_new_rounded,
                   ),
                 ),
               ],

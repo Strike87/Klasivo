@@ -6,7 +6,11 @@ import '../../../core/config/theme.dart';
 import '../../../providers/question_bank_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_components.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // QUESTION BANK SCREEN v1.7 — Klasivo Design Token System
@@ -486,453 +490,229 @@ class _QuestionBankScreenState extends ConsumerState<QuestionBankScreen> {
       TextEditingController(),
     ];
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => StatefulBuilder(
+      title: 'Add Question to Bank',
+      child: StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          final inputBorder = OutlineInputBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            borderSide: BorderSide(
-              color: isDark ? KlasivoColors.darkBorder : KlasivoColors.lightBorder,
-            ),
-          );
-          final focusedBorder = OutlineInputBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            borderSide: const BorderSide(
-              color: KlasivoColors.primary,
-              width: 1.5,
-            ),
-          );
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Subject ─────────────────────────────────────────────
+              KlasivoTextField(
+                controller: subjectController,
+                label: 'Subject *',
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
 
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-            ),
-            titlePadding: const EdgeInsets.fromLTRB(
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.sm,
-            ),
-            contentPadding: const EdgeInsets.fromLTRB(
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.sm,
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.lg,
-            ),
-            actionsPadding: const EdgeInsets.fromLTRB(
-              KlasivoSpacing.lg,
-              KlasivoSpacing.sm,
-              KlasivoSpacing.xxl,
-              KlasivoSpacing.xxl,
-            ),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: KlasivoColors.primarySurface,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                  ),
-                  child: const Icon(
-                    Icons.add_circle_outline_rounded,
-                    color: KlasivoColors.primary,
-                    size: 22,
-                  ),
+              // ── Type Dropdown ───────────────────────────────────────
+              DropdownButtonFormField<String>(
+                value: type,
+                decoration: const InputDecoration(
+                  labelText: 'Type',
                 ),
-                const SizedBox(width: KlasivoSpacing.md),
-                Text(
-                  'Add Question to Bank',
-                  style: KlasivoTypography.titleLarge.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextPrimary
-                        : KlasivoColors.lightTextPrimary,
+                items: [
+                  DropdownMenuItem(
+                    value: AppConstants.questionTypeMultipleChoice,
+                    child: Text('Multiple Choice'),
                   ),
+                  DropdownMenuItem(
+                    value: AppConstants.questionTypeTrueFalse,
+                    child: Text('True / False'),
+                  ),
+                  DropdownMenuItem(
+                    value: AppConstants.questionTypeShortAnswer,
+                    child: Text('Short Answer'),
+                  ),
+                ],
+                onChanged: (v) => setDialogState(() => type = v!),
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+
+              // ── Difficulty Dropdown ─────────────────────────────────
+              DropdownButtonFormField<String>(
+                value: difficulty,
+                decoration: const InputDecoration(
+                  labelText: 'Difficulty',
                 ),
+                items: [
+                  DropdownMenuItem(
+                    value: AppConstants.difficultyEasy,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF4CAF50),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        const Text('Easy'),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: AppConstants.difficultyMedium,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF9800),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        const Text('Medium'),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: AppConstants.difficultyHard,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF44336),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: KlasivoSpacing.sm),
+                        const Text('Hard'),
+                      ],
+                    ),
+                  ),
+                ],
+                onChanged: (v) => setDialogState(() => difficulty = v!),
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+
+              // ── Question Text ──────────────────────────────────────
+              KlasivoTextField(
+                controller: textController,
+                label: 'Question Text *',
+                maxLines: 3,
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+
+              // ── Options (MCQ only) ──────────────────────────────────
+              if (type == AppConstants.questionTypeMultipleChoice) ...[
+                KlasivoSectionHeader(
+                  title: 'Options',
+                  actionLabel: null,
+                ),
+                const SizedBox(height: KlasivoSpacing.sm),
+                for (int i = 0; i < 4; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                        bottom: KlasivoSpacing.sm),
+                    child: KlasivoTextField(
+                      controller: optionControllers[i],
+                      label: 'Option ${String.fromCharCode(65 + i)}',
+                    ),
+                  ),
+                const SizedBox(height: KlasivoSpacing.md),
               ],
-            ),
-            content: SingleChildScrollView(
-              child: SizedBox(
-                width: MediaQuery.of(ctx).size.width * 0.9,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ── Subject ─────────────────────────────────────────────
-                    TextField(
-                      controller: subjectController,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Subject *',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
 
-                    // ── Type Dropdown ───────────────────────────────────────
-                    DropdownButtonFormField<String>(
-                      value: type,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Type',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: AppConstants.questionTypeMultipleChoice,
-                          child: Text('Multiple Choice'),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.questionTypeTrueFalse,
-                          child: Text('True / False'),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.questionTypeShortAnswer,
-                          child: Text('Short Answer'),
-                        ),
-                      ],
-                      onChanged: (v) => setDialogState(() => type = v!),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
-
-                    // ── Difficulty Dropdown ─────────────────────────────────
-                    DropdownButtonFormField<String>(
-                      value: difficulty,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Difficulty',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: AppConstants.difficultyEasy,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF4CAF50),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: KlasivoSpacing.sm),
-                              const Text('Easy'),
-                            ],
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.difficultyMedium,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFFF9800),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: KlasivoSpacing.sm),
-                              const Text('Medium'),
-                            ],
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.difficultyHard,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF44336),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: KlasivoSpacing.sm),
-                              const Text('Hard'),
-                            ],
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) => setDialogState(() => difficulty = v!),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
-
-                    // ── Question Text ──────────────────────────────────────
-                    TextField(
-                      controller: textController,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Question Text *',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                        alignLabelWithHint: true,
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
-
-                    // ── Options (MCQ only) ──────────────────────────────────
-                    if (type == AppConstants.questionTypeMultipleChoice) ...[
-                      KlasivoSectionHeader(
-                        title: 'Options',
-                        actionLabel: null,
-                      ),
-                      const SizedBox(height: KlasivoSpacing.sm),
-                      for (int i = 0; i < 4; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                              bottom: KlasivoSpacing.sm),
-                          child: TextField(
-                            controller: optionControllers[i],
-                            style:
-                                KlasivoTypography.bodyMedium.copyWith(
-                              color: isDark
-                                  ? KlasivoColors.darkTextPrimary
-                                  : KlasivoColors.lightTextPrimary,
-                            ),
-                            decoration: InputDecoration(
-                              labelText:
-                                  'Option ${String.fromCharCode(65 + i)}',
-                              labelStyle:
-                                  KlasivoTypography.bodySmall.copyWith(
-                                color: isDark
-                                    ? KlasivoColors.darkTextTertiary
-                                    : KlasivoColors
-                                        .lightTextTertiary,
-                              ),
-                              border: inputBorder,
-                              enabledBorder: inputBorder,
-                              focusedBorder: focusedBorder,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: KlasivoSpacing.md),
-                    ],
-
-                    // ── Correct Answer ──────────────────────────────────────
-                    TextField(
-                      controller: correctAnswerController,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Correct Answer *',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
-
-                    // ── Marks ───────────────────────────────────────────────
-                    TextField(
-                      controller: marksController,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Marks',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: KlasivoSpacing.md),
-
-                    // ── Tags ────────────────────────────────────────────────
-                    TextField(
-                      controller: tagsController,
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Tags (comma-separated)',
-                        labelStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                        hintText: 'e.g. algebra, chapter5, midterm',
-                        hintStyle: KlasivoTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextDisabled
-                              : KlasivoColors.lightTextDisabled,
-                        ),
-                        border: inputBorder,
-                        enabledBorder: inputBorder,
-                        focusedBorder: focusedBorder,
-                      ),
-                    ),
-                  ],
-                ),
+              // ── Correct Answer ──────────────────────────────────────
+              KlasivoTextField(
+                controller: correctAnswerController,
+                label: 'Correct Answer *',
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                style: TextButton.styleFrom(
-                  foregroundColor: isDark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: KlasivoSpacing.lg,
-                    vertical: KlasivoSpacing.md,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(KlasivoRadius.md),
-                  ),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: KlasivoTypography.labelLarge.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: KlasivoSpacing.sm),
-              ElevatedButton(
-                onPressed: () async {
-                  if (textController.text.trim().isEmpty ||
-                      subjectController.text.trim().isEmpty) {
-                    showSnackBar(context,
-                        message:
-                            'Subject and question text are required',
-                        isError: true);
-                    return;
-                  }
-                  try {
-                    final teacherId =
-                        ref.read(userIdProvider) ?? '';
-                    final tags = tagsController.text
-                        .split(',')
-                        .map((t) => t.trim())
-                        .where((t) => t.isNotEmpty)
-                        .toList();
+              const SizedBox(height: KlasivoSpacing.md),
 
-                    await ref
-                        .read(questionBankServiceProvider)
-                        .addQuestionToBank(
-                          teacherId: teacherId,
-                          subject: subjectController.text.trim(),
-                          type: type,
-                          difficulty: difficulty,
-                          text: textController.text.trim(),
-                          options: type ==
-                                  AppConstants
-                                      .questionTypeMultipleChoice
-                              ? optionControllers
-                                  .map((c) => c.text.trim())
-                                  .where((t) => t.isNotEmpty)
-                                  .toList()
-                              : type ==
+              // ── Marks ───────────────────────────────────────────────
+              KlasivoTextField(
+                controller: marksController,
+                label: 'Marks',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: KlasivoSpacing.md),
+
+              // ── Tags ────────────────────────────────────────────────
+              KlasivoTextField(
+                controller: tagsController,
+                label: 'Tags (comma-separated)',
+                hint: 'e.g. algebra, chapter5, midterm',
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
+              // ── Action Buttons ──────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  KlasivoButton(
+                    label: 'Cancel',
+                    variant: KlasivoButtonVariant.tertiary,
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  KlasivoButton(
+                    label: 'Create',
+                    onPressed: () async {
+                      if (textController.text.trim().isEmpty ||
+                          subjectController.text.trim().isEmpty) {
+                        KlasivoToast.error(context,
+                            message:
+                                'Subject and question text are required');
+                        return;
+                      }
+                      try {
+                        final teacherId =
+                            ref.read(userIdProvider) ?? '';
+                        final tags = tagsController.text
+                            .split(',')
+                            .map((t) => t.trim())
+                            .where((t) => t.isNotEmpty)
+                            .toList();
+
+                        await ref
+                            .read(questionBankServiceProvider)
+                            .addQuestionToBank(
+                              teacherId: teacherId,
+                              subject: subjectController.text.trim(),
+                              type: type,
+                              difficulty: difficulty,
+                              text: textController.text.trim(),
+                              options: type ==
                                       AppConstants
-                                          .questionTypeTrueFalse
-                                  ? ['True', 'False']
-                                  : [],
-                          correctAnswer:
-                              correctAnswerController.text.trim(),
-                          marks:
-                              int.tryParse(marksController.text) ??
-                                  1,
-                          tags: tags,
-                        );
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (mounted) {
-                      showSnackBar(context,
-                          message: 'Question added to bank');
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      showSnackBar(context,
-                          message: 'Failed: $e', isError: true);
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: KlasivoColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: KlasivoSpacing.xxl,
-                    vertical: KlasivoSpacing.md,
+                                          .questionTypeMultipleChoice
+                                  ? optionControllers
+                                      .map((c) => c.text.trim())
+                                      .where((t) => t.isNotEmpty)
+                                      .toList()
+                                  : type ==
+                                          AppConstants
+                                              .questionTypeTrueFalse
+                                      ? ['True', 'False']
+                                      : [],
+                              correctAnswer:
+                                  correctAnswerController.text.trim(),
+                              marks:
+                                  int.tryParse(marksController.text) ??
+                                      1,
+                              tags: tags,
+                            );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          KlasivoToast.success(context,
+                              message: 'Question added to bank');
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          KlasivoToast.error(context,
+                              message: 'Failed: $e');
+                        }
+                      }
+                    },
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(KlasivoRadius.md),
-                  ),
-                ),
-                child: Text(
-                  'Create',
-                  style: KlasivoTypography.labelLarge
-                      .copyWith(color: Colors.white),
-                ),
+                ],
               ),
             ],
           );
@@ -955,276 +735,267 @@ class _QuestionBankCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.outlined,
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
       margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        side: BorderSide(
-          color: isDark ? KlasivoColors.darkBorder : KlasivoColors.lightBorder,
-          width: 1,
-        ),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Top Row: icon + badges + usage + delete ─────────────────────
-            Row(
-              children: [
-                // Leading icon container with difficulty color
-                Container(
-                  padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: question.difficultyColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                  ),
-                  child: Icon(
-                    question.typeIcon,
-                    size: 18,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Top Row: icon + badges + usage + delete ─────────────────────
+          Row(
+            children: [
+              // Leading icon container with difficulty color
+              Container(
+                padding: const EdgeInsets.all(KlasivoSpacing.sm),
+                decoration: BoxDecoration(
+                  color: question.difficultyColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                ),
+                child: Icon(
+                  question.typeIcon,
+                  size: 18,
+                  color: question.difficultyColor,
+                ),
+              ),
+              const SizedBox(width: KlasivoSpacing.sm),
+
+              // Difficulty badge (pill)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: KlasivoSpacing.sm,
+                  vertical: KlasivoSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: question.difficultyColor.withValues(alpha: 0.12),
+                  borderRadius:
+                      BorderRadius.circular(KlasivoRadius.pill),
+                ),
+                child: Text(
+                  question.difficulty.toUpperCase(),
+                  style: KlasivoTypography.labelSmall.copyWith(
                     color: question.difficultyColor,
                   ),
                 ),
-                const SizedBox(width: KlasivoSpacing.sm),
+              ),
+              const SizedBox(width: KlasivoSpacing.xs),
 
-                // Difficulty badge (pill)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: KlasivoSpacing.sm,
-                    vertical: KlasivoSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: question.difficultyColor.withValues(alpha: 0.12),
-                    borderRadius:
-                        BorderRadius.circular(KlasivoRadius.pill),
-                  ),
-                  child: Text(
-                    question.difficulty.toUpperCase(),
-                    style: KlasivoTypography.labelSmall.copyWith(
-                      color: question.difficultyColor,
-                    ),
+              // Subject badge (pill)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: KlasivoSpacing.sm,
+                  vertical: KlasivoSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: KlasivoColors.primary.withValues(alpha: 0.08),
+                  borderRadius:
+                      BorderRadius.circular(KlasivoRadius.pill),
+                ),
+                child: Text(
+                  question.subject,
+                  style: KlasivoTypography.labelSmall.copyWith(
+                    color: KlasivoColors.primary,
                   ),
                 ),
-                const SizedBox(width: KlasivoSpacing.xs),
+              ),
 
-                // Subject badge (pill)
-                Container(
+              const Spacer(),
+
+              // Usage count
+              Text(
+                '${question.usageCount}× used',
+                style: KlasivoTypography.caption.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: KlasivoSpacing.md),
+
+          // ── Question text ──────────────────────────────────────────────
+          Text(
+            question.text,
+            style: KlasivoTypography.bodyMedium.copyWith(
+              color: isDark
+                  ? KlasivoColors.darkTextPrimary
+                  : KlasivoColors.lightTextPrimary,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+
+          // ── Marks display ──────────────────────────────────────────────
+          if (question.marks != 1)
+            Padding(
+              padding: const EdgeInsets.only(top: KlasivoSpacing.xs),
+              child: Text(
+                '${question.marks} marks',
+                style: KlasivoTypography.bodySmall.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+              ),
+            ),
+
+          // ── Tags row ───────────────────────────────────────────────────
+          if (question.tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: KlasivoSpacing.sm),
+              child: Wrap(
+                spacing: KlasivoSpacing.xs,
+                runSpacing: KlasivoSpacing.xs,
+                children: question.tags.take(3).map((tag) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: KlasivoSpacing.sm,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? KlasivoColors.darkBorder.withValues(alpha: 0.5)
+                          : KlasivoColors.lightBackground,
+                      borderRadius:
+                          BorderRadius.circular(KlasivoRadius.pill),
+                    ),
+                    child: Text(
+                      '#$tag',
+                      style: KlasivoTypography.caption.copyWith(
+                        color: isDark
+                            ? KlasivoColors.darkTextTertiary
+                            : KlasivoColors.lightTextTertiary,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+          const SizedBox(height: KlasivoSpacing.md),
+
+          // ── Action Row: Delete + Import ────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              // Delete button
+              InkWell(
+                onTap: () async {
+                  final confirmed = await KlasivoModal.confirm(
+                    context: context,
+                    title: 'Delete Question',
+                    message:
+                        'Remove this question from the bank? This cannot be undone.',
+                    confirmLabel: 'Delete',
+                    isDangerous: true,
+                  );
+                  if (confirmed == true) {
+                    try {
+                      await ref
+                          .read(questionBankServiceProvider)
+                          .deleteQuestionFromBank(question.id);
+                      if (context.mounted) {
+                        KlasivoToast.success(context,
+                            message: 'Question deleted');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        KlasivoToast.error(context,
+                            message: 'Failed: $e');
+                      }
+                    }
+                  }
+                },
+                borderRadius:
+                    BorderRadius.circular(KlasivoRadius.sm),
+                child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: KlasivoSpacing.sm,
-                    vertical: KlasivoSpacing.xs,
+                    horizontal: KlasivoSpacing.md,
+                    vertical: KlasivoSpacing.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(KlasivoRadius.sm),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.delete_outline_rounded,
+                        size: 16,
+                        color: KlasivoColors.error,
+                      ),
+                      const SizedBox(width: KlasivoSpacing.xs),
+                      Text(
+                        'Delete',
+                        style: KlasivoTypography.labelMedium
+                            .copyWith(color: KlasivoColors.error),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: KlasivoSpacing.sm),
+
+              // Import to Exam button
+              InkWell(
+                onTap: () async {
+                  try {
+                    // For now, show a toast indicating the import action
+                    // In a real flow, this would navigate to exam selection
+                    KlasivoToast.info(context,
+                        message:
+                            'Select an exam to import this question');
+                    // Example call:
+                    // await ref.read(questionBankServiceProvider).importQuestionToExam(
+                    //   bankQuestionId: question.id,
+                    //   examId: selectedExamId,
+                    //   order: nextOrder,
+                    // );
+                  } catch (e) {
+                    if (context.mounted) {
+                      KlasivoToast.error(context,
+                          message: 'Failed: $e');
+                    }
+                  }
+                },
+                borderRadius:
+                    BorderRadius.circular(KlasivoRadius.sm),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: KlasivoSpacing.md,
+                    vertical: KlasivoSpacing.sm,
                   ),
                   decoration: BoxDecoration(
                     color: KlasivoColors.primary.withValues(alpha: 0.08),
                     borderRadius:
-                        BorderRadius.circular(KlasivoRadius.pill),
+                        BorderRadius.circular(KlasivoRadius.sm),
                   ),
-                  child: Text(
-                    question.subject,
-                    style: KlasivoTypography.labelSmall.copyWith(
-                      color: KlasivoColors.primary,
-                    ),
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Usage count
-                Text(
-                  '${question.usageCount}× used',
-                  style: KlasivoTypography.caption.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: KlasivoSpacing.md),
-
-            // ── Question text ──────────────────────────────────────────────
-            Text(
-              question.text,
-              style: KlasivoTypography.bodyMedium.copyWith(
-                color: isDark
-                    ? KlasivoColors.darkTextPrimary
-                    : KlasivoColors.lightTextPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-
-            // ── Marks display ──────────────────────────────────────────────
-            if (question.marks != 1)
-              Padding(
-                padding: const EdgeInsets.only(top: KlasivoSpacing.xs),
-                child: Text(
-                  '${question.marks} marks',
-                  style: KlasivoTypography.bodySmall.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.file_download_outlined,
+                        size: 16,
+                        color: KlasivoColors.primary,
+                      ),
+                      const SizedBox(width: KlasivoSpacing.xs),
+                      Text(
+                        'Import to Exam',
+                        style: KlasivoTypography.labelMedium
+                            .copyWith(color: KlasivoColors.primary),
+                      ),
+                    ],
                   ),
                 ),
               ),
-
-            // ── Tags row ───────────────────────────────────────────────────
-            if (question.tags.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: KlasivoSpacing.sm),
-                child: Wrap(
-                  spacing: KlasivoSpacing.xs,
-                  runSpacing: KlasivoSpacing.xs,
-                  children: question.tags.take(3).map((tag) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: KlasivoSpacing.sm,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? KlasivoColors.darkBorder.withValues(alpha: 0.5)
-                            : KlasivoColors.lightBackground,
-                        borderRadius:
-                            BorderRadius.circular(KlasivoRadius.pill),
-                      ),
-                      child: Text(
-                        '#$tag',
-                        style: KlasivoTypography.caption.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-            const SizedBox(height: KlasivoSpacing.md),
-
-            // ── Action Row: Delete + Import ────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                // Delete button
-                InkWell(
-                  onTap: () async {
-                    final confirmed = await showConfirmationDialog(
-                      context: context,
-                      title: 'Delete Question',
-                      message:
-                          'Remove this question from the bank? This cannot be undone.',
-                      confirmLabel: 'Delete',
-                      isDangerous: true,
-                    );
-                    if (confirmed == true) {
-                      try {
-                        await ref
-                            .read(questionBankServiceProvider)
-                            .deleteQuestionFromBank(question.id);
-                        if (context.mounted) {
-                          showSnackBar(context,
-                              message: 'Question deleted');
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showSnackBar(context,
-                              message: 'Failed: $e', isError: true);
-                        }
-                      }
-                    }
-                  },
-                  borderRadius:
-                      BorderRadius.circular(KlasivoRadius.sm),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: KlasivoSpacing.md,
-                      vertical: KlasivoSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(KlasivoRadius.sm),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.delete_outline_rounded,
-                          size: 16,
-                          color: KlasivoColors.error,
-                        ),
-                        const SizedBox(width: KlasivoSpacing.xs),
-                        Text(
-                          'Delete',
-                          style: KlasivoTypography.labelMedium
-                              .copyWith(color: KlasivoColors.error),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: KlasivoSpacing.sm),
-
-                // Import to Exam button
-                InkWell(
-                  onTap: () async {
-                    try {
-                      // For now, show a snackbar indicating the import action
-                      // In a real flow, this would navigate to exam selection
-                      showSnackBar(context,
-                          message:
-                              'Select an exam to import this question');
-                      // Example call:
-                      // await ref.read(questionBankServiceProvider).importQuestionToExam(
-                      //   bankQuestionId: question.id,
-                      //   examId: selectedExamId,
-                      //   order: nextOrder,
-                      // );
-                    } catch (e) {
-                      if (context.mounted) {
-                        showSnackBar(context,
-                            message: 'Failed: $e', isError: true);
-                      }
-                    }
-                  },
-                  borderRadius:
-                      BorderRadius.circular(KlasivoRadius.sm),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: KlasivoSpacing.md,
-                      vertical: KlasivoSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      color: KlasivoColors.primary.withValues(alpha: 0.08),
-                      borderRadius:
-                          BorderRadius.circular(KlasivoRadius.sm),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.file_download_outlined,
-                          size: 16,
-                          color: KlasivoColors.primary,
-                        ),
-                        const SizedBox(width: KlasivoSpacing.xs),
-                        Text(
-                          'Import to Exam',
-                          style: KlasivoTypography.labelMedium
-                              .copyWith(color: KlasivoColors.primary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

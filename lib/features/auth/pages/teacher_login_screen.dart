@@ -5,6 +5,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
 
 class TeacherLoginScreen extends ConsumerStatefulWidget {
   const TeacherLoginScreen({Key? key}) : super(key: key);
@@ -151,23 +153,12 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.xxxl),
 
                 // ── Email ──
-                Text(
-                  'Email',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Email',
                   controller: _emailController,
+                  hint: 'you@example.com',
+                  prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    hintText: 'you@example.com',
-                    prefixIcon: Icon(Icons.email_outlined, size: 20),
-                  ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Email is required';
                     if (!value.contains('@')) return 'Enter a valid email';
@@ -177,32 +168,22 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Password ──
-                Text(
-                  'Password',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Password',
                   controller: _passwordController,
+                  hint: 'Enter your password',
+                  prefixIcon: Icons.lock_outline_rounded,
                   obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 20,
                     ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Password is required';
@@ -215,9 +196,11 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 // ── Forgot Password ──
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton(
+                  child: KlasivoButton(
+                    label: 'Forgot password?',
+                    variant: KlasivoButtonVariant.tertiary,
                     onPressed: () => context.go('/auth/forgot-password'),
-                    child: const Text('Forgot password?'),
+                    size: KlasivoButtonSize.sm,
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xl),
@@ -251,22 +234,12 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                 ],
 
                 // ── Sign In Button ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : _login,
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Sign In'),
-                  ),
+                KlasivoButton(
+                  label: 'Sign In',
+                  onPressed: isLoading ? null : _login,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -323,9 +296,10 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
                             : KlasivoColors.lightTextTertiary,
                       ),
                     ),
-                    TextButton(
+                    KlasivoButton(
+                      label: 'Create one',
+                      variant: KlasivoButtonVariant.tertiary,
                       onPressed: () => context.go('/auth/teacher-register'),
-                      child: const Text('Create one'),
                     ),
                   ],
                 ),

@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/academic_year_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class AcademicYearFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -73,9 +76,7 @@ class _AcademicYearFormScreenState extends ConsumerState<AcademicYearFormScreen>
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+        KlasivoToast.error(context, message: 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -90,12 +91,12 @@ class _AcademicYearFormScreenState extends ConsumerState<AcademicYearFormScreen>
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Edit Academic Year' : 'New Academic Year'),
         actions: [
-          TextButton.icon(
+          KlasivoButton(
+            label: 'Save',
             onPressed: _isLoading ? null : _save,
-            icon: _isLoading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.check),
-            label: const Text('Save'),
+            variant: KlasivoButtonVariant.tertiary,
+            icon: Icons.check,
+            loading: _isLoading,
           ),
         ],
       ),
@@ -105,14 +106,11 @@ class _AcademicYearFormScreenState extends ConsumerState<AcademicYearFormScreen>
           padding: const EdgeInsets.all(16),
           children: [
             // Name
-            TextFormField(
+            KlasivoTextField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'e.g., 2026/2027',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.calendar_today),
-              ),
+              label: 'Name',
+              hint: 'e.g., 2026/2027',
+              prefixIcon: Icons.calendar_today,
               validator: (v) => v?.trim().isEmpty == true ? 'Name is required' : null,
             ),
             const SizedBox(height: 24),

@@ -9,6 +9,7 @@ import '../../providers/student_provider.dart';
 import '../../providers/exam_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/klasivo_card.dart';
 import '../../widgets/klasivo_components.dart';
 
 class TeacherDashboard extends ConsumerWidget {
@@ -278,7 +279,9 @@ class _RecentClassesList extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (classes.isEmpty) {
-      return Card(
+      return KlasivoCard(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
         child: Padding(
           padding: const EdgeInsets.all(KlasivoSpacing.xxl),
           child: KlasivoEmptyState(
@@ -293,7 +296,9 @@ class _RecentClassesList extends ConsumerWidget {
 
     final recentClasses = classes.take(3).toList();
 
-    return Card(
+    return KlasivoCard(
+      margin: EdgeInsets.zero,
+      padding: EdgeInsets.zero,
       child: Column(
         children: recentClasses.map((classData) {
           return ListTile(
@@ -349,7 +354,9 @@ class _RecentStudentsList extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (students.isEmpty) {
-      return Card(
+      return KlasivoCard(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
         child: Padding(
           padding: const EdgeInsets.all(KlasivoSpacing.xxl),
           child: KlasivoEmptyState(
@@ -364,7 +371,9 @@ class _RecentStudentsList extends ConsumerWidget {
 
     final recentStudents = students.take(5).toList();
 
-    return Card(
+    return KlasivoCard(
+      margin: EdgeInsets.zero,
+      padding: EdgeInsets.zero,
       child: Column(
         children: recentStudents.map((student) {
           return ListTile(

@@ -7,7 +7,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/parent_link_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Parent-Student Linking Screen ────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
 
   Future<void> _linkChild() async {
     if (!_isCodeComplete) {
-      showSnackBar(context, message: 'Please enter the full 8-character code', isError: true);
+      KlasivoToast.error(context, message: 'Please enter the full 8-character code');
       return;
     }
 
@@ -123,18 +124,13 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
               ],
             ),
             actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    context.go(AppConstants.routeParentHome);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KlasivoColors.secondary,
-                  ),
-                  child: const Text('Go to Dashboard'),
-                ),
+              KlasivoButton(
+                label: 'Go to Dashboard',
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  context.go(AppConstants.routeParentHome);
+                },
+                fullWidth: true,
               ),
             ],
           ),
@@ -142,10 +138,9 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
+        KlasivoToast.error(
           context,
           message: e.toString().replaceAll('Exception: ', ''),
-          isError: true,
         );
       }
     } finally {
@@ -312,46 +307,23 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
               const SizedBox(height: KlasivoSpacing.xxxl),
 
               // ── Link Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isCodeComplete && !_isLoading
-                      ? _linkChild
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KlasivoColors.secondary,
-                    disabledBackgroundColor:
-                        KlasivoColors.secondary.withValues(alpha: 0.4),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Link'),
-                ),
+              KlasivoButton(
+                label: 'Link',
+                onPressed: _isCodeComplete ? _linkChild : null,
+                loading: _isLoading,
+                fullWidth: true,
+                size: KlasivoButtonSize.lg,
               ),
               const SizedBox(height: KlasivoSpacing.xxl),
 
               // ── Skip for now ──
               Center(
-                child: TextButton(
+                child: KlasivoButton(
+                  variant: KlasivoButtonVariant.tertiary,
+                  label: 'Skip for now',
                   onPressed: () {
                     context.go(AppConstants.routeParentHome);
                   },
-                  child: Text(
-                    'Skip for now',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark
-                          ? KlasivoColors.darkTextTertiary
-                          : KlasivoColors.lightTextTertiary,
-                    ),
-                  ),
                 ),
               ),
               const SizedBox(height: KlasivoSpacing.xxl),

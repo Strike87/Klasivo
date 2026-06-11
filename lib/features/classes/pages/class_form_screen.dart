@@ -6,8 +6,10 @@ import '../../../providers/class_provider.dart';
 import '../../../providers/stage_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../widgets/common_widgets.dart';
 import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ClassFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -60,7 +62,7 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
 
     // Validate stage selection
     if (_selectedStageId == null || _selectedStageId!.isEmpty) {
-      showSnackBar(context, message: 'Please select a stage', isError: true);
+      KlasivoToast.error(context, message: 'Please select a stage');
       return;
     }
 
@@ -81,7 +83,7 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
           capacity: capacity,
         );
         if (mounted) {
-          showSnackBar(context, message: 'Class updated successfully');
+          KlasivoToast.success(context, message: 'Class updated successfully');
           context.pop();
         }
       } else {
@@ -94,17 +96,13 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
           createdBy: userId,
         );
         if (mounted) {
-          showSnackBar(context, message: 'Class created successfully');
+          KlasivoToast.success(context, message: 'Class created successfully');
           context.pop();
         }
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
-          context,
-          message: 'Failed: ${e.toString()}',
-          isError: true,
-        );
+        KlasivoToast.error(context, message: 'Failed: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -215,49 +213,32 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
                   const SizedBox(height: 16),
 
                   // Class Name
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Class Name *',
-                      hintText: 'e.g. Grade 5',
-                      prefixIcon: const Icon(Icons.class_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    label: 'Class Name *',
+                    hint: 'e.g. Grade 5',
+                    prefixIcon: Icons.class_outlined,
                     validator: _validateName,
                     enabled: !_isLoading,
-                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
 
                   // Class Code
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _codeController,
-                    decoration: InputDecoration(
-                      labelText: 'Class Code',
-                      hintText: 'e.g. G5',
-                      prefixIcon: const Icon(Icons.tag),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    label: 'Class Code',
+                    hint: 'e.g. G5',
+                    prefixIcon: Icons.tag,
                     enabled: !_isLoading,
-                    textCapitalization: TextCapitalization.characters,
                   ),
                   const SizedBox(height: 16),
 
                   // Capacity
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _capacityController,
-                    decoration: InputDecoration(
-                      labelText: 'Capacity',
-                      hintText: 'e.g. 40',
-                      prefixIcon: const Icon(Icons.event_seat_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    label: 'Capacity',
+                    hint: 'e.g. 40',
+                    prefixIcon: Icons.event_seat_outlined,
                     validator: _validateCapacity,
                     enabled: !_isLoading,
                     keyboardType: TextInputType.number,
@@ -265,31 +246,11 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
                   const SizedBox(height: 32),
 
                   // ── Submit Button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleSubmit,
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              widget.isEditing ? 'Update Class' : 'Create Class',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
+                  KlasivoButton(
+                    label: widget.isEditing ? 'Update Class' : 'Create Class',
+                    onPressed: _isLoading ? null : _handleSubmit,
+                    loading: _isLoading,
+                    fullWidth: true,
                   ),
                 ],
               ),

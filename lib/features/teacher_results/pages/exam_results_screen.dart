@@ -9,6 +9,9 @@ import '../../../providers/student_provider.dart';
 import '../../../providers/exam_stats_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_toast.dart';
 import '../../../core/services/pdf_service.dart';
 
 class ExamResultsScreen extends ConsumerWidget {
@@ -109,28 +112,25 @@ class ExamResultsScreen extends ConsumerWidget {
                 children: [
                   // ── Precomputed Stats Banner ──
                   if (liveStats != null)
-                    Card(
-                      color: Colors.blue.withValues(alpha: 0.05),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Icon(Icons.analytics_outlined,
-                                color: Colors.blue[700], size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Live Stats: Avg ${liveStats.averagePercentage}% | Pass Rate ${liveStats.passRate.toStringAsFixed(0)}% | Std Dev ${liveStats.standardDeviation.toStringAsFixed(1)}',
-                                style: TextStyle(
-                                    color: Colors.blue[700],
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600),
-                              ),
+                    KlasivoCard(
+                      variant: KlasivoCardVariant.filled,
+                      padding: const EdgeInsets.all(12),
+                      margin: EdgeInsets.zero,
+                      child: Row(
+                        children: [
+                          Icon(Icons.analytics_outlined,
+                              color: Colors.blue[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Live Stats: Avg ${liveStats.averagePercentage}% | Pass Rate ${liveStats.passRate.toStringAsFixed(0)}% | Std Dev ${liveStats.standardDeviation.toStringAsFixed(1)}',
+                              style: TextStyle(
+                                  color: Colors.blue[700],
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   if (liveStats != null) const SizedBox(height: 12),
@@ -310,7 +310,7 @@ class _PdfExportButton extends ConsumerWidget {
 
   Future<void> _exportPdf(BuildContext context, WidgetRef ref) async {
     try {
-      showSnackBar(context, message: 'Generating PDF report...');
+      KlasivoToast.info(context, message: 'Generating PDF report...');
 
       final submittedSubs = submissions.where((s) => s.isSubmitted).toList();
       final totalStudents = ref.read(studentsByClassListProvider(
@@ -370,7 +370,7 @@ class _PdfExportButton extends ConsumerWidget {
         await PdfService.sharePdf(file);
       }
     } catch (e) {
-      if (context.mounted) showSnackBar(context, message: 'PDF failed: $e', isError: true);
+      if (context.mounted) KlasivoToast.error(context, message: 'PDF failed: $e');
     }
   }
 }
@@ -391,33 +391,31 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+      child: KlasivoCard(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        margin: EdgeInsets.zero,
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 10,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 10,
               ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
@@ -450,12 +448,9 @@ class _StudentResultCard extends ConsumerWidget {
     final studentName = student?.fullName ?? 'Unknown Student';
     final studentCode = student?.studentCode ?? '';
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      padding: EdgeInsets.zero,
       child: ListTile(
         leading: CircleAvatar(
           radius: 22,

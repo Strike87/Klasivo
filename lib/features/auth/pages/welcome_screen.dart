@@ -5,6 +5,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
 
 class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({Key? key}) : super(key: key);
@@ -136,21 +138,11 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 const SizedBox(height: KlasivoSpacing.xxxl),
 
                 // ── Workspace Name Input ──
-                Text(
-                  'Workspace Name',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Workspace Name',
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. Ahmed Academy',
-                    prefixIcon: Icon(Icons.business_outlined, size: 20),
-                  ),
+                  hint: 'e.g. Ahmed Academy',
+                  prefixIcon: Icons.business_outlined,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter a workspace name';
@@ -199,47 +191,25 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 const SizedBox(height: KlasivoSpacing.xxxl),
 
                 // ── Continue Button ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _completeSetup,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Continue'),
-                              SizedBox(width: KlasivoSpacing.sm),
-                              Icon(Icons.arrow_forward_rounded, size: 18),
-                            ],
-                          ),
-                  ),
+                KlasivoButton(
+                  label: 'Continue',
+                  onPressed: _isLoading ? null : _completeSetup,
+                  loading: _isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
+                  icon: Icons.arrow_forward_rounded,
                 ),
                 const SizedBox(height: KlasivoSpacing.xl),
 
                 // ── Skip Option ──
                 Center(
-                  child: TextButton(
+                  child: KlasivoButton(
+                    label: 'Use default name for now',
+                    variant: KlasivoButtonVariant.tertiary,
                     onPressed: _isLoading ? null : () async {
                       // Use the default name and continue
                       await _completeSetup();
                     },
-                    child: Text(
-                      'Use default name for now',
-                      style: KlasivoTypography.bodyMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
                   ),
                 ),
               ],

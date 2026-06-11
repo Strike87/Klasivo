@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Profile Settings Screen ───────────────────────────────────────────────────
 
@@ -73,9 +75,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
 
   Future<void> _saveProfile() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty')),
-      );
+      KlasivoToast.error(context, message: 'Name cannot be empty');
       return;
     }
 
@@ -100,15 +100,11 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       await box.put('userName', _nameController.text.trim());
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully')),
-        );
+        KlasivoToast.success(context, message: 'Profile updated successfully');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update: ${e.toString().replaceAll('Exception: ', '')}')),
-        );
+        KlasivoToast.error(context, message: 'Failed to update: ${e.toString().replaceAll('Exception: ', '')}');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -166,82 +162,42 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                   const SizedBox(height: KlasivoSpacing.xxxl),
 
                   // ── Full Name ──
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Full Name', style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                    )),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter your full name',
-                      prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
-                    ),
+                    label: 'Full Name',
+                    hint: 'Enter your full name',
+                    prefixIcon: Icons.person_outline_rounded,
                   ),
                   const SizedBox(height: KlasivoSpacing.lg),
 
                   // ── Email (read-only) ──
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Email', style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                    )),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _emailController,
+                    label: 'Email',
                     readOnly: true,
                     enabled: false,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.email_outlined, size: 20),
-                      suffixIcon: Icon(Icons.lock_outline_rounded, size: 16),
-                    ),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.xs),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Email cannot be changed. Contact support if needed.',
-                      style: KlasivoTypography.bodySmall.copyWith(
-                        color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
+                    prefixIcon: Icons.email_outlined,
+                    suffixIcon: const Icon(Icons.lock_outline_rounded, size: 16),
+                    helperText: 'Email cannot be changed. Contact support if needed.',
                   ),
                   const SizedBox(height: KlasivoSpacing.lg),
 
                   // ── Phone ──
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Phone Number (Optional)', style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                    )),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _phoneController,
+                    label: 'Phone Number (Optional)',
+                    hint: '+20 1XX XXX XXXX',
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      hintText: '+20 1XX XXX XXXX',
-                      prefixIcon: Icon(Icons.phone_outlined, size: 20),
-                    ),
+                    prefixIcon: Icons.phone_outlined,
                   ),
                   const SizedBox(height: KlasivoSpacing.xxxl),
 
                   // ── Save Button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _saveProfile,
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 20, width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text('Save Changes'),
-                    ),
+                  KlasivoButton(
+                    label: 'Save Changes',
+                    fullWidth: true,
+                    loading: _isSaving,
+                    onPressed: _saveProfile,
                   ),
                 ],
               ),

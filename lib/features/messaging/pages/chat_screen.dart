@@ -8,6 +8,10 @@ import '../../../providers/messaging_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_avatar.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHAT SCREEN — Full conversation view with message bubbles
@@ -95,9 +99,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send message: $e')),
-        );
+        KlasivoToast.error(context,
+            message: 'Failed to send message: $e');
       }
       // Restore the message text so the user doesn't lose it
       _messageController.text = text;
@@ -108,53 +111,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _showDeleteConfirmation(MessageData message) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    showDialog(
+  Future<void> _showDeleteConfirmation(MessageData message) async {
+    final confirmed = await KlasivoModal.confirm(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Delete Message',
-          style: KlasivoTypography.titleLarge.copyWith(
-            color: isDark
-                ? KlasivoColors.darkTextPrimary
-                : KlasivoColors.lightTextPrimary,
-          ),
-        ),
-        content: const Text(
+      title: 'Delete Message',
+      message:
           'Are you sure you want to delete this message? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: KlasivoColors.error,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await ref
-                    .read(messagingServiceProvider)
-                    .deleteMessage(message.id);
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to delete message: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      isDangerous: true,
     );
+
+    if (confirmed == true) {
+      try {
+        await ref.read(messagingServiceProvider).deleteMessage(message.id);
+      } catch (e) {
+        if (mounted) {
+          KlasivoToast.error(context,
+              message: 'Failed to delete message: $e');
+        }
+      }
+    }
   }
 
   String _getConversationDisplayName(ConversationData conversation) {
@@ -602,50 +579,18 @@ class _ChatInputBar extends StatelessWidget {
           children: [
             // ─── Text Input ──────────────────────────────────────────────
             Expanded(
-              child: Container(
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   minHeight: 44,
                   maxHeight: 120,
                 ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? KlasivoColors.darkBackground
-                      : KlasivoColors.lightBackground,
-                  borderRadius: BorderRadius.circular(KlasivoRadius.xl),
-                  border: Border.all(
-                    color: isDark
-                        ? KlasivoColors.darkBorder
-                        : KlasivoColors.lightBorder,
-                    width: 1,
-                  ),
-                ),
-                child: TextField(
+                child: KlasivoTextField(
                   controller: controller,
                   focusNode: focusNode,
-                  maxLines: null,
-                  textInputAction: TextInputAction.newline,
+                  hint: 'Type a message...',
+                  maxLines: 5,
                   keyboardType: TextInputType.multiline,
-                  style: KlasivoTypography.bodyMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextPrimary
-                        : KlasivoColors.lightTextPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Type a message...',
-                    hintStyle: KlasivoTypography.bodyMedium.copyWith(
-                      color: isDark
-                          ? KlasivoColors.darkTextTertiary
-                          : KlasivoColors.lightTextTertiary,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: KlasivoSpacing.md,
-                      vertical: KlasivoSpacing.sm + 4,
-                    ),
-                  ),
-                  onSubmitted: (_) => onSend(),
+                  textInputAction: TextInputAction.newline,
                 ),
               ),
             ),

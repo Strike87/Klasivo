@@ -4,9 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/group_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
-import '../../../widgets/common_widgets.dart';
 import '../../../core/config/theme.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class GroupListScreen extends ConsumerWidget {
   final String classId;
@@ -32,17 +36,15 @@ class GroupListScreen extends ConsumerWidget {
                 final group = groups[index];
                 final isDark = Theme.of(context).brightness == Brightness.dark;
 
-                return Card(
+                return KlasivoCard(
                   margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                  ),
+                  padding: EdgeInsets.zero,
                   child: ListTile(
                     leading: Container(
                       padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
                       decoration: BoxDecoration(
                         color: KlasivoColors.secondarySurface,
-                        borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                        borderRadius: BorderRadius.circular(KlasivoSpacing.sm),
                       ),
                       child: const Icon(Icons.group_work_outlined, color: KlasivoColors.secondary, size: 24),
                     ),
@@ -55,18 +57,19 @@ class GroupListScreen extends ConsumerWidget {
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline, color: KlasivoColors.error),
                       onPressed: () async {
-                        final confirmed = await showConfirmationDialog(
+                        final confirmed = await KlasivoModal.confirm(
                           context: context,
                           title: 'Delete Group',
                           message: 'Delete "${group.name}"?',
+                          confirmLabel: 'Delete',
                           isDangerous: true,
                         );
                         if (confirmed == true) {
                           try {
                             await ref.read(groupServiceProvider).deleteGroup(group.id);
-                            if (context.mounted) showSnackBar(context, message: 'Group deleted');
+                            if (context.mounted) KlasivoToast.success(context, message: 'Group deleted');
                           } catch (e) {
-                            if (context.mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
+                            if (context.mounted) KlasivoToast.error(context, message: 'Failed: $e');
                           }
                         }
                       },
@@ -85,49 +88,52 @@ class GroupListScreen extends ConsumerWidget {
 
   void _showAddGroupDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Add Group',
-          style: KlasivoTypography.titleLarge.copyWith(
-            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
-          ),
-        ),
-        content: TextField(
-          controller: nameController,
-          decoration: InputDecoration(
-            labelText: 'Group Name',
-            hintText: 'e.g. Group A',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+      title: 'Add Group',
+      child: StatefulBuilder(
+        builder: (context, setState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            KlasivoTextField(
+              label: 'Group Name',
+              hint: 'e.g. Group A',
+              controller: nameController,
+              prefixIcon: Icons.group_work_outlined,
             ),
-          ),
-          autofocus: true,
+            const SizedBox(height: KlasivoSpacing.lg),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                KlasivoButton(
+                  variant: KlasivoButtonVariant.tertiary,
+                  label: 'Cancel',
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: KlasivoSpacing.sm),
+                KlasivoButton(
+                  label: 'Create',
+                  onPressed: () async {
+                    if (nameController.text.trim().isEmpty) return;
+                    try {
+                      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+                      await ref.read(groupServiceProvider).createGroup(
+                            organizationId: orgId,
+                            classId: classId,
+                            name: nameController.text.trim(),
+                          );
+                      if (context.mounted) Navigator.pop(context);
+                      if (context.mounted) KlasivoToast.success(context, message: 'Group created');
+                    } catch (e) {
+                      if (context.mounted) KlasivoToast.error(context, message: 'Failed: $e');
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) return;
-              try {
-                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
-                await ref.read(groupServiceProvider).createGroup(
-                      organizationId: orgId,
-                      classId: classId,
-                      name: nameController.text.trim(),
-                    );
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) showSnackBar(context, message: 'Group created');
-              } catch (e) {
-                if (context.mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
       ),
     );
   }

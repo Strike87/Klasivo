@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/calendar_event_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class CalendarEventFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -97,9 +100,7 @@ class _CalendarEventFormScreenState extends ConsumerState<CalendarEventFormScree
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+        KlasivoToast.error(context, message: 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -114,12 +115,12 @@ class _CalendarEventFormScreenState extends ConsumerState<CalendarEventFormScree
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Edit Event' : 'New Event'),
         actions: [
-          TextButton.icon(
+          KlasivoButton(
+            label: 'Save',
             onPressed: _isLoading ? null : _save,
-            icon: _isLoading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.check),
-            label: const Text('Save'),
+            variant: KlasivoButtonVariant.tertiary,
+            icon: Icons.check,
+            loading: _isLoading,
           ),
         ],
       ),
@@ -149,25 +150,18 @@ class _CalendarEventFormScreenState extends ConsumerState<CalendarEventFormScree
             const SizedBox(height: 24),
 
             // Title
-            TextFormField(
+            KlasivoTextField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'e.g., Math Midterm Exam',
-                border: OutlineInputBorder(),
-              ),
+              label: 'Title',
+              hint: 'e.g., Math Midterm Exam',
               validator: (v) => v?.trim().isEmpty == true ? 'Title is required' : null,
             ),
             const SizedBox(height: 16),
 
             // Description
-            TextFormField(
+            KlasivoTextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description (optional)',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
+              label: 'Description (optional)',
               maxLines: 3,
             ),
             const SizedBox(height: 16),

@@ -8,6 +8,10 @@ import '../../../providers/question_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ExamDetailScreen extends ConsumerWidget {
   final String examId;
@@ -68,7 +72,7 @@ class ExamDetailScreen extends ConsumerWidget {
                         extra: exam,
                       );
                     } else if (value == 'delete') {
-                      final confirmed = await showConfirmationDialog(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
                         title: 'Delete Exam',
                         message:
@@ -82,13 +86,13 @@ class ExamDetailScreen extends ConsumerWidget {
                               .read(examServiceProvider)
                               .deleteExam(examId);
                           if (context.mounted) {
-                            showSnackBar(context, message: 'Exam deleted');
+                            KlasivoToast.success(context, message: 'Exam deleted');
                             context.go('/teacher/exams');
                           }
                         } catch (e) {
                           if (context.mounted) {
-                            showSnackBar(context,
-                                message: 'Failed: $e', isError: true);
+                            KlasivoToast.error(context,
+                                message: 'Failed: $e');
                           }
                         }
                       }
@@ -127,42 +131,38 @@ class ExamDetailScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Exam Title & Status ──
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                exam.title,
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                KlasivoCard(
+                  variant: KlasivoCardVariant.elevated,
+                  padding: const EdgeInsets.all(20),
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              exam.title,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            _StatusBadge(status: exam.status),
-                          ],
-                        ),
-                        if (exam.description != null &&
-                            exam.description!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            exam.description!,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
                           ),
+                          _StatusBadge(status: exam.status),
                         ],
+                      ),
+                      if (exam.description != null &&
+                          exam.description!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          exam.description!,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -206,47 +206,43 @@ class ExamDetailScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
 
                 // ── Schedule ──
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.schedule, color: theme.colorScheme.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Schedule',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                KlasivoCard(
+                  padding: const EdgeInsets.all(16),
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.schedule, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Schedule',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _ScheduleRow(
-                          label: 'Start',
-                          date: dateFormat.format(exam.startDate),
-                          time: timeFormat.format(exam.startDate),
-                        ),
-                        const SizedBox(height: 8),
-                        _ScheduleRow(
-                          label: 'End',
-                          date: dateFormat.format(exam.endDate),
-                          time: timeFormat.format(exam.endDate),
-                        ),
-                        const SizedBox(height: 8),
-                        _ScheduleRow(
-                          label: 'Pass Score',
-                          date: '${exam.passingScore}%',
-                          time: '',
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _ScheduleRow(
+                        label: 'Start',
+                        date: dateFormat.format(exam.startDate),
+                        time: timeFormat.format(exam.startDate),
+                      ),
+                      const SizedBox(height: 8),
+                      _ScheduleRow(
+                        label: 'End',
+                        date: dateFormat.format(exam.endDate),
+                        time: timeFormat.format(exam.endDate),
+                      ),
+                      const SizedBox(height: 8),
+                      _ScheduleRow(
+                        label: 'Pass Score',
+                        date: '${exam.passingScore}%',
+                        time: '',
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -262,12 +258,13 @@ class ExamDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     if (isDraft)
-                      TextButton.icon(
+                      KlasivoButton(
+                        label: 'Manage',
+                        icon: Icons.add,
+                        variant: KlasivoButtonVariant.tertiary,
                         onPressed: () => context.go(
                           '/teacher/exams/$examId/questions',
                         ),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Manage'),
                       ),
                   ],
                 ),
@@ -277,129 +274,91 @@ class ExamDetailScreen extends ConsumerWidget {
 
                 // ── Publish Button ──
                 if (isDraft)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        if (exam.questionCount == 0) {
-                          showSnackBar(
-                            context,
-                            message:
-                                'Add at least one question before publishing',
-                            isError: true,
-                          );
-                          return;
-                        }
-                        final confirmed = await showConfirmationDialog(
-                          context: context,
-                          title: 'Publish Exam',
+                  KlasivoButton(
+                    label: 'Publish Exam',
+                    icon: Icons.publish,
+                    onPressed: () async {
+                      if (exam.questionCount == 0) {
+                        KlasivoToast.error(
+                          context,
                           message:
-                              'Once published, the exam will be visible to students. You won\'t be able to edit questions after publishing.',
-                          confirmLabel: 'Publish',
+                              'Add at least one question before publishing',
                         );
-                        if (confirmed == true) {
-                          try {
-                            await ref
-                                .read(examServiceProvider)
-                                .publishExam(examId);
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: 'Exam published successfully!');
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: e.toString().replaceAll(
-                                      'Exception: ', ''),
-                                  isError: true);
-                            }
+                        return;
+                      }
+                      final confirmed = await KlasivoModal.confirm(
+                        context: context,
+                        title: 'Publish Exam',
+                        message:
+                            'Once published, the exam will be visible to students. You won\'t be able to edit questions after publishing.',
+                        confirmLabel: 'Publish',
+                      );
+                      if (confirmed == true) {
+                        try {
+                          await ref
+                              .read(examServiceProvider)
+                              .publishExam(examId);
+                          if (context.mounted) {
+                            KlasivoToast.success(context,
+                                message: 'Exam published successfully!');
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            KlasivoToast.error(context,
+                                message: e.toString().replaceAll(
+                                    'Exception: ', ''));
                           }
                         }
-                      },
-                      icon: const Icon(Icons.publish),
-                      label: const Text(
-                        'Publish Exam',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                      }
+                    },
+                    fullWidth: true,
                   ),
 
                 if (!isDraft && exam.status == AppConstants.statusPublished)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirmed = await showConfirmationDialog(
-                          context: context,
-                          title: 'Unpublish Exam',
-                          message:
-                              'Unpublishing will hide the exam from students.',
-                          confirmLabel: 'Unpublish',
-                          isDangerous: true,
-                        );
-                        if (confirmed == true) {
-                          try {
-                            await ref
-                                .read(examServiceProvider)
-                                .unpublishExam(examId);
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: 'Exam unpublished');
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: 'Failed: $e', isError: true);
-                            }
+                  KlasivoButton(
+                    label: 'Unpublish Exam',
+                    icon: Icons.unpublished,
+                    variant: KlasivoButtonVariant.secondary,
+                    onPressed: () async {
+                      final confirmed = await KlasivoModal.confirm(
+                        context: context,
+                        title: 'Unpublish Exam',
+                        message:
+                            'Unpublishing will hide the exam from students.',
+                        confirmLabel: 'Unpublish',
+                        isDangerous: true,
+                      );
+                      if (confirmed == true) {
+                        try {
+                          await ref
+                              .read(examServiceProvider)
+                              .unpublishExam(examId);
+                          if (context.mounted) {
+                            KlasivoToast.success(context,
+                                message: 'Exam unpublished');
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            KlasivoToast.error(context,
+                                message: 'Failed: $e');
                           }
                         }
-                      },
-                      icon: const Icon(Icons.unpublished),
-                      label: const Text('Unpublish Exam'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                      }
+                    },
+                    fullWidth: true,
                   ),
 
                 // ── View Results Button (for published/completed exams) ──
                 if (!isDraft)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: () => context.go(
-                          '/teacher/exams/$examId/results',
-                        ),
-                        icon: const Icon(Icons.assessment_outlined),
-                        label: const Text(
-                          'View Results',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                    child: KlasivoButton(
+                      label: 'View Results',
+                      icon: Icons.assessment_outlined,
+                      onPressed: () => context.go(
+                        '/teacher/exams/$examId/results',
                       ),
+                      fullWidth: true,
                     ),
                   ),
 
@@ -407,25 +366,14 @@ class ExamDetailScreen extends ConsumerWidget {
                 if (!isDraft)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () => context.go(
-                          '/teacher/exams/$examId/instances',
-                        ),
-                        icon: const Icon(Icons.shuffle),
-                        label: const Text(
-                          'View Exam Instances',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                    child: KlasivoButton(
+                      label: 'View Exam Instances',
+                      icon: Icons.shuffle,
+                      variant: KlasivoButtonVariant.secondary,
+                      onPressed: () => context.go(
+                        '/teacher/exams/$examId/instances',
                       ),
+                      fullWidth: true,
                     ),
                   ),
               ],
@@ -458,22 +406,21 @@ class _QuestionsList extends ConsumerWidget {
             .toList();
 
         if (questions.isEmpty) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Icon(Icons.help_outline, size: 40, color: Colors.grey[400]),
-                  const SizedBox(height: 8),
-                  Text(
-                    isDraft
-                        ? 'No questions yet. Add questions to this exam.'
-                        : 'No questions found.',
-                    style: TextStyle(color: Colors.grey[600]),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+          return KlasivoCard(
+            padding: const EdgeInsets.all(24),
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                Icon(Icons.help_outline, size: 40, color: Colors.grey[400]),
+                const SizedBox(height: 8),
+                Text(
+                  isDraft
+                      ? 'No questions yet. Add questions to this exam.'
+                      : 'No questions found.',
+                  style: TextStyle(color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           );
         }
@@ -482,12 +429,10 @@ class _QuestionsList extends ConsumerWidget {
           children: questions.asMap().entries.map((entry) {
             final index = entry.key;
             final q = entry.value;
-            return Card(
+            return KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
               margin: const EdgeInsets.only(bottom: 6),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 dense: true,
                 leading: CircleAvatar(
@@ -581,39 +526,37 @@ class _InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+      child: KlasivoCard(
+        padding: const EdgeInsets.all(12),
+        margin: EdgeInsets.zero,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 11),
                 ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

@@ -6,6 +6,11 @@ import '../../../providers/question_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/question_service.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class QuestionBuilderScreen extends ConsumerStatefulWidget {
   final String examId;
@@ -94,7 +99,7 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
                               question,
                             ),
                             onDelete: () async {
-                              final confirmed = await showConfirmationDialog(
+                              final confirmed = await KlasivoModal.confirm(
                                 context: context,
                                 title: 'Delete Question',
                                 message:
@@ -111,14 +116,13 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
                                         widget.examId,
                                       );
                                   if (context.mounted) {
-                                    showSnackBar(context,
+                                    KlasivoToast.success(context,
                                         message: 'Question deleted');
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
-                                    showSnackBar(context,
-                                        message: 'Failed: $e',
-                                        isError: true);
+                                    KlasivoToast.error(context,
+                                        message: 'Failed: $e');
                                   }
                                 }
                               }
@@ -276,161 +280,156 @@ class _QuestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.elevated,
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ──
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: question.typeColor.withValues(alpha: 0.1),
-                  child: Text(
-                    '$questionNumber',
-                    style: TextStyle(
-                      color: question.typeColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: question.typeColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    question.typeLabel,
-                    style: TextStyle(
-                      color: question.typeColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${question.marks} mark${question.marks != 1 ? 's' : ''}',
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: question.typeColor.withValues(alpha: 0.1),
+                child: Text(
+                  '$questionNumber',
                   style: TextStyle(
-                    color: Colors.grey[600],
+                    color: question.typeColor,
+                    fontWeight: FontWeight.bold,
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  onPressed: onEdit,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                IconButton(
-                  icon: Icon(Icons.delete_outline,
-                      size: 18, color: Colors.red[400]),
-                  onPressed: onDelete,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // ── Question Text ──
-            Text(
-              question.questionText,
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-
-            // ── Options (for MCQ) ──
-            if (question.questionType ==
-                AppConstants.questionTypeMultipleChoice) ...[
-              const SizedBox(height: 8),
-              ...question.options.map(
-                (opt) => Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 2),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: opt == question.correctAnswer
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.transparent,
-                          border: Border.all(
-                            color: opt == question.correctAnswer
-                                ? Colors.green
-                                : Colors.grey[400]!,
-                          ),
-                        ),
-                        child: opt == question.correctAnswer
-                            ? const Icon(Icons.check,
-                                size: 14, color: Colors.green)
-                            : null,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        opt,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: opt == question.correctAnswer
-                              ? Colors.green[700]
-                              : Colors.grey[700],
-                          fontWeight: opt == question.correctAnswer
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ),
-            ],
-
-            // ── Answer (for T/F and Short Answer) ──
-            if (question.questionType ==
-                    AppConstants.questionTypeTrueFalse ||
-                question.questionType ==
-                    AppConstants.questionTypeShortAnswer) ...[
-              const SizedBox(height: 8),
+              const SizedBox(width: 8),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.05),
+                  color: question.typeColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
+                child: Text(
+                  question.typeLabel,
+                  style: TextStyle(
+                    color: question.typeColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${question.marks} mark${question.marks != 1 ? 's' : ''}',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: onEdit,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.delete_outline,
+                    size: 18, color: Colors.red[400]),
+                onPressed: onDelete,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // ── Question Text ──
+          Text(
+            question.questionText,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+          ),
+
+          // ── Options (for MCQ) ──
+          if (question.questionType ==
+              AppConstants.questionTypeMultipleChoice) ...[
+            const SizedBox(height: 8),
+            ...question.options.map(
+              (opt) => Padding(
+                padding: const EdgeInsets.only(left: 8, top: 2),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_circle_outline,
-                        size: 14, color: Colors.green),
-                    const SizedBox(width: 4),
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: opt == question.correctAnswer
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: opt == question.correctAnswer
+                              ? Colors.green
+                              : Colors.grey[400]!,
+                        ),
+                      ),
+                      child: opt == question.correctAnswer
+                          ? const Icon(Icons.check,
+                              size: 14, color: Colors.green)
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      question.correctAnswer,
+                      opt,
                       style: TextStyle(
-                        color: Colors.green[700],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: opt == question.correctAnswer
+                            ? Colors.green[700]
+                            : Colors.grey[700],
+                        fontWeight: opt == question.correctAnswer
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ],
-        ),
+
+          // ── Answer (for T/F and Short Answer) ──
+          if (question.questionType ==
+                  AppConstants.questionTypeTrueFalse ||
+              question.questionType ==
+                  AppConstants.questionTypeShortAnswer) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle_outline,
+                      size: 14, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    question.correctAnswer,
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -582,8 +581,8 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
     if (widget.questionType ==
             AppConstants.questionTypeMultipleChoice &&
         _selectedCorrectOption == null) {
-      showSnackBar(context,
-          message: 'Please select the correct answer', isError: true);
+      KlasivoToast.error(context,
+          message: 'Please select the correct answer');
       return;
     }
 
@@ -636,7 +635,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
           );
         }
         if (mounted) {
-          showSnackBar(context, message: 'Question updated');
+          KlasivoToast.success(context, message: 'Question updated');
           Navigator.of(context).pop();
         }
       } else {
@@ -683,14 +682,14 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
           );
         }
         if (mounted) {
-          showSnackBar(context, message: 'Question added');
+          KlasivoToast.success(context, message: 'Question added');
           _resetForm();
         }
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context,
-            message: 'Failed: ${e.toString()}', isError: true);
+        KlasivoToast.error(context,
+            message: 'Failed: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -766,16 +765,11 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
               const SizedBox(height: 20),
 
               // ── Question Text ──
-              TextFormField(
+              KlasivoTextField(
+                label: 'Question *',
+                hint: 'Enter your question here',
+                prefixIcon: Icons.help_outline,
                 controller: _questionController,
-                decoration: InputDecoration(
-                  labelText: 'Question *',
-                  hintText: 'Enter your question here',
-                  prefixIcon: const Icon(Icons.help_outline),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
                 maxLines: 3,
                 validator: (v) =>
                     v?.trim().isEmpty ?? true ? 'Question is required' : null,
@@ -875,16 +869,11 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
               // ── Short Answer ──
               if (widget.questionType ==
                   AppConstants.questionTypeShortAnswer) ...[
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Correct Answer *',
+                  hint: 'Enter the expected answer',
+                  prefixIcon: Icons.check_circle_outline,
                   controller: _correctAnswerController,
-                  decoration: InputDecoration(
-                    labelText: 'Correct Answer *',
-                    hintText: 'Enter the expected answer',
-                    prefixIcon: const Icon(Icons.check_circle_outline),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
                   validator: (v) => v?.trim().isEmpty ?? true
                       ? 'Correct answer is required'
                       : null,
@@ -899,16 +888,11 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
               ],
 
               // ── Marks ──
-              TextFormField(
+              KlasivoTextField(
+                label: 'Marks *',
+                hint: 'Points for this question',
+                prefixIcon: Icons.stars_outlined,
                 controller: _marksController,
-                decoration: InputDecoration(
-                  labelText: 'Marks *',
-                  hintText: 'Points for this question',
-                  prefixIcon: const Icon(Icons.stars_outlined),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
                 keyboardType: TextInputType.number,
                 validator: (v) {
                   if (v?.isEmpty ?? true) return 'Required';
@@ -921,32 +905,13 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
               const SizedBox(height: 24),
 
               // ── Submit Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          widget.existingQuestion != null
-                              ? 'Update Question'
-                              : 'Add Question',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
+              KlasivoButton(
+                label: widget.existingQuestion != null
+                    ? 'Update Question'
+                    : 'Add Question',
+                onPressed: _handleSubmit,
+                loading: _isLoading,
+                fullWidth: true,
               ),
             ],
           ),
@@ -1006,17 +971,9 @@ class _OptionField extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: TextFormField(
+          child: KlasivoTextField(
+            hint: 'Option $label',
             controller: controller,
-            decoration: InputDecoration(
-              hintText: 'Option $label',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
-            ),
             validator: (v) =>
                 v?.trim().isEmpty ?? true ? 'Option $label is required' : null,
             enabled: enabled,

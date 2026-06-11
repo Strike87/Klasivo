@@ -11,6 +11,11 @@ import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 
@@ -34,74 +39,70 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Profile Card ──
-            Card(
+            KlasivoCard(
+              variant: KlasivoCardVariant.interactive,
               margin: const EdgeInsets.all(KlasivoSpacing.lg),
-              child: InkWell(
-                onTap: () => context.go('/settings/profile'),
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                child: Padding(
-                  padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
-                        child: Text(
-                          userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                          style: KlasivoTypography.headlineSmall.copyWith(
-                            color: KlasivoColors.primary,
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+              onTap: () => context.go('/settings/profile'),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
+                    child: Text(
+                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                      style: KlasivoTypography.headlineSmall.copyWith(
+                        color: KlasivoColors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: KlasivoSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(userName, style: KlasivoTypography.titleLarge),
+                        const SizedBox(height: KlasivoSpacing.xs),
+                        Text(
+                          userEmail,
+                          style: KlasivoTypography.bodySmall.copyWith(
+                            color: isDark
+                                ? KlasivoColors.darkTextTertiary
+                                : KlasivoColors.lightTextTertiary,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: KlasivoSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(userName, style: KlasivoTypography.titleLarge),
-                            const SizedBox(height: KlasivoSpacing.xs),
-                            Text(
-                              userEmail,
-                              style: KlasivoTypography.bodySmall.copyWith(
-                                color: isDark
-                                    ? KlasivoColors.darkTextTertiary
-                                    : KlasivoColors.lightTextTertiary,
-                              ),
+                        const SizedBox(height: KlasivoSpacing.xs),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: KlasivoSpacing.sm,
+                            vertical: KlasivoSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: userRole == AppConstants.roleOwner
+                                ? KlasivoColors.primary.withValues(alpha: 0.1)
+                                : KlasivoColors.secondary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                          ),
+                          child: Text(
+                            userRole == AppConstants.roleOwner ? 'Owner' : 'Teacher',
+                            style: KlasivoTypography.labelSmall.copyWith(
+                              color: userRole == AppConstants.roleOwner
+                                  ? KlasivoColors.primary
+                                  : KlasivoColors.secondary,
                             ),
-                            const SizedBox(height: KlasivoSpacing.xs),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: KlasivoSpacing.sm,
-                                vertical: KlasivoSpacing.xs,
-                              ),
-                              decoration: BoxDecoration(
-                                color: userRole == AppConstants.roleOwner
-                                    ? KlasivoColors.primary.withValues(alpha: 0.1)
-                                    : KlasivoColors.secondary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                              ),
-                              child: Text(
-                                userRole == AppConstants.roleOwner ? 'Owner' : 'Teacher',
-                                style: KlasivoTypography.labelSmall.copyWith(
-                                  color: userRole == AppConstants.roleOwner
-                                      ? KlasivoColors.primary
-                                      : KlasivoColors.secondary,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: isDark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                        size: 20,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: isDark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                    size: 20,
+                  ),
+                ],
               ),
             ),
 
@@ -113,8 +114,9 @@ class SettingsScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _SectionHeader(title: 'Organization'),
-                  Card(
+                  KlasivoCard(
                     margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+                    padding: EdgeInsets.zero,
                     child: Column(
                       children: [
                         _SettingsTile(
@@ -158,8 +160,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Account Section ──
             _SectionHeader(title: 'Account'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _SettingsTile(
@@ -184,8 +187,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Preferences Section ──
             _SectionHeader(title: 'Preferences'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _ThemeToggleTile(),
@@ -204,8 +208,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Support Section ──
             _SectionHeader(title: 'Support'),
-            Card(
+            KlasivoCard(
               margin: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _SettingsTile(
@@ -231,27 +236,12 @@ class SettingsScreen extends ConsumerWidget {
             // ── Logout ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: () => _handleLogout(context, ref),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: KlasivoColors.error,
-                    side: const BorderSide(color: KlasivoColors.error, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.logout_rounded, size: 20),
-                      SizedBox(width: KlasivoSpacing.sm),
-                      Text('Logout'),
-                    ],
-                  ),
-                ),
+              child: KlasivoButton(
+                label: 'Logout',
+                icon: Icons.logout_rounded,
+                variant: KlasivoButtonVariant.danger,
+                fullWidth: true,
+                onPressed: () => _handleLogout(context, ref),
               ),
             ),
             const SizedBox(height: KlasivoSpacing.xxxl),
@@ -262,26 +252,13 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _handleLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout? You will need to sign in again.'),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: KlasivoColors.error),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
+      title: 'Logout',
+      message: 'Are you sure you want to logout? You will need to sign in again.',
+      confirmLabel: 'Logout',
+      cancelLabel: 'Cancel',
+      isDangerous: true,
     );
     if (confirmed == true && context.mounted) {
       try {
@@ -355,60 +332,52 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
+                KlasivoTextField(
                   controller: currentPasswordController,
+                  label: 'Current Password',
                   obscureText: obscureCurrent,
-                  decoration: InputDecoration(
-                    labelText: 'Current Password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-                      onPressed: () => setState(() => obscureCurrent = !obscureCurrent),
-                    ),
+                  prefixIcon: Icons.lock_outline_rounded,
+                  suffixIcon: IconButton(
+                    icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                    onPressed: () => setState(() => obscureCurrent = !obscureCurrent),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.md),
-                TextField(
+                KlasivoTextField(
                   controller: newPasswordController,
+                  label: 'New Password',
                   obscureText: obscureNew,
-                  decoration: InputDecoration(
-                    labelText: 'New Password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-                      onPressed: () => setState(() => obscureNew = !obscureNew),
-                    ),
+                  prefixIcon: Icons.lock_outline_rounded,
+                  suffixIcon: IconButton(
+                    icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                    onPressed: () => setState(() => obscureNew = !obscureNew),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.md),
-                TextField(
+                KlasivoTextField(
                   controller: confirmPasswordController,
+                  label: 'Confirm New Password',
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm New Password',
-                    prefixIcon: Icon(Icons.lock_outline_rounded, size: 20),
-                  ),
+                  prefixIcon: Icons.lock_outline_rounded,
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(
+            KlasivoButton(
+              label: 'Cancel',
+              variant: KlasivoButtonVariant.tertiary,
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
             ),
-            ElevatedButton(
+            KlasivoButton(
+              label: 'Update',
               onPressed: () async {
                 if (newPasswordController.text != confirmPasswordController.text) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Passwords do not match')),
-                  );
+                  KlasivoToast.error(context, message: 'Passwords do not match');
                   return;
                 }
                 if (newPasswordController.text.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password must be at least 6 characters')),
-                  );
+                  KlasivoToast.error(context, message: 'Password must be at least 6 characters');
                   return;
                 }
                 try {
@@ -423,17 +392,12 @@ class SettingsScreen extends ConsumerWidget {
                   }
                   if (context.mounted) {
                     Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Password updated successfully')),
-                    );
+                    KlasivoToast.success(context, message: 'Password updated successfully');
                   }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
-                  );
+                  KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
                 }
               },
-              child: const Text('Update'),
             ),
           ],
         ),
@@ -475,9 +439,10 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(
+          KlasivoButton(
+            label: 'Done',
+            variant: KlasivoButtonVariant.tertiary,
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Done'),
           ),
         ],
       ),
@@ -504,9 +469,10 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(
+          KlasivoButton(
+            label: 'Close',
+            variant: KlasivoButtonVariant.tertiary,
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
           ),
         ],
       ),
@@ -634,9 +600,7 @@ class _ThemeToggleTileState extends ConsumerState<_ThemeToggleTile> {
       trailing: Switch(
         value: isDark,
         onChanged: (v) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Theme follows your system settings'), duration: Duration(seconds: 2)),
-          );
+          KlasivoToast.info(context, message: 'Theme follows your system settings');
         },
       ),
     );
@@ -723,9 +687,7 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
       _loadCodes();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate code: $e')),
-        );
+        KlasivoToast.error(context, message: 'Failed to generate code: $e');
       }
     }
   }
@@ -751,10 +713,11 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Invite Codes', style: KlasivoTypography.headlineSmall),
-              ElevatedButton.icon(
+              KlasivoButton(
+                label: 'Generate',
+                icon: Icons.add_rounded,
                 onPressed: _generateCode,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Generate'),
+                size: KlasivoButtonSize.sm,
               ),
             ],
           ),
@@ -775,47 +738,44 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
                       itemBuilder: (context, index) {
                         final code = _codes[index];
                         final isActive = code['isActive'] ?? true;
-                        return Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(KlasivoSpacing.md),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                                  decoration: BoxDecoration(
-                                    color: isActive
-                                        ? KlasivoColors.secondary.withValues(alpha: 0.1)
-                                        : KlasivoColors.error.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                                  ),
-                                  child: Icon(
-                                    isActive ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
-                                    color: isActive ? KlasivoColors.secondary : KlasivoColors.error, size: 20,
-                                  ),
+                        return KlasivoCard(
+                          margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
+                          padding: const EdgeInsets.all(KlasivoSpacing.md),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(KlasivoSpacing.sm),
+                                decoration: BoxDecoration(
+                                  color: isActive
+                                      ? KlasivoColors.secondary.withValues(alpha: 0.1)
+                                      : KlasivoColors.error.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
                                 ),
-                                const SizedBox(width: KlasivoSpacing.md),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(code['code'] ?? '',
-                                        style: KlasivoTypography.titleMedium.copyWith(fontFamily: 'monospace')),
-                                      Text(isActive ? 'Active' : 'Deactivated',
-                                        style: KlasivoTypography.bodySmall.copyWith(
-                                          color: isActive ? KlasivoColors.secondary : KlasivoColors.error)),
-                                    ],
-                                  ),
+                                child: Icon(
+                                  isActive ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
+                                  color: isActive ? KlasivoColors.secondary : KlasivoColors.error, size: 20,
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.copy_rounded, size: 20),
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Code copied: ${code['code']}')),
-                                    );
-                                  },
+                              ),
+                              const SizedBox(width: KlasivoSpacing.md),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(code['code'] ?? '',
+                                      style: KlasivoTypography.titleMedium.copyWith(fontFamily: 'monospace')),
+                                    Text(isActive ? 'Active' : 'Deactivated',
+                                      style: KlasivoTypography.bodySmall.copyWith(
+                                        color: isActive ? KlasivoColors.secondary : KlasivoColors.error)),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy_rounded, size: 20),
+                                onPressed: () {
+                                  KlasivoToast.success(context, message: 'Code copied: ${code['code']}');
+                                },
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -907,44 +867,42 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
                   itemBuilder: (context, index) {
                     final teacher = _teachers[index];
                     final isOwner = teacher['role'] == AppConstants.roleOwner;
-                    final isActive = teacher['isActive'] ?? true;
                     final name = teacher['fullName'] ?? 'Unknown';
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(KlasivoSpacing.md),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: (isOwner ? KlasivoColors.primary : KlasivoColors.secondary).withValues(alpha: 0.1),
-                              child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                style: KlasivoTypography.titleMedium.copyWith(
-                                  color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
+                    return KlasivoCard(
+                      margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
+                      padding: const EdgeInsets.all(KlasivoSpacing.md),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: (isOwner ? KlasivoColors.primary : KlasivoColors.secondary).withValues(alpha: 0.1),
+                            child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              style: KlasivoTypography.titleMedium.copyWith(
+                                color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
+                          ),
+                          const SizedBox(width: KlasivoSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(name, style: KlasivoTypography.titleMedium),
+                                Text(teacher['email'] ?? '',
+                                  style: KlasivoTypography.bodySmall.copyWith(
+                                    color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary)),
+                              ],
                             ),
-                            const SizedBox(width: KlasivoSpacing.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name, style: KlasivoTypography.titleMedium),
-                                  Text(teacher['email'] ?? '',
-                                    style: KlasivoTypography.bodySmall.copyWith(
-                                      color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary)),
-                                ],
-                              ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
+                            decoration: BoxDecoration(
+                              color: isOwner ? KlasivoColors.primary.withValues(alpha: 0.1) : KlasivoColors.secondary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
-                              decoration: BoxDecoration(
-                                color: isOwner ? KlasivoColors.primary.withValues(alpha: 0.1) : KlasivoColors.secondary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                              ),
-                              child: Text(isOwner ? 'Owner' : 'Teacher',
-                                style: KlasivoTypography.labelSmall.copyWith(
-                                  color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
-                            ),
-                          ],
-                        ),
+                            child: Text(isOwner ? 'Owner' : 'Teacher',
+                              style: KlasivoTypography.labelSmall.copyWith(
+                                color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
+                          ),
+                        ],
                       ),
                     );
                   },

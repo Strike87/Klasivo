@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import '../../../providers/exam_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ExamFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -140,22 +142,19 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedClassId == null) {
-      showSnackBar(context, message: 'Please select a class', isError: true);
+      KlasivoToast.error(context, message: 'Please select a class');
       return;
     }
     if (_startDate == null || _startTime == null) {
-      showSnackBar(context,
-          message: 'Please set start date and time', isError: true);
+      KlasivoToast.error(context, message: 'Please set start date and time');
       return;
     }
     if (_endDate == null || _endTime == null) {
-      showSnackBar(context,
-          message: 'Please set end date and time', isError: true);
+      KlasivoToast.error(context, message: 'Please set end date and time');
       return;
     }
     if (_combinedEnd.isBefore(_combinedStart)) {
-      showSnackBar(context,
-          message: 'End time must be after start time', isError: true);
+      KlasivoToast.error(context, message: 'End time must be after start time');
       return;
     }
 
@@ -180,7 +179,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
           allowRetake: _allowRetake,
         );
         if (mounted) {
-          showSnackBar(context, message: 'Exam updated successfully');
+          KlasivoToast.success(context, message: 'Exam updated successfully');
           context.pop();
         }
       } else {
@@ -200,14 +199,13 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
           allowRetake: _allowRetake,
         );
         if (mounted) {
-          showSnackBar(context, message: 'Exam created! Now add questions.');
+          KlasivoToast.success(context, message: 'Exam created! Now add questions.');
           context.go('/teacher/exams/$examId/questions');
         }
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context,
-            message: 'Failed: ${e.toString()}', isError: true);
+        KlasivoToast.error(context, message: 'Failed: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -262,32 +260,22 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
               ),
               const SizedBox(height: 12),
 
-              TextFormField(
+              KlasivoTextField(
+                label: 'Exam Title *',
+                hint: 'e.g. Midterm Mathematics',
+                prefixIcon: Icons.title,
                 controller: _titleController,
-                decoration: InputDecoration(
-                  labelText: 'Exam Title *',
-                  hintText: 'e.g. Midterm Mathematics',
-                  prefixIcon: const Icon(Icons.title),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
                 validator: (v) =>
                     v?.trim().isEmpty ?? true ? 'Title is required' : null,
                 enabled: !_isLoading,
               ),
               const SizedBox(height: 16),
 
-              TextFormField(
+              KlasivoTextField(
+                label: 'Description',
+                hint: 'Optional exam description or instructions',
+                prefixIcon: Icons.description_outlined,
                 controller: _descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Optional exam description or instructions',
-                  prefixIcon: const Icon(Icons.description_outlined),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
                 maxLines: 2,
                 enabled: !_isLoading,
               ),
@@ -451,16 +439,11 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: TextFormField(
+                    child: KlasivoTextField(
+                      label: 'Duration (min) *',
+                      hint: 'e.g. 30',
+                      prefixIcon: Icons.timer_outlined,
                       controller: _durationController,
-                      decoration: InputDecoration(
-                        labelText: 'Duration (min) *',
-                        hintText: 'e.g. 30',
-                        prefixIcon: const Icon(Icons.timer_outlined),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         if (v?.isEmpty ?? true) return 'Required';
@@ -473,16 +456,11 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: TextFormField(
+                    child: KlasivoTextField(
+                      label: 'Passing Score (%) *',
+                      hint: 'e.g. 50',
+                      prefixIcon: Icons.stars_outlined,
                       controller: _passingScoreController,
-                      decoration: InputDecoration(
-                        labelText: 'Passing Score (%) *',
-                        hintText: 'e.g. 50',
-                        prefixIcon: const Icon(Icons.stars_outlined),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         if (v?.isEmpty ?? true) return 'Required';
@@ -534,32 +512,13 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
               const SizedBox(height: 32),
 
               // ── Submit Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          widget.isEditing
-                              ? 'Update Exam'
-                              : 'Create & Add Questions',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
+              KlasivoButton(
+                label: widget.isEditing
+                    ? 'Update Exam'
+                    : 'Create & Add Questions',
+                onPressed: _handleSubmit,
+                loading: _isLoading,
+                fullWidth: true,
               ),
 
               if (!widget.isEditing) ...[

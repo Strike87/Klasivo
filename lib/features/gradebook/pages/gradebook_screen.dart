@@ -8,7 +8,11 @@ import '../../../providers/organization_provider.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/klasivo_components.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRADEBOOK SCREEN — Klasivo v1.7
@@ -375,112 +379,105 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
   }
 
   Widget _buildCategoryCard(GradebookCategoryData cat, bool isDark) {
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: () => _showCategoryDialog(isDark, existing: cat),
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
       margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        onTap: () => _showCategoryDialog(isDark, existing: cat),
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Row(
-            children: [
-              // ── Type Icon ──
-              Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
-                decoration: BoxDecoration(
-                  color: _categoryTypeColor(cat.type).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                ),
-                child: Icon(
-                  _categoryTypeIcon(cat.type),
-                  color: _categoryTypeColor(cat.type),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: KlasivoSpacing.md),
+      child: Row(
+        children: [
+          // ── Type Icon ──
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
+            decoration: BoxDecoration(
+              color: _categoryTypeColor(cat.type).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+            ),
+            child: Icon(
+              _categoryTypeIcon(cat.type),
+              color: _categoryTypeColor(cat.type),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: KlasivoSpacing.md),
 
-              // ── Name & Type ──
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      cat.name,
-                      style: KlasivoTypography.titleMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.xs),
-                    Text(
-                      cat.typeLabel,
-                      style: KlasivoTypography.bodySmall.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Weight Badge ──
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: KlasivoSpacing.md,
-                  vertical: KlasivoSpacing.xs + 2,
-                ),
-                decoration: BoxDecoration(
-                  color: KlasivoColors.accentSurface,
-                  borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                ),
-                child: Text(
-                  '${cat.weight.toStringAsFixed(0)}%',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: KlasivoColors.accent,
+          // ── Name & Type ──
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  cat.name,
+                  style: KlasivoTypography.titleMedium.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextPrimary
+                        : KlasivoColors.lightTextPrimary,
                   ),
                 ),
-              ),
-
-              // ── Actions ──
-              const SizedBox(width: KlasivoSpacing.sm),
-              IconButton(
-                icon: Icon(
-                  Icons.edit_outlined,
-                  size: 20,
-                  color: isDark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
+                const SizedBox(height: KlasivoSpacing.xs),
+                Text(
+                  cat.typeLabel,
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
                 ),
-                onPressed: () => _showCategoryDialog(isDark, existing: cat),
-                tooltip: 'Edit Category',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 20,
-                  color: KlasivoColors.error,
-                ),
-                onPressed: () => _deleteCategory(cat),
-                tooltip: 'Delete Category',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+
+          // ── Weight Badge ──
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: KlasivoSpacing.md,
+              vertical: KlasivoSpacing.xs + 2,
+            ),
+            decoration: BoxDecoration(
+              color: KlasivoColors.accentSurface,
+              borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+            ),
+            child: Text(
+              '${cat.weight.toStringAsFixed(0)}%',
+              style: KlasivoTypography.labelMedium.copyWith(
+                color: KlasivoColors.accent,
+              ),
+            ),
+          ),
+
+          // ── Actions ──
+          const SizedBox(width: KlasivoSpacing.sm),
+          IconButton(
+            icon: Icon(
+              Icons.edit_outlined,
+              size: 20,
+              color: isDark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
+            ),
+            onPressed: () => _showCategoryDialog(isDark, existing: cat),
+            tooltip: 'Edit Category',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 36,
+              minHeight: 36,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 20,
+              color: KlasivoColors.error,
+            ),
+            onPressed: () => _deleteCategory(cat),
+            tooltip: 'Delete Category',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 36,
+              minHeight: 36,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -739,200 +736,175 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     double weight = existing?.weight ?? 20.0;
     final isEditing = existing != null;
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(
-            isEditing ? 'Edit Category' : 'Add Category',
-            style: KlasivoTypography.titleLarge.copyWith(
-              color: isDark
-                  ? KlasivoColors.darkTextPrimary
-                  : KlasivoColors.lightTextPrimary,
+      title: isEditing ? 'Edit Category' : 'Add Category',
+      child: StatefulBuilder(
+        builder: (ctx, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Name ──
+            KlasivoTextField(
+              controller: nameController,
+              label: 'Category Name',
+              hint: 'e.g. Midterm Exam',
             ),
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Name ──
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Category Name',
-                    hintText: 'e.g. Midterm Exam',
-                  ),
-                  autofocus: true,
-                ),
-                const SizedBox(height: KlasivoSpacing.lg),
+            const SizedBox(height: KlasivoSpacing.lg),
 
-                // ── Type Dropdown ──
+            // ── Type Dropdown ──
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? KlasivoColors.darkSurface
+                    : KlasivoColors.lightSurface,
+                borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                border: Border.all(
+                  color: isDark
+                      ? KlasivoColors.darkBorder
+                      : KlasivoColors.lightBorder,
+                ),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedType,
+                  isExpanded: true,
+                  items: _categoryTypes.map((e) {
+                    return DropdownMenuItem<String>(
+                      value: e.key,
+                      child: Row(
+                        children: [
+                          Icon(
+                            _categoryTypeIcon(e.key),
+                            size: 18,
+                            color: _categoryTypeColor(e.key),
+                          ),
+                          const SizedBox(width: KlasivoSpacing.sm),
+                          Text(e.value),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() => selectedType = val);
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.lg),
+
+            // ── Weight Slider ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
                 Text(
-                  'Type',
+                  'Weight',
                   style: KlasivoTypography.labelMedium.copyWith(
                     color: isDark
                         ? KlasivoColors.darkTextSecondary
                         : KlasivoColors.lightTextSecondary,
                   ),
                 ),
-                const SizedBox(height: KlasivoSpacing.xs),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: KlasivoSpacing.md,
+                    vertical: KlasivoSpacing.xs + 2,
+                  ),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? KlasivoColors.darkSurface
-                        : KlasivoColors.lightSurface,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                    border: Border.all(
-                      color: isDark
-                          ? KlasivoColors.darkBorder
-                          : KlasivoColors.lightBorder,
+                    color: KlasivoColors.accentSurface,
+                    borderRadius:
+                        BorderRadius.circular(KlasivoRadius.pill),
+                  ),
+                  child: Text(
+                    '${weight.toStringAsFixed(0)}%',
+                    style: KlasivoTypography.labelMedium.copyWith(
+                      color: KlasivoColors.accent,
                     ),
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedType,
-                      isExpanded: true,
-                      items: _categoryTypes.map((e) {
-                        return DropdownMenuItem<String>(
-                          value: e.key,
-                          child: Row(
-                            children: [
-                              Icon(
-                                _categoryTypeIcon(e.key),
-                                size: 18,
-                                color: _categoryTypeColor(e.key),
-                              ),
-                              const SizedBox(width: KlasivoSpacing.sm),
-                              Text(e.value),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() => selectedType = val);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.lg),
-
-                // ── Weight Slider ──
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Weight',
-                      style: KlasivoTypography.labelMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextSecondary
-                            : KlasivoColors.lightTextSecondary,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: KlasivoSpacing.md,
-                        vertical: KlasivoSpacing.xs + 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: KlasivoColors.accentSurface,
-                        borderRadius:
-                            BorderRadius.circular(KlasivoRadius.pill),
-                      ),
-                      child: Text(
-                        '${weight.toStringAsFixed(0)}%',
-                        style: KlasivoTypography.labelMedium.copyWith(
-                          color: KlasivoColors.accent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Slider(
-                  value: weight,
-                  min: 0,
-                  max: 100,
-                  divisions: 20,
-                  label: '${weight.toStringAsFixed(0)}%',
-                  onChanged: (val) {
-                    setDialogState(() => weight = val);
-                  },
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+            Slider(
+              value: weight,
+              min: 0,
+              max: 100,
+              divisions: 20,
+              label: '${weight.toStringAsFixed(0)}%',
+              onChanged: (val) {
+                setDialogState(() => weight = val);
+              },
             ),
-            ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () async {
-                      final name = nameController.text.trim();
-                      if (name.isEmpty) {
-                        showSnackBar(context,
-                            message: 'Please enter a category name',
-                            isError: true);
-                        return;
-                      }
-                      setState(() => _isLoading = true);
-                      try {
-                        final orgId =
-                            ref.read(currentOrganizationIdProvider) ?? '';
-                        final service =
-                            ref.read(gradebookServiceProvider);
+            const SizedBox(height: KlasivoSpacing.lg),
 
-                        if (isEditing) {
-                          await service.updateCategory(
-                            categoryId: existing.id,
-                            name: name,
-                            type: selectedType,
-                            weight: weight,
-                          );
-                          if (mounted) {
-                            showSnackBar(context,
-                                message: 'Category updated');
+            // ── Action Buttons ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                KlasivoButton(
+                  label: 'Cancel',
+                  variant: KlasivoButtonVariant.tertiary,
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+                const SizedBox(width: KlasivoSpacing.sm),
+                KlasivoButton(
+                  label: isEditing ? 'Update' : 'Create',
+                  loading: _isLoading,
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          final name = nameController.text.trim();
+                          if (name.isEmpty) {
+                            KlasivoToast.error(context,
+                                message: 'Please enter a category name');
+                            return;
                           }
-                        } else {
-                          await service.createCategory(
-                            organizationId: orgId,
-                            classId: _selectedClassId!,
-                            name: name,
-                            type: selectedType,
-                            weight: weight,
-                          );
-                          if (mounted) {
-                            showSnackBar(context,
-                                message: 'Category created');
+                          setState(() => _isLoading = true);
+                          try {
+                            final orgId =
+                                ref.read(currentOrganizationIdProvider) ?? '';
+                            final service =
+                                ref.read(gradebookServiceProvider);
+
+                            if (isEditing) {
+                              await service.updateCategory(
+                                categoryId: existing.id,
+                                name: name,
+                                type: selectedType,
+                                weight: weight,
+                              );
+                              if (mounted) {
+                                KlasivoToast.success(context,
+                                    message: 'Category updated');
+                              }
+                            } else {
+                              await service.createCategory(
+                                organizationId: orgId,
+                                classId: _selectedClassId!,
+                                name: name,
+                                type: selectedType,
+                                weight: weight,
+                              );
+                              if (mounted) {
+                                KlasivoToast.success(context,
+                                    message: 'Category created');
+                              }
+                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          } catch (e) {
+                            if (mounted) {
+                              KlasivoToast.error(context,
+                                  message: 'Failed: $e');
+                            }
+                          } finally {
+                            if (mounted) setState(() => _isLoading = false);
                           }
-                        }
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      } catch (e) {
-                        if (mounted) {
-                          showSnackBar(context,
-                              message: 'Failed: $e', isError: true);
-                        }
-                      } finally {
-                        if (mounted) setState(() => _isLoading = false);
-                      }
-                    },
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(isEditing ? 'Update' : 'Create'),
+                        },
+                ),
+              ],
             ),
           ],
         ),
@@ -943,7 +915,7 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
   // ─── Delete Category ─────────────────────────────────────────────────────
 
   Future<void> _deleteCategory(GradebookCategoryData cat) async {
-    final confirmed = await showConfirmationDialog(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
       title: 'Delete Category',
       message:
@@ -956,10 +928,10 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     setState(() => _isLoading = true);
     try {
       await ref.read(gradebookServiceProvider).deleteCategory(cat.id);
-      if (mounted) showSnackBar(context, message: 'Category deleted');
+      if (mounted) KlasivoToast.success(context, message: 'Category deleted');
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, message: 'Failed: $e', isError: true);
+        KlasivoToast.error(context, message: 'Failed: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -990,323 +962,303 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
       feedbackController.text = editingEntry.feedback ?? '';
     }
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(
-            editingEntry != null ? 'Edit Grade' : 'Add Grade',
-            style: KlasivoTypography.titleLarge.copyWith(
-              color: isDark
-                  ? KlasivoColors.darkTextPrimary
-                  : KlasivoColors.lightTextPrimary,
-            ),
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Student & Category info ──
-                Container(
-                  padding: const EdgeInsets.all(KlasivoSpacing.md),
-                  decoration: BoxDecoration(
-                    color: KlasivoColors.primarySurface,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.md),
+      title: editingEntry != null ? 'Edit Grade' : 'Add Grade',
+      child: StatefulBuilder(
+        builder: (ctx, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Student & Category info ──
+            Container(
+              padding: const EdgeInsets.all(KlasivoSpacing.md),
+              decoration: BoxDecoration(
+                color: KlasivoColors.primarySurface,
+                borderRadius: BorderRadius.circular(KlasivoRadius.md),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.person_outline,
+                    size: 18,
+                    color: KlasivoColors.primary,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.person_outline,
-                        size: 18,
+                  const SizedBox(width: KlasivoSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      studentName,
+                      style: KlasivoTypography.labelMedium.copyWith(
                         color: KlasivoColors.primary,
                       ),
-                      const SizedBox(width: KlasivoSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          studentName,
-                          style: KlasivoTypography.labelMedium.copyWith(
-                            color: KlasivoColors.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: KlasivoSpacing.sm),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: KlasivoSpacing.sm,
-                          vertical: KlasivoSpacing.xs,
-                        ),
-                        decoration: BoxDecoration(
-                          color: KlasivoColors.accentSurface,
-                          borderRadius:
-                              BorderRadius.circular(KlasivoRadius.pill),
-                        ),
-                        child: Text(
-                          category.name,
-                          style: KlasivoTypography.labelSmall.copyWith(
-                            color: KlasivoColors.accent,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.lg),
-
-                // ── If multiple entries exist, show selector ──
-                if (existingEntries.length > 1) ...[
-                  Text(
-                    'Entries in this category',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark
-                          ? KlasivoColors.darkTextSecondary
-                          : KlasivoColors.lightTextSecondary,
                     ),
                   ),
-                  const SizedBox(height: KlasivoSpacing.sm),
+                  const SizedBox(width: KlasivoSpacing.sm),
                   Container(
-                    constraints: const BoxConstraints(maxHeight: 120),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: KlasivoSpacing.sm,
+                      vertical: KlasivoSpacing.xs,
+                    ),
                     decoration: BoxDecoration(
+                      color: KlasivoColors.accentSurface,
                       borderRadius:
-                          BorderRadius.circular(KlasivoRadius.md),
-                      border: Border.all(
-                        color: isDark
-                            ? KlasivoColors.darkBorder
-                            : KlasivoColors.lightBorder,
+                          BorderRadius.circular(KlasivoRadius.pill),
+                    ),
+                    child: Text(
+                      category.name,
+                      style: KlasivoTypography.labelSmall.copyWith(
+                        color: KlasivoColors.accent,
                       ),
                     ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: existingEntries.length,
-                      itemBuilder: (_, i) {
-                        final entry = existingEntries[i];
-                        final isSelected = editingEntry?.id == entry.id;
-                        return ListTile(
-                          dense: true,
-                          selected: isSelected,
-                          selectedTileColor:
-                              KlasivoColors.primarySurface.withValues(alpha: 0.3),
-                          leading: Icon(
-                            isSelected
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            size: 18,
-                            color: isSelected
-                                ? KlasivoColors.primary
-                                : null,
-                          ),
-                          title: Text(
-                            entry.title,
-                            style: KlasivoTypography.bodySmall,
-                          ),
-                          trailing: Text(
-                            '${entry.score.toStringAsFixed(1)}/${entry.maxScore.toStringAsFixed(1)}',
-                            style: KlasivoTypography.labelSmall.copyWith(
-                              color: _gradeColor(entry.percentage),
-                            ),
-                          ),
-                          onTap: () {
-                            setDialogState(() {
-                              editingEntry = entry;
-                              titleController.text = entry.title;
-                              scoreController.text =
-                                  entry.score.toStringAsFixed(1);
-                              maxScoreController.text =
-                                  entry.maxScore.toStringAsFixed(1);
-                              feedbackController.text =
-                                  entry.feedback ?? '';
-                            });
-                          },
-                        );
-                      },
-                    ),
                   ),
-                  const SizedBox(height: KlasivoSpacing.lg),
                 ],
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.lg),
 
-                // ── Title ──
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Title',
-                    hintText: 'e.g. Quiz 1, Homework 3',
+            // ── If multiple entries exist, show selector ──
+            if (existingEntries.length > 1) ...[
+              Text(
+                'Entries in this category',
+                style: KlasivoTypography.labelMedium.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextSecondary
+                      : KlasivoColors.lightTextSecondary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.sm),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 120),
+                decoration: BoxDecoration(
+                  borderRadius:
+                      BorderRadius.circular(KlasivoRadius.md),
+                  border: Border.all(
+                    color: isDark
+                        ? KlasivoColors.darkBorder
+                        : KlasivoColors.lightBorder,
                   ),
                 ),
-                const SizedBox(height: KlasivoSpacing.md),
-
-                // ── Score & Max Score ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: scoreController,
-                        decoration: const InputDecoration(
-                          labelText: 'Score',
-                          hintText: '0',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: existingEntries.length,
+                  itemBuilder: (_, i) {
+                    final entry = existingEntries[i];
+                    final isSelected = editingEntry?.id == entry.id;
+                    return ListTile(
+                      dense: true,
+                      selected: isSelected,
+                      selectedTileColor:
+                          KlasivoColors.primarySurface.withValues(alpha: 0.3),
+                      leading: Icon(
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 18,
+                        color: isSelected
+                            ? KlasivoColors.primary
+                            : null,
+                      ),
+                      title: Text(
+                        entry.title,
+                        style: KlasivoTypography.bodySmall,
+                      ),
+                      trailing: Text(
+                        '${entry.score.toStringAsFixed(1)}/${entry.maxScore.toStringAsFixed(1)}',
+                        style: KlasivoTypography.labelSmall.copyWith(
+                          color: _gradeColor(entry.percentage),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: KlasivoSpacing.md),
-                    Expanded(
-                      child: TextField(
-                        controller: maxScoreController,
-                        decoration: const InputDecoration(
-                          labelText: 'Max Score',
-                          hintText: '100',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                      ),
-                    ),
-                  ],
+                      onTap: () {
+                        setDialogState(() {
+                          editingEntry = entry;
+                          titleController.text = entry.title;
+                          scoreController.text =
+                              entry.score.toStringAsFixed(1);
+                          maxScoreController.text =
+                              entry.maxScore.toStringAsFixed(1);
+                          feedbackController.text =
+                              entry.feedback ?? '';
+                        });
+                      },
+                    );
+                  },
                 ),
-                const SizedBox(height: KlasivoSpacing.md),
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+            ],
 
-                // ── Feedback ──
-                TextField(
-                  controller: feedbackController,
-                  decoration: const InputDecoration(
-                    labelText: 'Feedback (optional)',
-                    hintText: 'Additional notes...',
+            // ── Title ──
+            KlasivoTextField(
+              controller: titleController,
+              label: 'Title',
+              hint: 'e.g. Quiz 1, Homework 3',
+            ),
+            const SizedBox(height: KlasivoSpacing.md),
+
+            // ── Score & Max Score ──
+            Row(
+              children: [
+                Expanded(
+                  child: KlasivoTextField(
+                    controller: scoreController,
+                    label: 'Score',
+                    hint: '0',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
-                  maxLines: 2,
+                ),
+                const SizedBox(width: KlasivoSpacing.md),
+                Expanded(
+                  child: KlasivoTextField(
+                    controller: maxScoreController,
+                    label: 'Max Score',
+                    hint: '100',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+            const SizedBox(height: KlasivoSpacing.md),
+
+            // ── Feedback ──
+            KlasivoTextField(
+              controller: feedbackController,
+              label: 'Feedback (optional)',
+              hint: 'Additional notes...',
+              maxLines: 2,
             ),
-            if (editingEntry != null)
-              TextButton(
-                onPressed: () async {
-                  final confirmed = await showConfirmationDialog(
-                    context: context,
-                    title: 'Delete Entry',
-                    message:
-                        'Delete "${editingEntry!.title}"? This cannot be undone.',
-                    confirmLabel: 'Delete',
-                    isDangerous: true,
-                  );
-                  if (confirmed != true) return;
-                  try {
-                    await ref
-                        .read(gradebookServiceProvider)
-                        .deleteEntry(editingEntry!.id);
-                    if (mounted) {
-                      showSnackBar(context, message: 'Entry deleted');
-                    }
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  } catch (e) {
-                    if (mounted) {
-                      showSnackBar(context,
-                          message: 'Failed: $e', isError: true);
-                    }
-                  }
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: KlasivoColors.error,
+            const SizedBox(height: KlasivoSpacing.lg),
+
+            // ── Action Buttons ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                KlasivoButton(
+                  label: 'Cancel',
+                  variant: KlasivoButtonVariant.tertiary,
+                  onPressed: () => Navigator.pop(ctx),
                 ),
-                child: const Text('Delete'),
-              ),
-            ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () async {
-                      final title = titleController.text.trim();
-                      final score = double.tryParse(
-                              scoreController.text.trim()) ??
-                          0;
-                      final maxScore = double.tryParse(
-                              maxScoreController.text.trim()) ??
-                          100;
-
-                      if (title.isEmpty) {
-                        showSnackBar(context,
-                            message: 'Please enter a title',
-                            isError: true);
-                        return;
-                      }
-                      if (maxScore <= 0) {
-                        showSnackBar(context,
-                            message: 'Max score must be greater than 0',
-                            isError: true);
-                        return;
-                      }
-                      if (score < 0 || score > maxScore) {
-                        showSnackBar(context,
-                            message:
-                                'Score must be between 0 and $maxScore',
-                            isError: true);
-                        return;
-                      }
-
-                      setState(() => _isLoading = true);
-                      try {
-                        final orgId =
-                            ref.read(currentOrganizationIdProvider) ?? '';
-                        final service =
-                            ref.read(gradebookServiceProvider);
-
-                        if (editingEntry != null) {
-                          await service.updateEntry(
-                            entryId: editingEntry!.id,
-                            title: title,
-                            score: score,
-                            maxScore: maxScore,
-                            feedback:
-                                feedbackController.text.trim().isEmpty
-                                    ? null
-                                    : feedbackController.text.trim(),
-                          );
+                if (editingEntry != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: KlasivoSpacing.sm),
+                    child: KlasivoButton(
+                      label: 'Delete',
+                      variant: KlasivoButtonVariant.danger,
+                      onPressed: () async {
+                        final confirmed = await KlasivoModal.confirm(
+                          context: context,
+                          title: 'Delete Entry',
+                          message:
+                              'Delete "${editingEntry!.title}"? This cannot be undone.',
+                          confirmLabel: 'Delete',
+                          isDangerous: true,
+                        );
+                        if (confirmed != true) return;
+                        try {
+                          await ref
+                              .read(gradebookServiceProvider)
+                              .deleteEntry(editingEntry!.id);
                           if (mounted) {
-                            showSnackBar(context,
-                                message: 'Grade updated');
+                            KlasivoToast.success(context, message: 'Entry deleted');
                           }
-                        } else {
-                          await service.createEntry(
-                            organizationId: orgId,
-                            classId: _selectedClassId!,
-                            studentId: studentId,
-                            categoryId: category.id,
-                            title: title,
-                            score: score,
-                            maxScore: maxScore,
-                          );
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        } catch (e) {
                           if (mounted) {
-                            showSnackBar(context,
-                                message: 'Grade added');
+                            KlasivoToast.error(context,
+                                message: 'Failed: $e');
                           }
                         }
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      } catch (e) {
-                        if (mounted) {
-                          showSnackBar(context,
-                              message: 'Failed: $e', isError: true);
-                        }
-                      } finally {
-                        if (mounted) {
-                          setState(() => _isLoading = false);
-                        }
-                      }
-                    },
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(editingEntry != null ? 'Update' : 'Add'),
+                      },
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(left: KlasivoSpacing.sm),
+                  child: KlasivoButton(
+                    label: editingEntry != null ? 'Update' : 'Add',
+                    loading: _isLoading,
+                    onPressed: _isLoading
+                        ? null
+                        : () async {
+                            final title = titleController.text.trim();
+                            final score = double.tryParse(
+                                    scoreController.text.trim()) ??
+                                0;
+                            final maxScore = double.tryParse(
+                                    maxScoreController.text.trim()) ??
+                                100;
+
+                            if (title.isEmpty) {
+                              KlasivoToast.error(context,
+                                  message: 'Please enter a title');
+                              return;
+                            }
+                            if (maxScore <= 0) {
+                              KlasivoToast.error(context,
+                                  message: 'Max score must be greater than 0');
+                              return;
+                            }
+                            if (score < 0 || score > maxScore) {
+                              KlasivoToast.error(context,
+                                  message:
+                                      'Score must be between 0 and $maxScore');
+                              return;
+                            }
+
+                            setState(() => _isLoading = true);
+                            try {
+                              final orgId =
+                                  ref.read(currentOrganizationIdProvider) ?? '';
+                              final service =
+                                  ref.read(gradebookServiceProvider);
+
+                              if (editingEntry != null) {
+                                await service.updateEntry(
+                                  entryId: editingEntry!.id,
+                                  title: title,
+                                  score: score,
+                                  maxScore: maxScore,
+                                  feedback:
+                                      feedbackController.text.trim().isEmpty
+                                          ? null
+                                          : feedbackController.text.trim(),
+                                );
+                                if (mounted) {
+                                  KlasivoToast.success(context,
+                                      message: 'Grade updated');
+                                }
+                              } else {
+                                await service.createEntry(
+                                  organizationId: orgId,
+                                  classId: _selectedClassId!,
+                                  studentId: studentId,
+                                  categoryId: category.id,
+                                  title: title,
+                                  score: score,
+                                  maxScore: maxScore,
+                                );
+                                if (mounted) {
+                                  KlasivoToast.success(context,
+                                      message: 'Grade added');
+                                }
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            } catch (e) {
+                              if (mounted) {
+                                KlasivoToast.error(context,
+                                    message: 'Failed: $e');
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isLoading = false);
+                              }
+                            }
+                          },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1325,13 +1277,13 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
         ref.read(studentsByClassListProvider(_selectedClassId!));
 
     if (categories.isEmpty) {
-      showSnackBar(context,
-          message: 'Add at least one category first', isError: true);
+      KlasivoToast.error(context,
+          message: 'Add at least one category first');
       return;
     }
     if (students.isEmpty) {
-      showSnackBar(context,
-          message: 'No students in this class', isError: true);
+      KlasivoToast.error(context,
+          message: 'No students in this class');
       return;
     }
 
@@ -1341,225 +1293,205 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     final scoreController = TextEditingController();
     final maxScoreController = TextEditingController(text: '100');
 
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(
-            'Add Grade Entry',
-            style: KlasivoTypography.titleLarge.copyWith(
-              color: isDark
-                  ? KlasivoColors.darkTextPrimary
-                  : KlasivoColors.lightTextPrimary,
+      title: 'Add Grade Entry',
+      child: StatefulBuilder(
+        builder: (ctx, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Student Selector ──
+            Text(
+              'Student',
+              style: KlasivoTypography.labelMedium.copyWith(
+                color: isDark
+                    ? KlasivoColors.darkTextSecondary
+                    : KlasivoColors.lightTextSecondary,
+              ),
             ),
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: KlasivoSpacing.xs),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: KlasivoSpacing.lg),
+              decoration: BoxDecoration(
+                borderRadius:
+                    BorderRadius.circular(KlasivoRadius.md),
+                border: Border.all(
+                  color: isDark
+                      ? KlasivoColors.darkBorder
+                      : KlasivoColors.lightBorder,
+                ),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedStudentId,
+                  isExpanded: true,
+                  items: students.map((s) {
+                    return DropdownMenuItem<String>(
+                      value: s.id,
+                      child: Text(s.fullName),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(
+                          () => selectedStudentId = val);
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.lg),
+
+            // ── Category Selector ──
+            Text(
+              'Category',
+              style: KlasivoTypography.labelMedium.copyWith(
+                color: isDark
+                    ? KlasivoColors.darkTextSecondary
+                    : KlasivoColors.lightTextSecondary,
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.xs),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: KlasivoSpacing.lg),
+              decoration: BoxDecoration(
+                borderRadius:
+                    BorderRadius.circular(KlasivoRadius.md),
+                border: Border.all(
+                  color: isDark
+                      ? KlasivoColors.darkBorder
+                      : KlasivoColors.lightBorder,
+                ),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedCategoryId,
+                  isExpanded: true,
+                  items: categories.map((c) {
+                    return DropdownMenuItem<String>(
+                      value: c.id,
+                      child: Text(
+                          '${c.name} (${c.weight.toStringAsFixed(0)}%)'),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(
+                          () => selectedCategoryId = val);
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: KlasivoSpacing.lg),
+
+            // ── Title ──
+            KlasivoTextField(
+              controller: titleController,
+              label: 'Title',
+              hint: 'e.g. Quiz 1',
+            ),
+            const SizedBox(height: KlasivoSpacing.md),
+
+            // ── Score & Max Score ──
+            Row(
               children: [
-                // ── Student Selector ──
-                Text(
-                  'Student',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
+                Expanded(
+                  child: KlasivoTextField(
+                    controller: scoreController,
+                    label: 'Score',
+                    hint: '0',
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
                   ),
                 ),
-                const SizedBox(height: KlasivoSpacing.xs),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: KlasivoSpacing.lg),
-                  decoration: BoxDecoration(
-                    borderRadius:
-                        BorderRadius.circular(KlasivoRadius.md),
-                    border: Border.all(
-                      color: isDark
-                          ? KlasivoColors.darkBorder
-                          : KlasivoColors.lightBorder,
-                    ),
+                const SizedBox(width: KlasivoSpacing.md),
+                Expanded(
+                  child: KlasivoTextField(
+                    controller: maxScoreController,
+                    label: 'Max Score',
+                    hint: '100',
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedStudentId,
-                      isExpanded: true,
-                      items: students.map((s) {
-                        return DropdownMenuItem<String>(
-                          value: s.id,
-                          child: Text(s.fullName),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(
-                              () => selectedStudentId = val);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.lg),
-
-                // ── Category Selector ──
-                Text(
-                  'Category',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.xs),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: KlasivoSpacing.lg),
-                  decoration: BoxDecoration(
-                    borderRadius:
-                        BorderRadius.circular(KlasivoRadius.md),
-                    border: Border.all(
-                      color: isDark
-                          ? KlasivoColors.darkBorder
-                          : KlasivoColors.lightBorder,
-                    ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedCategoryId,
-                      isExpanded: true,
-                      items: categories.map((c) {
-                        return DropdownMenuItem<String>(
-                          value: c.id,
-                          child: Text(
-                              '${c.name} (${c.weight.toStringAsFixed(0)}%)'),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(
-                              () => selectedCategoryId = val);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.lg),
-
-                // ── Title ──
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Title',
-                    hintText: 'e.g. Quiz 1',
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.md),
-
-                // ── Score & Max Score ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: scoreController,
-                        decoration: const InputDecoration(
-                          labelText: 'Score',
-                          hintText: '0',
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                      ),
-                    ),
-                    const SizedBox(width: KlasivoSpacing.md),
-                    Expanded(
-                      child: TextField(
-                        controller: maxScoreController,
-                        decoration: const InputDecoration(
-                          labelText: 'Max Score',
-                          hintText: '100',
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () async {
-                      final title = titleController.text.trim();
-                      final score = double.tryParse(
-                              scoreController.text.trim()) ??
-                          0;
-                      final maxScore = double.tryParse(
-                              maxScoreController.text.trim()) ??
-                          100;
+            const SizedBox(height: KlasivoSpacing.lg),
 
-                      if (title.isEmpty) {
-                        showSnackBar(context,
-                            message: 'Please enter a title',
-                            isError: true);
-                        return;
-                      }
-                      if (maxScore <= 0) {
-                        showSnackBar(context,
-                            message: 'Max score must be > 0',
-                            isError: true);
-                        return;
-                      }
+            // ── Action Buttons ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                KlasivoButton(
+                  label: 'Cancel',
+                  variant: KlasivoButtonVariant.tertiary,
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+                const SizedBox(width: KlasivoSpacing.sm),
+                KlasivoButton(
+                  label: 'Add',
+                  loading: _isLoading,
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          final title = titleController.text.trim();
+                          final score = double.tryParse(
+                                  scoreController.text.trim()) ??
+                              0;
+                          final maxScore = double.tryParse(
+                                  maxScoreController.text.trim()) ??
+                              100;
 
-                      setState(() => _isLoading = true);
-                      try {
-                        final orgId =
-                            ref.read(currentOrganizationIdProvider) ?? '';
-                        await ref
-                            .read(gradebookServiceProvider)
-                            .createEntry(
-                              organizationId: orgId,
-                              classId: _selectedClassId!,
-                              studentId: selectedStudentId!,
-                              categoryId: selectedCategoryId!,
-                              title: title,
-                              score: score,
-                              maxScore: maxScore,
-                            );
-                        if (mounted) {
-                          showSnackBar(context,
-                              message: 'Grade entry added');
-                        }
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      } catch (e) {
-                        if (mounted) {
-                          showSnackBar(context,
-                              message: 'Failed: $e', isError: true);
-                        }
-                      } finally {
-                        if (mounted) {
-                          setState(() => _isLoading = false);
-                        }
-                      }
-                    },
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Add'),
+                          if (title.isEmpty) {
+                            KlasivoToast.error(context,
+                                message: 'Please enter a title');
+                            return;
+                          }
+                          if (maxScore <= 0) {
+                            KlasivoToast.error(context,
+                                message: 'Max score must be > 0');
+                            return;
+                          }
+
+                          setState(() => _isLoading = true);
+                          try {
+                            final orgId =
+                                ref.read(currentOrganizationIdProvider) ?? '';
+                            await ref
+                                .read(gradebookServiceProvider)
+                                .createEntry(
+                                  organizationId: orgId,
+                                  classId: _selectedClassId!,
+                                  studentId: selectedStudentId!,
+                                  categoryId: selectedCategoryId!,
+                                  title: title,
+                                  score: score,
+                                  maxScore: maxScore,
+                                );
+                            if (mounted) {
+                              KlasivoToast.success(context,
+                                  message: 'Grade entry added');
+                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          } catch (e) {
+                            if (mounted) {
+                              KlasivoToast.error(context,
+                                  message: 'Failed: $e');
+                            }
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isLoading = false);
+                            }
+                          }
+                        },
+                ),
+              ],
             ),
           ],
         ),

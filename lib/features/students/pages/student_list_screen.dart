@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/student_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class StudentListScreen extends ConsumerWidget {
   final String classId;
@@ -87,7 +90,7 @@ class StudentListScreen extends ConsumerWidget {
                           );
                         },
                         onDelete: () async {
-                          final confirmed = await showConfirmationDialog(
+                          final confirmed = await KlasivoModal.confirm(
                             context: context,
                             title: 'Delete Student',
                             message:
@@ -101,15 +104,14 @@ class StudentListScreen extends ConsumerWidget {
                                   .read(studentServiceProvider)
                                   .deleteStudent(student.id, classId);
                               if (context.mounted) {
-                                showSnackBar(context,
+                                KlasivoToast.success(context,
                                     message: 'Student removed');
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                showSnackBar(
+                                KlasivoToast.error(
                                   context,
                                   message: 'Failed: $e',
-                                  isError: true,
                                 );
                               }
                             }
@@ -149,95 +151,89 @@ class _StudentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // ── Avatar ──
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-              child: Text(
-                student.fullName.isNotEmpty
-                    ? student.fullName[0].toUpperCase()
-                    : '?',
-                style: TextStyle(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          // ── Avatar ──
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+            child: Text(
+              student.fullName.isNotEmpty
+                  ? student.fullName[0].toUpperCase()
+                  : '?',
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
               ),
             ),
-            const SizedBox(width: 12),
+          ),
+          const SizedBox(width: 12),
 
-            // ── Info ──
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    student.fullName,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+          // ── Info ──
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  student.fullName,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          student.studentCode,
-                          style: TextStyle(
-                            color: Colors.green[700],
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'monospace',
-                          ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        student.studentCode,
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'monospace',
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      if (student.grade != null)
-                        Text(
-                          student.grade!,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (student.grade != null)
+                      Text(
+                        student.grade!,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
                         ),
-                    ],
-                  ),
-                ],
-              ),
+                      ),
+                  ],
+                ),
+              ],
             ),
+          ),
 
-            // ── Actions ──
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 20),
-              onPressed: onEdit,
-              tooltip: 'Edit',
-            ),
-            IconButton(
-              icon: Icon(Icons.delete_outline,
-                  size: 20, color: Colors.red[400]),
-              onPressed: onDelete,
-              tooltip: 'Delete',
-            ),
-          ],
-        ),
+          // ── Actions ──
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: onEdit,
+            tooltip: 'Edit',
+          ),
+          IconButton(
+            icon: Icon(Icons.delete_outline,
+                size: 20, color: Colors.red[400]),
+            onPressed: onDelete,
+            tooltip: 'Delete',
+          ),
+        ],
       ),
     );
   }

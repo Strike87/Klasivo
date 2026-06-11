@@ -11,8 +11,10 @@ import '../../../providers/subject_provider.dart';
 import '../../../providers/group_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
-import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ASSIGNMENT FORM SCREEN — Klasivo v1.7
@@ -137,12 +139,12 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedClassId == null) {
-      showSnackBar(context, message: 'Please select a class', isError: true);
+      KlasivoToast.error(context, message: 'Please select a class');
       return;
     }
 
     if (_dueDate == null) {
-      showSnackBar(context, message: 'Please select a due date', isError: true);
+      KlasivoToast.error(context, message: 'Please select a due date');
       return;
     }
 
@@ -171,7 +173,7 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
         }
 
         if (mounted) {
-          showSnackBar(
+          KlasivoToast.success(
             context,
             message: publish
                 ? 'Assignment published successfully!'
@@ -200,7 +202,7 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
         }
 
         if (mounted) {
-          showSnackBar(
+          KlasivoToast.success(
             context,
             message: publish
                 ? 'Assignment created and published!'
@@ -211,10 +213,9 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
+        KlasivoToast.error(
           context,
           message: 'Failed: ${e.toString()}',
-          isError: true,
         );
       }
     } finally {
@@ -279,39 +280,24 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
               const SizedBox(height: KlasivoSpacing.md),
 
               // Title
-              TextFormField(
+              KlasivoTextField(
                 controller: _titleController,
-                decoration: _buildInputDecoration(
-                  labelText: 'Title *',
-                  hintText: 'e.g. Chapter 5 Homework',
-                  prefixIcon: Icons.title_rounded,
-                ),
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextPrimary
-                      : KlasivoColors.lightTextPrimary,
-                ),
+                label: 'Title *',
+                hint: 'e.g. Chapter 5 Homework',
+                prefixIcon: Icons.title_rounded,
+                enabled: !_isLoading,
                 validator: (v) =>
                     v?.trim().isEmpty ?? true ? 'Title is required' : null,
-                enabled: !_isLoading,
               ),
               const SizedBox(height: KlasivoSpacing.lg),
 
               // Description
-              TextFormField(
+              KlasivoTextField(
                 controller: _descriptionController,
-                decoration: _buildInputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Instructions or details for students...',
-                  prefixIcon: Icons.description_outlined,
-                ),
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextPrimary
-                      : KlasivoColors.lightTextPrimary,
-                ),
+                label: 'Description',
+                hint: 'Instructions or details for students...',
+                prefixIcon: Icons.description_outlined,
                 maxLines: 3,
-                minLines: 3,
                 enabled: !_isLoading,
               ),
               const SizedBox(height: KlasivoSpacing.xxl),
@@ -447,18 +433,11 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
               const SizedBox(height: KlasivoSpacing.lg),
 
               // Late Penalty (optional)
-              TextFormField(
+              KlasivoTextField(
                 controller: _latePenaltyController,
-                decoration: _buildInputDecoration(
-                  labelText: 'Late Penalty % (optional)',
-                  hintText: 'e.g. 10',
-                  prefixIcon: Icons.trending_down_rounded,
-                ),
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextPrimary
-                      : KlasivoColors.lightTextPrimary,
-                ),
+                label: 'Late Penalty % (optional)',
+                hint: 'e.g. 10',
+                prefixIcon: Icons.trending_down_rounded,
                 keyboardType: TextInputType.number,
                 enabled: !_isLoading,
                 validator: (v) {
@@ -478,59 +457,23 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
                 children: [
                   // Save as Draft
                   Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton(
-                        onPressed: _isLoading ? null : () => _handleSave(publish: false),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(
-                                widget.isEditing ? 'Save Changes' : 'Save as Draft',
-                                style: KlasivoTypography.labelLarge,
-                              ),
-                      ),
+                    child: KlasivoButton(
+                      label: widget.isEditing ? 'Save Changes' : 'Save as Draft',
+                      variant: KlasivoButtonVariant.secondary,
+                      fullWidth: true,
+                      loading: _isLoading,
+                      onPressed: _isLoading ? null : () => _handleSave(publish: false),
                     ),
                   ),
                   const SizedBox(width: KlasivoSpacing.md),
 
                   // Publish
                   Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : () => _handleSave(publish: true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: KlasivoColors.secondary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                'Publish',
-                                style: KlasivoTypography.labelLarge.copyWith(
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
+                    child: KlasivoButton(
+                      label: 'Publish',
+                      fullWidth: true,
+                      loading: _isLoading,
+                      onPressed: _isLoading ? null : () => _handleSave(publish: true),
                     ),
                   ),
                 ],

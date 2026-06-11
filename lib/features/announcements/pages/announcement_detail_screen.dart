@@ -4,6 +4,7 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/announcement_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_modal.dart';
 import 'announcement_form_screen.dart';
 
 class AnnouncementDetailScreen extends ConsumerStatefulWidget {
@@ -99,19 +100,12 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                     ),
                   ).then((_) => _loadAnnouncement());
                 } else if (value == 'delete') {
-                  final confirm = await showDialog<bool>(
+                  final confirm = await KlasivoModal.confirm(
                     context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Delete Announcement'),
-                      content: const Text('Are you sure you want to delete this announcement?'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Delete', style: TextStyle(color: KlasivoColors.error)),
-                        ),
-                      ],
-                    ),
+                    title: 'Delete Announcement',
+                    message: 'Are you sure you want to delete this announcement?',
+                    confirmLabel: 'Delete',
+                    isDangerous: true,
                   );
                   if (confirm == true) {
                     await ref.read(announcementServiceProvider).deleteAnnouncement(a.id);

@@ -8,6 +8,8 @@ import '../../../providers/submission_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
 
 class StudentExamListScreen extends ConsumerWidget {
   const StudentExamListScreen({Key? key}) : super(key: key);
@@ -230,206 +232,178 @@ class _StudentExamCard extends StatelessWidget {
     final dateFormat = DateFormat('MMM dd, yyyy');
     final timeFormat = DateFormat('hh:mm a');
 
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: isActive ? onStart : (isCompleted && submission != null ? onViewResult : null),
+      padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: isActive ? 2 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isActive
-            ? BorderSide(color: Colors.orange.shade300, width: 1.5)
-            : BorderSide.none,
-      ),
-      child: InkWell(
-        onTap: isActive ? onStart : (isCompleted && submission != null ? onViewResult : null),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──
+          Row(
             children: [
-              // ── Header ──
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      exam.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              Expanded(
+                child: Text(
+                  exam.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
-                  if (isActive)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.play_circle, size: 12, color: Colors.orange),
-                          SizedBox(width: 4),
-                          Text(
-                            'LIVE',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (isCompleted && submission != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: (submission!.percentage >= exam.passingScore
-                                ? Colors.green
-                                : Colors.red)
-                            .withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${submission!.percentage}%',
-                        style: TextStyle(
-                          color: submission!.percentage >= exam.passingScore
-                              ? Colors.green
-                              : Colors.red,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-
-              if (exam.description != null &&
-                  exam.description!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  exam.description!,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
-
-              const SizedBox(height: 12),
-
-              // ── Info Chips ──
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.timer_outlined,
-                          size: 14, color: Colors.orange),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${exam.durationMinutes} min',
-                        style: TextStyle(
-                            color: Colors.grey[700], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.quiz_outlined,
-                          size: 14, color: Colors.green),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${exam.questionCount} Q',
-                        style: TextStyle(
-                            color: Colors.grey[700], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.stars_outlined,
-                          size: 14, color: Colors.purple),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${exam.totalMarks} marks',
-                        style: TextStyle(
-                            color: Colors.grey[700], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
               ),
-
-              const SizedBox(height: 12),
-
-              // ── Schedule ──
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              if (isActive)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  Text(' → ',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                  Text(
-                    timeFormat.format(exam.endDate),
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                ],
-              ),
-
-              // ── Action Button for Active Exams ──
-              if (isActive) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 40,
-                  child: ElevatedButton.icon(
-                    onPressed: onStart,
-                    icon: const Icon(Icons.play_arrow, size: 20),
-                    label: const Text('Start Exam'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.play_circle, size: 12, color: Colors.orange),
+                      SizedBox(width: 4),
+                      Text(
+                        'LIVE',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+              if (isCompleted && submission != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: (submission!.percentage >= exam.passingScore
+                            ? Colors.green
+                            : Colors.red)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${submission!.percentage}%',
+                    style: TextStyle(
+                      color: submission!.percentage >= exam.passingScore
+                          ? Colors.green
+                          : Colors.red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ],
-
-              if (isCompleted && submission != null) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 40,
-                  child: OutlinedButton.icon(
-                    onPressed: onViewResult,
-                    icon: const Icon(Icons.assessment_outlined, size: 18),
-                    label: const Text('View Result'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
-        ),
+
+          if (exam.description != null &&
+              exam.description!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              exam.description!,
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          // ── Info Chips ──
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.timer_outlined,
+                      size: 14, color: Colors.orange),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${exam.durationMinutes} min',
+                    style: TextStyle(
+                        color: Colors.grey[700], fontSize: 12),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.quiz_outlined,
+                      size: 14, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${exam.questionCount} Q',
+                    style: TextStyle(
+                        color: Colors.grey[700], fontSize: 12),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.stars_outlined,
+                      size: 14, color: Colors.purple),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${exam.totalMarks} marks',
+                    style: TextStyle(
+                        color: Colors.grey[700], fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Schedule ──
+          Row(
+            children: [
+              Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Text(
+                '${dateFormat.format(exam.startDate)} ${timeFormat.format(exam.startDate)}',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+              Text(' → ',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+              Text(
+                timeFormat.format(exam.endDate),
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+
+          // ── Action Button for Active Exams ──
+          if (isActive) ...[
+            const SizedBox(height: 12),
+            KlasivoButton(
+              label: 'Start Exam',
+              icon: Icons.play_arrow,
+              onPressed: onStart,
+              fullWidth: true,
+            ),
+          ],
+
+          if (isCompleted && submission != null) ...[
+            const SizedBox(height: 12),
+            KlasivoButton(
+              label: 'View Result',
+              icon: Icons.assessment_outlined,
+              variant: KlasivoButtonVariant.secondary,
+              onPressed: onViewResult,
+              fullWidth: true,
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -5,7 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../core/services/qr_service.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class QrScanScreen extends ConsumerStatefulWidget {
   const QrScanScreen({Key? key}) : super(key: key);
@@ -32,7 +32,7 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen> {
 
     final data = QrService.parseQrData(barcode.rawValue!);
     if (data == null) {
-      showSnackBar(context, message: 'Invalid QR code. Please scan a class enrollment QR.', isError: true);
+      KlasivoToast.error(context, message: 'Invalid QR code. Please scan a class enrollment QR.');
       return;
     }
 
@@ -52,12 +52,12 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen> {
       );
 
       if (mounted) {
-        showSnackBar(context, message: 'Successfully joined the class!');
+        KlasivoToast.success(context, message: 'Successfully joined the class!');
         context.pop();
       }
     } catch (e) {
       setState(() => _isProcessing = false);
-      if (mounted) showSnackBar(context, message: 'Failed: $e', isError: true);
+      if (mounted) KlasivoToast.error(context, message: 'Failed: $e');
     }
   }
 

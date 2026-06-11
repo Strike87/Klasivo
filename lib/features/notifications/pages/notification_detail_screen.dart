@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_modal.dart';
 
 // ─── Notification Detail Screen ────────────────────────────────────────────────
 
@@ -184,28 +186,15 @@ class NotificationDetailScreen extends ConsumerWidget {
                 // ── Delete Action ──
                 const SizedBox(height: KlasivoSpacing.xxxl),
                 Center(
-                  child: TextButton.icon(
+                  child: KlasivoButton(
+                    label: 'Delete Notification',
                     onPressed: () async {
-                      final confirmed = await showDialog<bool>(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Delete Notification'),
-                          content: const Text('Are you sure you want to delete this notification?'),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(false),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(true),
-                              style: TextButton.styleFrom(foregroundColor: KlasivoColors.error),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        ),
+                        title: 'Delete Notification',
+                        message: 'Are you sure you want to delete this notification?',
+                        confirmLabel: 'Delete',
+                        isDangerous: true,
                       );
                       if (confirmed == true && context.mounted) {
                         await FirebaseFirestore.instance
@@ -215,9 +204,8 @@ class NotificationDetailScreen extends ConsumerWidget {
                         if (context.mounted) Navigator.of(context).pop();
                       }
                     },
-                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                    label: const Text('Delete Notification'),
-                    style: TextButton.styleFrom(foregroundColor: KlasivoColors.error),
+                    variant: KlasivoButtonVariant.danger,
+                    icon: Icons.delete_outline_rounded,
                   ),
                 ),
               ],

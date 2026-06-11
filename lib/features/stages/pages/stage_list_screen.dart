@@ -8,6 +8,11 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class StageListScreen extends ConsumerWidget {
   const StageListScreen({Key? key}) : super(key: key);
@@ -62,65 +67,63 @@ class StageListScreen extends ConsumerWidget {
   void _showAddStageDialog(BuildContext context, WidgetRef ref) {
     final nameController = TextEditingController();
     final descController = TextEditingController();
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Stage'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Stage Name *',
-                hintText: 'e.g. Primary',
-                border: OutlineInputBorder(),
+      title: 'Add Stage',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          KlasivoTextField(
+            controller: nameController,
+            label: 'Stage Name *',
+            hint: 'e.g. Primary',
+          ),
+          const SizedBox(height: 12),
+          KlasivoTextField(
+            controller: descController,
+            label: 'Description',
+            hint: 'e.g. Primary Education',
+            maxLines: 2,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              KlasivoButton(
+                label: 'Cancel',
+                variant: KlasivoButtonVariant.tertiary,
+                onPressed: () => Navigator.pop(context),
               ),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                hintText: 'e.g. Primary Education',
-                border: OutlineInputBorder(),
+              const SizedBox(width: 8),
+              KlasivoButton(
+                label: 'Create',
+                onPressed: () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  try {
+                    final orgId =
+                        ref.read(currentOrganizationIdProvider) ?? '';
+                    final stages = ref.read(stagesProvider);
+                    final maxOrder = stages.isEmpty
+                        ? 0
+                        : stages.map((s) => s.order).reduce((a, b) => a > b ? a : b);
+                    await ref.read(stageServiceProvider).createStage(
+                          organizationId: orgId,
+                          name: nameController.text.trim(),
+                          description: descController.text.trim(),
+                          order: maxOrder + 1,
+                        );
+                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      KlasivoToast.success(context, message: 'Stage created successfully');
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      KlasivoToast.error(context, message: 'Failed: $e');
+                    }
+                  }
+                },
               ),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) return;
-              try {
-                final orgId =
-                    ref.read(currentOrganizationIdProvider) ?? '';
-                final stages = ref.read(stagesProvider);
-                final maxOrder = stages.isEmpty
-                    ? 0
-                    : stages.map((s) => s.order).reduce((a, b) => a > b ? a : b);
-                await ref.read(stageServiceProvider).createStage(
-                      organizationId: orgId,
-                      name: nameController.text.trim(),
-                      description: descController.text.trim(),
-                      order: maxOrder + 1,
-                    );
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) {
-                  showSnackBar(context, message: 'Stage created successfully');
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  showSnackBar(context, message: 'Failed: $e', isError: true);
-                }
-              }
-            },
-            child: const Text('Create'),
+            ],
           ),
         ],
       ),
@@ -152,160 +155,154 @@ class _StageCard extends ConsumerWidget {
     final totalStudents = classesAsync.fold<int>(
         0, (sum, c) => sum + c.studentCount);
 
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: () {
+        // Navigate to classes under this stage
+        context.go('/academic/stages/${stage.id}/classes');
+      },
+      padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () {
-          // Navigate to classes under this stage
-          context.go('/academic/stages/${stage.id}/classes');
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: KlasivoColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: KlasivoColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.school_outlined,
+              color: KlasivoColors.primary,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stage.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.school_outlined,
-                  color: KlasivoColors.primary,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                if (stage.description.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    stage.description,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Row(
                   children: [
+                    Icon(Icons.class_outlined,
+                        size: 14, color: Colors.grey[500]),
+                    const SizedBox(width: 4),
                     Text(
-                      stage.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
+                      '$classCount class${classCount != 1 ? 'es' : ''}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 13,
                       ),
                     ),
-                    if (stage.description.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        stage.description,
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 13,
-                        ),
+                    const SizedBox(width: 12),
+                    Icon(Icons.people_outline,
+                        size: 14, color: Colors.grey[500]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$totalStudents student${totalStudents != 1 ? 's' : ''}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 13,
                       ),
-                    ],
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.class_outlined,
-                            size: 14, color: Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$classCount class${classCount != 1 ? 'es' : ''}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.people_outline,
-                            size: 14, color: Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$totalStudents student${totalStudents != 1 ? 's' : ''}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 22),
+                tooltip: 'Add Class',
+                onPressed: () {
+                  context.go(
+                    '/academic/stages/${stage.id}/classes/create',
+                    extra: stage.id,
+                  );
+                },
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 22),
-                    tooltip: 'Add Class',
-                    onPressed: () {
-                      context.go(
-                        '/academic/stages/${stage.id}/classes/create',
-                        extra: stage.id,
-                      );
-                    },
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (value) async {
-                      if (value == 'edit') {
-                        _showEditStageDialog(context, ref, stage);
-                      } else if (value == 'archive') {
-                        final confirmed = await showConfirmationDialog(
-                          context: context,
-                          title: 'Archive Stage',
-                          message:
-                              'Archive "${stage.name}"? It will be hidden but data is preserved.',
-                          confirmLabel: 'Archive',
-                          isDangerous: true,
-                        );
-                        if (confirmed == true) {
-                          try {
-                            final userId =
-                                ref.read(userIdProvider) ?? '';
-                            await ref
-                                .read(stageServiceProvider)
-                                .archiveStage(stage.id, archivedBy: userId);
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: 'Stage archived');
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              showSnackBar(context,
-                                  message: 'Failed: $e', isError: true);
-                            }
-                          }
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'edit') {
+                    _showEditStageDialog(context, ref, stage);
+                  } else if (value == 'archive') {
+                    final confirmed = await KlasivoModal.confirm(
+                      context: context,
+                      title: 'Archive Stage',
+                      message:
+                          'Archive "${stage.name}"? It will be hidden but data is preserved.',
+                      confirmLabel: 'Archive',
+                      isDangerous: true,
+                    );
+                    if (confirmed == true) {
+                      try {
+                        final userId =
+                            ref.read(userIdProvider) ?? '';
+                        await ref
+                            .read(stageServiceProvider)
+                            .archiveStage(stage.id, archivedBy: userId);
+                        if (context.mounted) {
+                          KlasivoToast.success(context,
+                              message: 'Stage archived');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          KlasivoToast.error(context,
+                              message: 'Failed: $e');
                         }
                       }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_outlined, size: 20),
-                            SizedBox(width: 8),
-                            Text('Edit'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'archive',
-                        child: Row(
-                          children: [
-                            Icon(Icons.archive_outlined,
-                                size: 20, color: Colors.orange[700]),
-                            SizedBox(width: 8),
-                            Text('Archive',
-                                style:
-                                    TextStyle(color: Colors.orange[700])),
-                          ],
-                        ),
-                      ),
-                    ],
+                    }
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'archive',
+                    child: Row(
+                      children: [
+                        Icon(Icons.archive_outlined,
+                            size: 20, color: Colors.orange[700]),
+                        SizedBox(width: 8),
+                        Text('Archive',
+                            style:
+                                TextStyle(color: Colors.orange[700])),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -314,56 +311,54 @@ class _StageCard extends ConsumerWidget {
       BuildContext context, WidgetRef ref, StageData stage) {
     final nameController = TextEditingController(text: stage.name);
     final descController = TextEditingController(text: stage.description);
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Stage'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Stage Name *',
-                border: OutlineInputBorder(),
+      title: 'Edit Stage',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          KlasivoTextField(
+            controller: nameController,
+            label: 'Stage Name *',
+          ),
+          const SizedBox(height: 12),
+          KlasivoTextField(
+            controller: descController,
+            label: 'Description',
+            maxLines: 2,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              KlasivoButton(
+                label: 'Cancel',
+                variant: KlasivoButtonVariant.tertiary,
+                onPressed: () => Navigator.pop(context),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
+              const SizedBox(width: 8),
+              KlasivoButton(
+                label: 'Update',
+                onPressed: () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  try {
+                    await ref.read(stageServiceProvider).updateStage(
+                          stageId: stage.id,
+                          name: nameController.text.trim(),
+                          description: descController.text.trim(),
+                        );
+                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      KlasivoToast.success(context, message: 'Stage updated');
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      KlasivoToast.error(context, message: 'Failed: $e');
+                    }
+                  }
+                },
               ),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) return;
-              try {
-                await ref.read(stageServiceProvider).updateStage(
-                      stageId: stage.id,
-                      name: nameController.text.trim(),
-                      description: descController.text.trim(),
-                    );
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) {
-                  showSnackBar(context, message: 'Stage updated');
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  showSnackBar(context, message: 'Failed: $e',
-                      isError: true);
-                }
-              }
-            },
-            child: const Text('Update'),
+            ],
           ),
         ],
       ),
@@ -558,20 +553,11 @@ class _SetupWizardSheetState extends State<_SetupWizardSheet> {
           const SizedBox(height: 24),
 
           // Create button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isCreating ? null : _createStructure,
-              child: _isCreating
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Create Structure',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
+          KlasivoButton(
+            label: 'Create Structure',
+            onPressed: _isCreating ? null : _createStructure,
+            loading: _isCreating,
+            fullWidth: true,
           ),
           const SizedBox(height: 16),
         ],
@@ -644,11 +630,11 @@ class _SetupWizardSheetState extends State<_SetupWizardSheet> {
 
       if (mounted) {
         Navigator.pop(context);
-        showSnackBar(context, message: 'Academic structure created!');
+        KlasivoToast.success(context, message: 'Academic structure created!');
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, message: 'Failed: $e', isError: true);
+        KlasivoToast.error(context, message: 'Failed: $e');
       }
     } finally {
       if (mounted) setState(() => _isCreating = false);

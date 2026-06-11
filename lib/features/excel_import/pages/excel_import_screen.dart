@@ -5,7 +5,10 @@ import '../../../core/services/excel_import_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/organization_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ExcelImportScreen extends ConsumerStatefulWidget {
   final String classId;
@@ -66,13 +69,13 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) showSnackBar(context, message: 'Failed to parse file: $e', isError: true);
+      if (mounted) KlasivoToast.error(context, message: 'Failed to parse file: $e');
     }
   }
 
   void _previewStudents() {
     if (_parseResult == null || _nameColumn == null) {
-      showSnackBar(context, message: 'Please map at least the Name column', isError: true);
+      KlasivoToast.error(context, message: 'Please map at least the Name column');
       return;
     }
 
@@ -116,31 +119,29 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
       setState(() => _isImporting = false);
 
       if (mounted) {
-        showDialog(
+        KlasivoModal.showForm(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Import Complete'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Successfully imported: ${result.successCount} students', style: const TextStyle(color: Colors.green)),
-                if (result.failCount > 0)
-                  Text('Failed: ${result.failCount}', style: const TextStyle(color: Colors.red)),
-                if (result.errors.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ...result.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
-                ],
+          title: 'Import Complete',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Successfully imported: ${result.successCount} students', style: const TextStyle(color: Colors.green)),
+              if (result.failCount > 0)
+                Text('Failed: ${result.failCount}', style: const TextStyle(color: Colors.red)),
+              if (result.errors.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...result.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
               ],
-            ),
-            actions: [
-              ElevatedButton(
+              const SizedBox(height: 16),
+              KlasivoButton(
+                label: 'Done',
+                fullWidth: true,
                 onPressed: () {
-                  Navigator.pop(ctx);
+                  Navigator.pop(context);
                   Navigator.pop(context, true);
                 },
-                child: const Text('Done'),
               ),
             ],
           ),
@@ -148,14 +149,12 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
       }
     } catch (e) {
       setState(() => _isImporting = false);
-      if (mounted) showSnackBar(context, message: 'Import failed: $e', isError: true);
+      if (mounted) KlasivoToast.error(context, message: 'Import failed: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(title: const Text('Import Students from Excel'), centerTitle: true),
       body: _isImporting
@@ -175,10 +174,10 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
                   _StepCard(
                     step: 1,
                     title: 'Upload Excel File',
-                    child: ElevatedButton.icon(
+                    child: KlasivoButton(
+                      label: _isLoading ? 'Parsing...' : 'Select Excel File',
+                      icon: Icons.upload_file,
                       onPressed: _isLoading ? null : _pickAndParseFile,
-                      icon: const Icon(Icons.upload_file),
-                      label: Text(_isLoading ? 'Parsing...' : 'Select Excel File'),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -197,10 +196,10 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
                           _ColumnMapper(label: 'Email', value: _emailColumn, columns: _parseResult!.columns, onChanged: (v) => setState(() => _emailColumn = v)),
                           _ColumnMapper(label: 'Parent Phone', value: _parentPhoneColumn, columns: _parseResult!.columns, onChanged: (v) => setState(() => _parentPhoneColumn = v)),
                           const SizedBox(height: 12),
-                          ElevatedButton.icon(
+                          KlasivoButton(
+                            label: 'Preview Students',
+                            icon: Icons.preview,
                             onPressed: _previewStudents,
-                            icon: const Icon(Icons.preview),
-                            label: const Text('Preview Students'),
                           ),
                         ],
                       ),
@@ -227,15 +226,11 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
                               child: Text('... and ${_mappedStudents.length - 10} more', style: TextStyle(color: Colors.grey[600])),
                             ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: ElevatedButton.icon(
-                              onPressed: _importStudents,
-                              icon: const Icon(Icons.import_contacts),
-                              label: Text('Import ${_mappedStudents.length} Students'),
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                            ),
+                          KlasivoButton(
+                            label: 'Import ${_mappedStudents.length} Students',
+                            icon: Icons.import_contacts,
+                            fullWidth: true,
+                            onPressed: _importStudents,
                           ),
                         ],
                       ),
@@ -258,25 +253,23 @@ class _StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              CircleAvatar(radius: 14, child: Text('$step', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
-              const SizedBox(width: 12),
-              Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-            ]),
-            if (subtitle != null)
-              Padding(padding: const EdgeInsets.only(left: 40, top: 4), child: Text(subtitle!, style: TextStyle(color: Colors.grey[600], fontSize: 12))),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
+    return KlasivoCard(
+      variant: KlasivoCardVariant.elevated,
+      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            CircleAvatar(radius: 14, child: Text('$step', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+            const SizedBox(width: 12),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+          ]),
+          if (subtitle != null)
+            Padding(padding: const EdgeInsets.only(left: 40, top: 4), child: Text(subtitle!, style: TextStyle(color: Colors.grey[600], fontSize: 12))),
+          const SizedBox(height: 16),
+          child,
+        ],
       ),
     );
   }

@@ -6,7 +6,9 @@ import '../../../providers/student_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class StudentFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -74,7 +76,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
               : _passwordController.text.trim(),
         );
         if (mounted) {
-          showSnackBar(context, message: 'Student updated successfully');
+          KlasivoToast.success(context, message: 'Student updated successfully');
           context.pop();
         }
       } else {
@@ -99,17 +101,13 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           password: _passwordController.text.trim(),
         );
         if (mounted) {
-          showSnackBar(context, message: 'Student added successfully');
+          KlasivoToast.success(context, message: 'Student added successfully');
           context.pop();
         }
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
-          context,
-          message: 'Failed: ${e.toString()}',
-          isError: true,
-        );
+        KlasivoToast.error(context, message: 'Failed: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -242,59 +240,42 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
               key: _formKey,
               child: Column(
                 children: [
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Full Name *',
-                      hintText: 'e.g. Ahmed Mohamed',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    label: 'Full Name *',
+                    hint: 'e.g. Ahmed Mohamed',
+                    prefixIcon: Icons.person_outline,
                     validator: _validateName,
                     enabled: !_isLoading,
-                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _gradeController,
-                    decoration: InputDecoration(
-                      labelText: 'Grade / Level',
-                      hintText: 'e.g. Grade 10',
-                      prefixIcon: const Icon(Icons.school_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    label: 'Grade / Level',
+                    hint: 'e.g. Grade 10',
+                    prefixIcon: Icons.school_outlined,
                     enabled: !_isLoading,
-                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: widget.isEditing
-                          ? 'New Password (leave empty to keep current)'
-                          : 'Password *',
-                      hintText: widget.isEditing
-                          ? 'Leave empty to keep current'
-                          : 'Min 4 characters',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() =>
-                              _obscurePassword = !_obscurePassword);
-                        },
+                    label: widget.isEditing
+                        ? 'New Password (leave empty to keep current)'
+                        : 'Password *',
+                    hint: widget.isEditing
+                        ? 'Leave empty to keep current'
+                        : 'Min 4 characters',
+                    prefixIcon: Icons.lock_outline,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      onPressed: () {
+                        setState(() =>
+                            _obscurePassword = !_obscurePassword);
+                      },
                     ),
                     obscureText: _obscurePassword,
                     validator: _validatePassword,
@@ -303,33 +284,13 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
                   const SizedBox(height: 32),
 
                   // ── Submit Button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleSubmit,
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              widget.isEditing
-                                  ? 'Update Student'
-                                  : 'Add Student',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
+                  KlasivoButton(
+                    label: widget.isEditing
+                        ? 'Update Student'
+                        : 'Add Student',
+                    onPressed: _isLoading ? null : _handleSubmit,
+                    loading: _isLoading,
+                    fullWidth: true,
                   ),
                 ],
               ),

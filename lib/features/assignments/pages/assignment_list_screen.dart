@@ -8,7 +8,9 @@ import '../../../core/config/app_constants.dart';
 import '../../../providers/assignment_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../widgets/klasivo_components.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ASSIGNMENT LIST SCREEN — Klasivo v1.7
@@ -143,7 +145,7 @@ class _AssignmentTabList extends ConsumerWidget {
             className: className,
             onTap: () => context.go('/teacher/assignments/${assignment.id}'),
             onDelete: () async {
-              final confirmed = await showConfirmationDialog(
+              final confirmed = await KlasivoModal.confirm(
                 context: context,
                 title: 'Delete Assignment',
                 message:
@@ -157,12 +159,12 @@ class _AssignmentTabList extends ConsumerWidget {
                       .read(assignmentServiceProvider)
                       .deleteAssignment(assignment.id);
                   if (context.mounted) {
-                    showSnackBar(context, message: 'Assignment deleted');
+                    KlasivoToast.success(context, message: 'Assignment deleted');
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    showSnackBar(context,
-                        message: 'Failed: $e', isError: true);
+                    KlasivoToast.error(context,
+                        message: 'Failed: $e');
                   }
                 }
               }
@@ -203,117 +205,113 @@ class _AssignmentCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dateFormat = DateFormat('MMM dd, yyyy');
 
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return KlasivoCard(
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header: Title + Status Badge ──
+          Row(
             children: [
-              // ── Header: Title + Status Badge ──
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      assignment.title,
-                      style: KlasivoTypography.titleMedium.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: KlasivoSpacing.sm),
-                  _StatusBadge(assignment: assignment),
-                ],
-              ),
-
-              // ── Description Snippet ──
-              if (assignment.description != null &&
-                  assignment.description!.isNotEmpty) ...[
-                const SizedBox(height: KlasivoSpacing.xs),
-                Text(
-                  assignment.description!,
-                  style: KlasivoTypography.bodySmall.copyWith(
+              Expanded(
+                child: Text(
+                  assignment.title,
+                  style: KlasivoTypography.titleMedium.copyWith(
                     color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextSecondary,
+                        ? KlasivoColors.darkTextPrimary
+                        : KlasivoColors.lightTextPrimary,
                   ),
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
+              ),
+              const SizedBox(width: KlasivoSpacing.sm),
+              _StatusBadge(assignment: assignment),
+            ],
+          ),
 
-              const SizedBox(height: KlasivoSpacing.md),
+          // ── Description Snippet ──
+          if (assignment.description != null &&
+              assignment.description!.isNotEmpty) ...[
+            const SizedBox(height: KlasivoSpacing.xs),
+            Text(
+              assignment.description!,
+              style: KlasivoTypography.bodySmall.copyWith(
+                color: isDark
+                    ? KlasivoColors.darkTextTertiary
+                    : KlasivoColors.lightTextSecondary,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
 
-              // ── Metadata Row ──
-              Row(
-                children: [
-                  // Class name
-                  Icon(
-                    Icons.class_outlined,
-                    size: 14,
-                    color: isDark
+          const SizedBox(height: KlasivoSpacing.md),
+
+          // ── Metadata Row ──
+          Row(
+            children: [
+              // Class name
+              Icon(
+                Icons.class_outlined,
+                size: 14,
+                color: isDark
+                    ? KlasivoColors.darkTextTertiary
+                    : KlasivoColors.lightTextTertiary,
+              ),
+              const SizedBox(width: KlasivoSpacing.xs),
+              Text(
+                className,
+                style: KlasivoTypography.caption.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+              ),
+              const SizedBox(width: KlasivoSpacing.md),
+
+              // Due date
+              Icon(
+                Icons.schedule,
+                size: 14,
+                color: assignment.isOverdue && assignment.isPublished
+                    ? KlasivoColors.error
+                    : isDark
                         ? KlasivoColors.darkTextTertiary
                         : KlasivoColors.lightTextTertiary,
-                  ),
-                  const SizedBox(width: KlasivoSpacing.xs),
-                  Text(
-                    className,
-                    style: KlasivoTypography.caption.copyWith(
-                      color: isDark
+              ),
+              const SizedBox(width: KlasivoSpacing.xs),
+              Text(
+                'Due ${dateFormat.format(assignment.dueDate)}',
+                style: KlasivoTypography.caption.copyWith(
+                  color: assignment.isOverdue && assignment.isPublished
+                      ? KlasivoColors.error
+                      : isDark
                           ? KlasivoColors.darkTextTertiary
                           : KlasivoColors.lightTextTertiary,
-                    ),
-                  ),
-                  const SizedBox(width: KlasivoSpacing.md),
+                ),
+              ),
 
-                  // Due date
-                  Icon(
-                    Icons.schedule,
-                    size: 14,
-                    color: assignment.isOverdue && assignment.isPublished
-                        ? KlasivoColors.error
-                        : isDark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                  ),
-                  const SizedBox(width: KlasivoSpacing.xs),
-                  Text(
-                    'Due ${dateFormat.format(assignment.dueDate)}',
-                    style: KlasivoTypography.caption.copyWith(
-                      color: assignment.isOverdue && assignment.isPublished
-                          ? KlasivoColors.error
-                          : isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                    ),
-                  ),
+              const Spacer(),
 
-                  const Spacer(),
-
-                  // Delete button
-                  InkWell(
-                    onTap: onDelete,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                    child: Padding(
-                      padding: const EdgeInsets.all(KlasivoSpacing.xs),
-                      child: Icon(
-                        Icons.delete_outline,
-                        size: 18,
-                        color: KlasivoColors.error.withValues(alpha: 0.7),
-                      ),
-                    ),
+              // Delete button
+              InkWell(
+                onTap: onDelete,
+                borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                child: Padding(
+                  padding: const EdgeInsets.all(KlasivoSpacing.xs),
+                  child: Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: KlasivoColors.error.withValues(alpha: 0.7),
                   ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

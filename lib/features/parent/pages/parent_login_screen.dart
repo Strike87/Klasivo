@@ -6,6 +6,9 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Parent Login Screen ──────────────────────────────────────────────────────
 
@@ -164,23 +167,12 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.xxxl),
 
                 // ── Email Field ──
-                Text(
-                  'Email',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Email',
+                  hint: 'parent@email.com',
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    hintText: 'parent@email.com',
-                    prefixIcon: Icon(Icons.email_outlined, size: 20),
-                  ),
+                  prefixIcon: Icons.email_outlined,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Email is required';
@@ -194,33 +186,22 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Password Field ──
-                Text(
-                  'Password',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Password',
+                  hint: 'Enter your password',
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your password',
-                    prefixIcon:
-                        const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
+                  prefixIcon: Icons.lock_outline_rounded,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 20,
                     ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -234,9 +215,10 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 // ── Forgot Password ──
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton(
+                  child: KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Forgot password?',
                     onPressed: () => context.go('/auth/forgot-password'),
-                    child: const Text('Forgot password?'),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xl),
@@ -270,25 +252,12 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 ],
 
                 // ── Login Button ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF845EF7),
-                    ),
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Sign In'),
-                  ),
+                KlasivoButton(
+                  label: 'Sign In',
+                  onPressed: _login,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -312,24 +281,14 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Google Sign-In ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: isLoading ? null : _loginWithGoogle,
-                    icon: Image.asset(
-                      'assets/images/google_logo.png',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 24),
-                    ),
-                    label: const Text('Continue with Google'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      ),
-                    ),
-                  ),
+                KlasivoButton(
+                  label: 'Continue with Google',
+                  variant: KlasivoButtonVariant.secondary,
+                  icon: Icons.g_mobiledata,
+                  onPressed: _loginWithGoogle,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -345,25 +304,22 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                             : KlasivoColors.lightTextTertiary,
                       ),
                     ),
-                    TextButton(
+                    KlasivoButton(
+                      variant: KlasivoButtonVariant.tertiary,
+                      label: 'Create one',
                       onPressed: () => context.go('/auth/parent-register'),
-                      child: const Text('Create one'),
                     ),
                   ],
                 ),
 
                 // ── Link Child Action ──
                 Center(
-                  child: TextButton(
+                  child: KlasivoButton(
+                    variant: KlasivoButtonVariant.tertiary,
+                    label: 'Link your child',
                     onPressed: () {
                       context.go(AppConstants.routeParentLink);
                     },
-                    child: Text(
-                      'Link your child',
-                      style: KlasivoTypography.labelMedium.copyWith(
-                        color: const Color(0xFF845EF7),
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),

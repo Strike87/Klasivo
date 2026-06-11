@@ -11,6 +11,8 @@ import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_badge.dart';
 import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 import '../../../core/services/lesson_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -127,16 +129,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not open the link'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: KlasivoColors.error,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            ),
-          ),
-        );
+        KlasivoToast.error(context, message: 'Could not open the link');
       }
     }
   }
@@ -146,30 +139,14 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
   Future<void> _archiveLesson() async {
     if (_lesson == null) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Archive Lesson'),
-        content: Text(
+      title: 'Archive Lesson',
+      message:
           'Are you sure you want to archive "${_lesson!.title}"? This lesson will be hidden from the content browser.',
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: KlasivoColors.error,
-            ),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Archive',
+      cancelLabel: 'Cancel',
+      isDangerous: true,
     );
 
     if (confirmed == true) {
@@ -177,29 +154,13 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
         final service = ref.read(lessonServiceProvider);
         await service.archiveLesson(_lesson!.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('"${_lesson!.title}" archived'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.success(
+              context, message: '"${_lesson!.title}" archived');
           context.pop();
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to archive: $e'),
-              backgroundColor: KlasivoColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.error(context, message: 'Failed to archive: $e');
         }
       }
     }
@@ -249,16 +210,8 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     tooltip: 'Edit Lesson',
                     onPressed: () {
                       // TODO: Navigate to lesson edit screen
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Lesson editing coming soon'),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(KlasivoRadius.md),
-                          ),
-                        ),
-                      );
+                      KlasivoToast.info(context,
+                          message: 'Lesson editing coming soon');
                     },
                   ),
                   // Overflow menu
@@ -1328,7 +1281,7 @@ IconData _materialTypeIcon(String type) {
     'powerpoint' => Icons.slideshow_outlined,
     'image' => Icons.image_outlined,
     'video' => Icons.videocam_outlined,
-    'link' => Icons.link,
+    'link' => Icons.link_outlined,
     _ => Icons.insert_drive_file_outlined,
   };
 }
@@ -1336,11 +1289,11 @@ IconData _materialTypeIcon(String type) {
 Color _materialTypeColor(String type) {
   return switch (type) {
     'pdf' => KlasivoColors.error,
-    'word' => KlasivoColors.primary,
-    'powerpoint' => KlasivoColors.accent,
+    'word' => const Color(0xFF2B579A),
+    'powerpoint' => const Color(0xFFD24726),
     'image' => KlasivoColors.secondary,
-    'video' => KlasivoColors.accentDark,
-    'link' => KlasivoColors.primaryLight,
-    _ => KlasivoColors.lightTextTertiary,
+    'video' => KlasivoColors.primary,
+    'link' => const Color(0xFF3B5BDB),
+    _ => KlasivoColors.accent,
   };
 }

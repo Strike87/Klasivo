@@ -7,6 +7,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Organization Settings Screen ──────────────────────────────────────────────
 
@@ -83,15 +87,11 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
           .update(updates);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Organization updated successfully')),
-        );
+        KlasivoToast.success(context, message: 'Organization updated successfully');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update: ${e.toString().replaceAll('Exception: ', '')}')),
-        );
+        KlasivoToast.error(context, message: 'Failed to update: ${e.toString().replaceAll('Exception: ', '')}');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -132,51 +132,29 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                   const SizedBox(height: KlasivoSpacing.xxl),
 
                   // ── Workspace Name ──
-                  Text('Workspace Name', style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                  )),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. Ahmed Academy',
-                      prefixIcon: Icon(Icons.business_outlined, size: 20),
-                    ),
+                    label: 'Workspace Name',
+                    hint: 'e.g. Ahmed Academy',
+                    prefixIcon: Icons.business_outlined,
                   ),
                   const SizedBox(height: KlasivoSpacing.lg),
 
                   // ── Workspace Slug ──
-                  Text('Workspace Slug', style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark ? KlasivoColors.darkTextSecondary : KlasivoColors.lightTextSecondary,
-                  )),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
                     controller: _slugController,
-                    decoration: InputDecoration(
-                      hintText: 'ahmed-academy',
-                      prefixIcon: const Icon(Icons.link_outlined, size: 20),
-                      prefixText: '${AppConstants.appDomain}/org/',
-                      prefixStyle: KlasivoTypography.bodySmall.copyWith(
-                        color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  Text(
-                    'This creates a shareable link for your workspace',
-                    style: KlasivoTypography.bodySmall.copyWith(
-                      color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                    ),
+                    label: 'Workspace Slug',
+                    hint: 'ahmed-academy',
+                    prefixIcon: Icons.link_outlined,
+                    helperText: 'Creates: ${AppConstants.appDomain}/org/your-slug',
                   ),
                   const SizedBox(height: KlasivoSpacing.xxxl),
 
                   // ── Info Card ──
-                  Container(
+                  KlasivoCard(
+                    variant: KlasivoCardVariant.filled,
                     padding: const EdgeInsets.all(KlasivoSpacing.md),
-                    decoration: BoxDecoration(
-                      color: KlasivoColors.infoSurface,
-                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                    ),
+                    margin: EdgeInsets.zero,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -194,25 +172,20 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                   const SizedBox(height: KlasivoSpacing.xxxl),
 
                   // ── Save Button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _saveOrganization,
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 20, width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text('Save Changes'),
-                    ),
+                  KlasivoButton(
+                    label: 'Save Changes',
+                    fullWidth: true,
+                    loading: _isSaving,
+                    onPressed: _saveOrganization,
                   ),
                   const SizedBox(height: KlasivoSpacing.xxl),
 
                   // ── Feature Flags ──
                   _SectionHeader(title: 'Feature Management'),
                   const SizedBox(height: KlasivoSpacing.sm),
-                  Card(
+                  KlasivoCard(
+                    margin: EdgeInsets.zero,
+                    padding: EdgeInsets.zero,
                     child: ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(KlasivoSpacing.sm),
@@ -238,11 +211,10 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                   // ── Danger Zone ──
                   _SectionHeader(title: 'Danger Zone'),
                   const SizedBox(height: KlasivoSpacing.sm),
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      side: const BorderSide(color: KlasivoColors.error, width: 1),
-                    ),
+                  KlasivoCard(
+                    accentColor: KlasivoColors.error,
+                    margin: EdgeInsets.zero,
+                    padding: EdgeInsets.zero,
                     child: ListTile(
                       leading: const Icon(Icons.warning_amber_rounded, color: KlasivoColors.error),
                       title: Text('Delete Workspace', style: KlasivoTypography.titleMedium.copyWith(color: KlasivoColors.error)),
@@ -251,12 +223,7 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                         style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.error.withValues(alpha: 0.7)),
                       ),
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please contact support to delete your workspace'),
-                            backgroundColor: KlasivoColors.error,
-                          ),
-                        );
+                        KlasivoToast.error(context, message: 'Please contact support to delete your workspace');
                       },
                     ),
                   ),

@@ -5,6 +5,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
 
 class TeacherRegistrationScreen extends ConsumerStatefulWidget {
   const TeacherRegistrationScreen({Key? key}) : super(key: key);
@@ -241,21 +243,11 @@ class _TeacherRegistrationScreenState
 
                 // ── Invite Code (Teacher flow — shown FIRST) ──
                 if (!_isOwnerFlow) ...[
-                  Text(
-                    'Invite Code',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: isDark
-                          ? KlasivoColors.darkTextSecondary
-                          : KlasivoColors.lightTextSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  TextFormField(
+                  KlasivoTextField(
+                    label: 'Invite Code',
                     controller: _inviteCodeController,
-                    decoration: const InputDecoration(
-                      hintText: 'T-XXXXXXXX or klasivo.app/join/XXXXXXX',
-                      prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
-                    ),
+                    hint: 'T-XXXXXXXX or klasivo.app/join/XXXXXXX',
+                    prefixIcon: Icons.vpn_key_outlined,
                     validator: (value) {
                       if (!_isOwnerFlow && (value == null || value.trim().isEmpty)) {
                         return 'Invite code is required for teachers';
@@ -267,21 +259,11 @@ class _TeacherRegistrationScreenState
                 ],
 
                 // ── Full Name ──
-                Text(
-                  'Full Name',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Full Name',
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your full name',
-                    prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
-                  ),
+                  hint: 'Enter your full name',
+                  prefixIcon: Icons.person_outline_rounded,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Name is required';
                     return null;
@@ -290,23 +272,12 @@ class _TeacherRegistrationScreenState
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Email ──
-                Text(
-                  'Email',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Email',
                   controller: _emailController,
+                  hint: 'you@example.com',
+                  prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    hintText: 'you@example.com',
-                    prefixIcon: Icon(Icons.email_outlined, size: 20),
-                  ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Email is required';
                     if (!value.contains('@')) return 'Enter a valid email';
@@ -316,32 +287,22 @@ class _TeacherRegistrationScreenState
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Password ──
-                Text(
-                  'Password',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Password',
                   controller: _passwordController,
+                  hint: 'At least 6 characters',
+                  prefixIcon: Icons.lock_outline_rounded,
                   obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: 'At least 6 characters',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 20,
                     ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Password is required';
@@ -380,22 +341,12 @@ class _TeacherRegistrationScreenState
                 ],
 
                 // ── Register Button ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : _register,
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(_isOwnerFlow ? 'Create Workspace' : 'Join Organization'),
-                  ),
+                KlasivoButton(
+                  label: _isOwnerFlow ? 'Create Workspace' : 'Join Organization',
+                  onPressed: isLoading ? null : _register,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -452,9 +403,10 @@ class _TeacherRegistrationScreenState
                             : KlasivoColors.lightTextTertiary,
                       ),
                     ),
-                    TextButton(
+                    KlasivoButton(
+                      label: 'Sign in',
+                      variant: KlasivoButtonVariant.tertiary,
                       onPressed: () => context.go('/auth/teacher-login'),
-                      child: const Text('Sign in'),
                     ),
                   ],
                 ),

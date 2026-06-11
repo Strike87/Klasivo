@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
 
 class NotificationCenterScreen extends ConsumerWidget {
   const NotificationCenterScreen({Key? key}) : super(key: key);
@@ -21,7 +23,11 @@ class NotificationCenterScreen extends ConsumerWidget {
         centerTitle: true,
         actions: [
           if (unreadCount > 0)
-            TextButton.icon(
+            KlasivoButton(
+              label: 'Mark all read ($unreadCount)',
+              icon: Icons.done_all,
+              variant: KlasivoButtonVariant.tertiary,
+              size: KlasivoButtonSize.sm,
               onPressed: () async {
                 // Mark all as read
                 for (final n in notifications.where((n) => !n.isRead)) {
@@ -31,8 +37,6 @@ class NotificationCenterScreen extends ConsumerWidget {
                       .update({'isRead': true});
                 }
               },
-              icon: const Icon(Icons.done_all, size: 18),
-              label: Text('Mark all read ($unreadCount)'),
             ),
         ],
       ),
@@ -63,55 +67,49 @@ class _NotificationCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    return Card(
-      elevation: notification.isRead ? 0 : 1,
-      color: notification.isRead ? null : theme.colorScheme.primary.withValues(alpha: 0.03),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: InkWell(
-        onTap: () async {
-          if (!notification.isRead) {
-            await FirebaseFirestore.instance
-                .collection(AppConstants.notificationsCollection)
-                .doc(notification.id)
-                .update({'isRead': true});
-          }
-        },
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _typeColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(_typeIcon, color: _typeColor, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(notification.title,
-                        style: TextStyle(fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 4),
-                    Text(notification.body, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    if (notification.createdAt != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(_formatTime(notification.createdAt!), style: TextStyle(color: Colors.grey[400], fontSize: 11)),
-                      ),
-                  ],
-                ),
-              ),
-              if (!notification.isRead)
-                Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle)),
-            ],
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: () async {
+        if (!notification.isRead) {
+          await FirebaseFirestore.instance
+              .collection(AppConstants.notificationsCollection)
+              .doc(notification.id)
+              .update({'isRead': true});
+        }
+      },
+      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.zero,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _typeColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(_typeIcon, color: _typeColor, size: 20),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(notification.title,
+                    style: TextStyle(fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(notification.body, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                if (notification.createdAt != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(_formatTime(notification.createdAt!), style: TextStyle(color: Colors.grey[400], fontSize: 11)),
+                  ),
+              ],
+            ),
+          ),
+          if (!notification.isRead)
+            Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle)),
+        ],
       ),
     );
   }

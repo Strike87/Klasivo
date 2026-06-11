@@ -10,8 +10,9 @@ import '../../../providers/class_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../providers/subject_provider.dart';
-import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ATTENDANCE SCREEN — Klasivo v1.7 "Take Attendance"
@@ -109,7 +110,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   Future<void> _saveAttendance() async {
     if (_studentStatuses.isEmpty) {
-      showSnackBar(context, message: 'No attendance to save', isError: true);
+      KlasivoToast.error(context, message: 'No attendance to save');
       return;
     }
 
@@ -134,14 +135,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           );
 
       if (mounted) {
-        showSnackBar(context, message: 'Attendance saved successfully');
+        KlasivoToast.success(context, message: 'Attendance saved successfully');
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
+        KlasivoToast.error(
           context,
           message: 'Failed to save attendance: $e',
-          isError: true,
         );
       }
     } finally {
@@ -661,43 +661,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: _isSaving ? null : _saveAttendance,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: KlasivoColors.primary,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor:
-                  KlasivoColors.primary.withValues(alpha: 0.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-            child: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.save_outlined, size: 20),
-                      const SizedBox(width: KlasivoSpacing.sm),
-                      Text(
-                        'Save Attendance (${_studentStatuses.length})',
-                        style: KlasivoTypography.labelLarge.copyWith(
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
+        child: KlasivoButton(
+          label: 'Save Attendance (${_studentStatuses.length})',
+          icon: Icons.save_outlined,
+          onPressed: _saveAttendance,
+          loading: _isSaving,
+          fullWidth: true,
+          size: KlasivoButtonSize.lg,
         ),
       ),
     );

@@ -5,6 +5,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_text_field.dart';
 
 /// Parent Registration screen — email+password and Google Sign-In.
 /// After registration, parents are redirected to link their child.
@@ -163,21 +165,11 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                 const SizedBox(height: KlasivoSpacing.xxxl),
 
                 // ── Full Name ──
-                Text(
-                  'Full Name',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Full Name',
+                  hint: 'Enter your full name',
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your full name',
-                    prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
-                  ),
+                  prefixIcon: Icons.person_outline_rounded,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Name is required';
                     return null;
@@ -186,23 +178,12 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Email ──
-                Text(
-                  'Email',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Email',
+                  hint: 'parent@email.com',
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    hintText: 'parent@email.com',
-                    prefixIcon: Icon(Icons.email_outlined, size: 20),
-                  ),
+                  prefixIcon: Icons.email_outlined,
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Email is required';
                     if (!value.contains('@')) return 'Enter a valid email';
@@ -212,32 +193,22 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Password ──
-                Text(
-                  'Password',
-                  style: KlasivoTypography.labelMedium.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                TextFormField(
+                KlasivoTextField(
+                  label: 'Password',
+                  hint: 'At least 6 characters',
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: 'At least 6 characters',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
+                  prefixIcon: Icons.lock_outline_rounded,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 20,
                     ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Password is required';
@@ -276,25 +247,12 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                 ],
 
                 // ── Create Account Button ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : _register,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF845EF7),
-                    ),
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Create Account'),
-                  ),
+                KlasivoButton(
+                  label: 'Create Account',
+                  onPressed: _register,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -318,24 +276,14 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Google Sign-In ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: isLoading ? null : _registerWithGoogle,
-                    icon: Image.asset(
-                      'assets/images/google_logo.png',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 24),
-                    ),
-                    label: const Text('Continue with Google'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      ),
-                    ),
-                  ),
+                KlasivoButton(
+                  label: 'Continue with Google',
+                  variant: KlasivoButtonVariant.secondary,
+                  icon: Icons.g_mobiledata,
+                  onPressed: _registerWithGoogle,
+                  loading: isLoading,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 
@@ -351,9 +299,10 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
                             : KlasivoColors.lightTextTertiary,
                       ),
                     ),
-                    TextButton(
+                    KlasivoButton(
+                      variant: KlasivoButtonVariant.tertiary,
+                      label: 'Sign in',
                       onPressed: () => context.go('/auth/parent-login'),
-                      child: const Text('Sign in'),
                     ),
                   ],
                 ),

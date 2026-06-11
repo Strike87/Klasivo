@@ -10,6 +10,7 @@ import '../../providers/notification_provider.dart';
 import '../../core/config/app_constants.dart';
 import '../../core/config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/klasivo_card.dart';
 import '../../widgets/klasivo_components.dart';
 
 class StudentDashboard extends ConsumerWidget {
@@ -304,7 +305,9 @@ class _ActiveExamsList extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (classId == null || classId!.isEmpty) {
-      return Card(
+      return KlasivoCard(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
         child: KlasivoEmptyState(
           icon: Icons.quiz_outlined,
           title: 'No class assigned',
@@ -326,7 +329,9 @@ class _ActiveExamsList extends ConsumerWidget {
         height: 80,
         child: KlasivoLoading(),
       ),
-      error: (_, __) => Card(
+      error: (_, __) => KlasivoCard(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
         child: KlasivoEmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Error loading exams',
@@ -350,7 +355,9 @@ class _ActiveExamsList extends ConsumerWidget {
         }).take(3).toList();
 
         if (activeExams.isEmpty) {
-          return Card(
+          return KlasivoCard(
+            margin: EdgeInsets.zero,
+            padding: EdgeInsets.zero,
             child: KlasivoEmptyState(
               icon: Icons.event_available_outlined,
               title: 'No available exams',
@@ -368,25 +375,17 @@ class _ActiveExamsList extends ConsumerWidget {
             final canStart = exam.canStart;
             final dateFormat = DateFormat('MMM dd, hh:mm a');
 
-            return Card(
+            return KlasivoCard(
+              variant: KlasivoCardVariant.interactive,
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.sm),
-              elevation: isActive ? 2 : 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                side: isActive
-                    ? BorderSide(
-                        color: KlasivoColors.accentLight, width: 1.5)
-                    : BorderSide.none,
-              ),
-              child: InkWell(
-                onTap: canStart
-                    ? () => context.go('/student/exams/${exam.id}/take')
-                    : null,
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.md),
-                child: Padding(
-                  padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                  child: Row(
+              padding: EdgeInsets.zero,
+              onTap: canStart
+                  ? () => context.go('/student/exams/${exam.id}/take')
+                  : null,
+              accentColor: isActive ? KlasivoColors.accentLight : null,
+              child: Padding(
+                padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(KlasivoSpacing.md),
@@ -458,7 +457,6 @@ class _ActiveExamsList extends ConsumerWidget {
                     ],
                   ),
                 ),
-              ),
             );
           }).toList(),
         );
@@ -486,7 +484,9 @@ class _RecentResultsList extends ConsumerWidget {
         .toList();
 
     if (submittedSubs.isEmpty) {
-      return Card(
+      return KlasivoCard(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
         child: KlasivoEmptyState(
           icon: Icons.assessment_outlined,
           title: 'No results yet',
@@ -503,12 +503,10 @@ class _RecentResultsList extends ConsumerWidget {
         final passed = sub.percentage >= 50;
         final dateFormat = DateFormat('MMM dd, yyyy');
 
-        return Card(
+        return KlasivoCard(
+          variant: KlasivoCardVariant.elevated,
           margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-          elevation: 0.5,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-          ),
+          padding: EdgeInsets.zero,
           child: ListTile(
             dense: true,
             leading: CircleAvatar(

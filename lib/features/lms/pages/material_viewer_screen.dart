@@ -12,6 +12,8 @@ import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_badge.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_toast.dart';
 import '../../../core/services/material_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -134,18 +136,11 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
       final url = material.isLink ? material.fileUrl : material.fileUrl;
       if (url.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                material.isLink
-                    ? 'No link URL available'
-                    : 'No file URL available',
-              ),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
+          KlasivoToast.info(
+            context,
+            message: material.isLink
+                ? 'No link URL available'
+                : 'No file URL available',
           );
         }
         return;
@@ -154,16 +149,7 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
       final uri = Uri.tryParse(url);
       if (uri == null || !uri.hasScheme) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Invalid URL: $url'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: KlasivoColors.error,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.error(context, message: 'Invalid URL: $url');
         }
         return;
       }
@@ -174,28 +160,15 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
       );
 
       if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open ${material.isLink ? "link" : "file"}'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            ),
-          ),
+        KlasivoToast.info(
+          context,
+          message:
+              'Could not open ${material.isLink ? "link" : "file"}',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open: $e'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: KlasivoColors.error,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            ),
-          ),
-        );
+        KlasivoToast.error(context, message: 'Failed to open: $e');
       }
     } finally {
       if (mounted) {
@@ -238,30 +211,14 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
     final material = _material;
     if (material == null) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await KlasivoModal.confirm(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Archive Material'),
-        content: Text(
+      title: 'Archive Material',
+      message:
           'Are you sure you want to archive "${material.title}"? This material will be hidden from the content browser.',
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: KlasivoColors.error,
-            ),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Archive',
+      cancelLabel: 'Cancel',
+      isDangerous: true,
     );
 
     if (confirmed == true) {
@@ -269,29 +226,13 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
         final service = ref.read(materialServiceProvider);
         await service.archiveMaterial(material.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('"${material.title}" archived'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.success(
+              context, message: '"${material.title}" archived');
           context.pop();
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to archive: $e'),
-              backgroundColor: KlasivoColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(KlasivoRadius.md),
-              ),
-            ),
-          );
+          KlasivoToast.error(context, message: 'Failed to archive: $e');
         }
       }
     }
@@ -350,16 +291,8 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
               switch (value) {
                 case 'edit':
                   // TODO: Navigate to edit material screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Edit material — coming soon'),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(KlasivoRadius.md),
-                      ),
-                    ),
-                  );
+                  KlasivoToast.info(context,
+                      message: 'Edit material — coming soon');
                   break;
                 case 'archive':
                   _archiveMaterial();

@@ -6,7 +6,9 @@ import '../../../providers/student_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/exam_stats_provider.dart';
 import '../../../core/services/pdf_service.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 class ReportGenerationScreen extends ConsumerStatefulWidget {
   const ReportGenerationScreen({Key? key}) : super(key: key);
@@ -99,69 +101,50 @@ class _ReportGenerationScreenState
 
             // ── Preview Info ──
             if (_canGenerate()) ...[
-              Card(
-                color: Colors.blue.withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              color: Colors.blue[700], size: 20),
-                          const SizedBox(width: 8),
-                          Text('Report Preview',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue[700])),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(_getReportDescription(),
-                          style: TextStyle(
-                              color: Colors.grey[700], fontSize: 13)),
-                      const SizedBox(height: 8),
-                      Text(
-                        'PDF will include Arabic font support for bilingual content.',
+              KlasivoCard(
+                variant: KlasivoCardVariant.filled,
+                padding: const EdgeInsets.all(16),
+                margin: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text('Report Preview',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue[700])),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(_getReportDescription(),
                         style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                  ),
+                            color: Colors.grey[700], fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'PDF will include Arabic font support for bilingual content.',
+                      style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
             ],
 
             // ── Generate Button ──
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _canGenerate() && !_isGenerating
-                    ? _generateReport
-                    : null,
-                icon: _isGenerating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.picture_as_pdf_outlined),
-                label: Text(_isGenerating
-                    ? 'Generating...'
-                    : 'Generate PDF Report'),
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+            KlasivoButton(
+              label: _isGenerating ? 'Generating...' : 'Generate PDF Report',
+              icon: Icons.picture_as_pdf_outlined,
+              onPressed: _canGenerate() ? _generateReport : null,
+              loading: _isGenerating,
+              fullWidth: true,
+              size: KlasivoButtonSize.lg,
             ),
           ],
         ),
@@ -305,7 +288,7 @@ class _ReportGenerationScreenState
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, message: 'Failed: $e', isError: true);
+        KlasivoToast.error(context, message: 'Failed: $e');
       }
     } finally {
       if (mounted) setState(() => _isGenerating = false);
@@ -315,7 +298,7 @@ class _ReportGenerationScreenState
   Future<void> _generateExamAnalyticsReport() async {
     if (_selectedExamId == null) return;
 
-    showSnackBar(context, message: 'Generating exam analytics report...');
+    KlasivoToast.info(context, message: 'Generating exam analytics report...');
 
     // Get exam data
     final snapshot = await ref.read(examsStreamProvider.future);
@@ -426,7 +409,7 @@ class _ReportGenerationScreenState
   Future<void> _generateStudentReportCard() async {
     if (_selectedStudentId == null || _selectedClassId == null) return;
 
-    showSnackBar(context, message: 'Generating student report card...');
+    KlasivoToast.info(context, message: 'Generating student report card...');
 
     final students =
         ref.read(studentsByClassListProvider(_selectedClassId!));
@@ -490,7 +473,7 @@ class _ReportGenerationScreenState
   Future<void> _generateClassComparisonReport() async {
     if (_selectedClassId == null) return;
 
-    showSnackBar(context, message: 'Generating class comparison report...');
+    KlasivoToast.info(context, message: 'Generating class comparison report...');
 
     final classes = ref.read(classesProvider);
     final className = classes
