@@ -16,6 +16,8 @@ import 'features/auth/pages/teacher_login_screen.dart';
 import 'features/auth/pages/teacher_registration_screen.dart';
 import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
+import 'features/auth/pages/forgot_password_screen.dart';
+import 'features/auth/pages/owner_register_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
 import 'features/shell/parent_shell.dart';
@@ -39,6 +41,7 @@ import 'features/stages/pages/stage_list_screen.dart';
 import 'features/groups/pages/group_list_screen.dart';
 import 'features/question_bank/pages/question_bank_screen.dart';
 import 'features/notifications/pages/notification_center_screen.dart';
+import 'features/notifications/pages/notification_detail_screen.dart';
 import 'features/excel_import/pages/excel_import_screen.dart';
 import 'features/qr/pages/qr_generate_screen.dart';
 import 'features/qr/pages/qr_scan_screen.dart';
@@ -213,6 +216,7 @@ class _MyAppState extends ConsumerState<MyApp> {
 
 class AuthChangeNotifier extends ChangeNotifier {
   StreamSubscription<User?>? _firebaseSub;
+  StreamSubscription? _hiveSub;
 
   AuthChangeNotifier() {
     _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(
@@ -223,19 +227,16 @@ class AuthChangeNotifier extends ChangeNotifier {
   }
 
   void _startHiveWatch() {
-    bool _lastValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
-    Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
-      final currentValue = Hive.box(AppConstants.authBox).get('isLoggedIn', defaultValue: false);
-      if (currentValue != _lastValue) {
-        _lastValue = currentValue;
-        notifyListeners();
-      }
+    // Use Hive's built-in watch() instead of polling every 500ms
+    _hiveSub = Hive.box(AppConstants.authBox).watch().listen((event) {
+      notifyListeners();
     });
   }
 
   @override
   void dispose() {
     _firebaseSub?.cancel();
+    _hiveSub?.cancel();
     super.dispose();
   }
 }
@@ -374,6 +375,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'parent-register',
             builder: (context, state) => const ParentRegisterScreen(),
           ),
+          GoRoute(
+            path: 'forgot-password',
+            builder: (context, state) => const ForgotPasswordScreen(),
+          ),
+          GoRoute(
+            path: 'owner-register',
+            builder: (context, state) => const OwnerRegisterScreen(),
+          ),
         ],
       ),
 
@@ -446,7 +455,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'notifications/:id',
                 builder: (context, state) {
                   final notificationId = state.pathParameters['id']!;
-                  return _NotificationDetailScreen(notificationId: notificationId);
+                  return NotificationDetailScreen(notificationId: notificationId);
                 },
               ),
               GoRoute(
@@ -708,7 +717,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           // ─── Progress Tracking ───────────────────────────────────────
           GoRoute(
             path: 'progress',
-            builder: (context, state) => const ProgressTrackingScreen(classId: '', className: 'Class'),
+            builder: (context, state) {
+              final classId = state.uri.queryParameters['classId'] ?? '';
+              final className = state.uri.queryParameters['className'] ?? 'Class';
+              return ProgressTrackingScreen(classId: classId, className: className);
+            },
           ),
         ],
       ),
@@ -755,6 +768,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
+      // ─── Student Settings Route ──────────────────────────────────────
+      GoRoute(
+        path: '/student/settings',
+        builder: (context, state) => const StudentSettingsScreen(),
+      ),
+
       // ─── Student Deep Routes (outside shell for full-screen) ─────────
       GoRoute(
         path: '/student/exams',
@@ -794,17 +813,4 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-// ─── Placeholder Screens ────────────────────────────────────────────────────
 
-class _NotificationDetailScreen extends ConsumerWidget {
-  final String notificationId;
-  const _NotificationDetailScreen({required this.notificationId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Notification')),
-      body: Center(child: Text('Notification: $notificationId')),
-    );
-  }
-}

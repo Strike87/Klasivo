@@ -88,7 +88,7 @@ class AssignmentListScreen extends ConsumerWidget {
           },
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.go('/teacher/assignments/new'),
+          onPressed: () => context.go('/teacher/assignments/create'),
           icon: const Icon(Icons.add),
           label: const Text('New Assignment'),
         ),
@@ -124,7 +124,7 @@ class _AssignmentTabList extends ConsumerWidget {
         title: emptyTitle,
         subtitle: emptySubtitle,
         actionLabel: 'Create Assignment',
-        onAction: () => context.go('/teacher/assignments/new'),
+        onAction: () => context.go('/teacher/assignments/create'),
       );
     }
 

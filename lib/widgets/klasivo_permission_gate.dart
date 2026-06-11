@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/tokens/tokens.dart';
 import '../providers/permission_provider.dart';
+import '../providers/feature_flag_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO PERMISSION GATE — Declarative RBAC UI control
@@ -129,12 +130,12 @@ class KlasivoFeaturePreview extends ConsumerWidget {
         Center(
           child: Container(
             padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
+              horizontal: KlasivoSpacing.lg,
+              vertical: KlasivoSpacing.md,
             ),
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              color: isDark ? KlasivoColors.darkSurface : KlasivoColors.lightSurface,
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.1),
@@ -148,16 +149,16 @@ class KlasivoFeaturePreview extends ConsumerWidget {
               children: [
                 Icon(
                   Icons.lock_outline_rounded,
-                  size: AppSpacing.iconSizeMd,
-                  color: AppColors.lightTextTertiary,
+                  size: KlasivoSpacing.iconSizeMd,
+                  color: KlasivoColors.lightTextTertiary,
                 ),
-                const SizedBox(width: AppSpacing.sm),
+                const SizedBox(width: KlasivoSpacing.sm),
                 Text(
                   '$featureName — Coming Soon',
-                  style: AppTypography.labelMedium.copyWith(
+                  style: KlasivoTypography.labelMedium.copyWith(
                     color: isDark
-                        ? AppColors.darkTextTertiary
-                        : AppColors.lightTextTertiary,
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
                   ),
                 ),
               ],
