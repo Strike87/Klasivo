@@ -52,6 +52,7 @@ import 'features/settings/pages/settings_screen.dart';
 import 'features/settings/pages/organization_settings_screen.dart';
 import 'features/settings/pages/profile_settings_screen.dart';
 import 'features/settings/pages/student_settings_screen.dart';
+import 'features/settings/pages/feature_flags_screen.dart';
 import 'features/exam_instances/pages/exam_instances_screen.dart';
 // ─── v1.7 Imports ─────────────────────────────────────────────────────────────
 import 'features/assignments/pages/assignment_list_screen.dart';
@@ -323,6 +324,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           return '/welcome';
         }
 
+        // ─── Feature Flag Gates ───────────────────────────────────────────
+        // LMS routes require lms flag
+        if (state.matchedLocation.startsWith('/lms')) {
+          final flagService = ref.read(featureFlagServiceProvider);
+          if (!flagService.isEnabled(FeatureFlags.lms)) {
+            return '/dashboard';
+          }
+        }
+
+        // Parent portal requires parentPortal flag
+        if (state.matchedLocation.startsWith('/parent') ||
+            state.matchedLocation.startsWith('/auth/parent')) {
+          final flagService = ref.read(featureFlagServiceProvider);
+          if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
+            if (userRole == AppConstants.roleParent) return '/auth';
+            return '/dashboard';
+          }
+        }
+
         if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
             isOnDashboard) {
           return null;
@@ -492,6 +512,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'profile',
                 builder: (context, state) => const ProfileSettingsScreen(),
+              ),
+              GoRoute(
+                path: 'feature-flags',
+                builder: (context, state) => const FeatureFlagsScreen(),
               ),
             ],
           ),

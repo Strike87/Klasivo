@@ -209,6 +209,32 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                   ),
                   const SizedBox(height: KlasivoSpacing.xxl),
 
+                  // ── Feature Flags ──
+                  _SectionHeader(title: 'Feature Management'),
+                  const SizedBox(height: KlasivoSpacing.sm),
+                  Card(
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(KlasivoSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: KlasivoColors.primarySurface,
+                          borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                        ),
+                        child: const Icon(Icons.tune_outlined, color: KlasivoColors.primary, size: 20),
+                      ),
+                      title: Text('Feature Flags', style: KlasivoTypography.titleMedium),
+                      subtitle: Text(
+                        'Control which features are available in your organization',
+                        style: KlasivoTypography.bodySmall.copyWith(
+                          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.go('/settings/feature-flags'),
+                    ),
+                  ),
+                  const SizedBox(height: KlasivoSpacing.xxxl),
+
                   // ── Danger Zone ──
                   _SectionHeader(title: 'Danger Zone'),
                   const SizedBox(height: KlasivoSpacing.sm),
