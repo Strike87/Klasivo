@@ -63,6 +63,8 @@ async function deleteOrganizationData(orgId: string): Promise<void> {
     'progress_tracking', 'moderation_queue', 'units', 'content_progress',
     // v1.9 Enterprise
     'feature_flags', 'permission_overrides', 'search_keywords', 'deep_links',
+    // v2.1 LiveKit
+    'livekit_rooms',
   ];
 
   for (const collectionName of collectionsToClean) {

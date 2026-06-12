@@ -173,7 +173,11 @@
 
     { "collectionGroup": "academic_years", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "startDate", "order": "ASCENDING" }] },
 
-    { "collectionGroup": "campuses", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
+    { "collectionGroup": "campuses", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+
+    { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "roomType", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
+    { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "createdBy", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

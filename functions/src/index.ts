@@ -13,6 +13,7 @@
  *     sendContactForm        — Forward contact-form to support (direct send)
  *     sendTeacherInvitation  — Queue teacher invitation email
  *     sendSchoolAnnouncement — Queue school announcement email
+ *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
  *
  *   Firestore Triggers (v2):
  *     emailWorker — Process emailQueue documents (send + retry)
@@ -35,6 +36,7 @@ export { onUserDeleted } from './functions/onUserDeleted';
 export { sendContactForm } from './functions/sendContactForm';
 export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
 export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
+export { generateLiveKitToken } from './functions/generateLiveKitToken';
 
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';

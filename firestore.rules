@@ -511,5 +511,14 @@ service cloud.firestore {
       allow update: if isAuth();
       allow delete: if isTeacherOrOwner();
     }
+
+    // ====== LiveKit Rooms Collection ======
+    // Stores room metadata for virtual classrooms and proctored exams
+    match /livekit_rooms/{roomId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isOwner();
+    }
   }
 }
