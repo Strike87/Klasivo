@@ -1,58 +1,23 @@
-// ─── Riverpod Generator Example: Auth Feature ──────────────────────────────
+// ─── Auth Providers — Code Generation (Disabled) ──────────────────────────
 //
-// This file demonstrates the new @riverpod code-generation pattern.
-// Compare with the manual providers in the same directory.
+// This file previously used @riverpod code generation with a `part` directive
+// for `auth_generated_providers.g.dart`, which was never generated.
 //
-// To generate code, run:
-//   dart run build_runner build --delete-conflicting-outputs
+// The working manual providers live in `auth_providers.dart` in this same
+// directory. That file provides:
+//   - authServiceProvider     → IAuthService (with DI)
+//   - authRepositoryProvider  → AuthRepository
+//   - currentUserProvider     → StreamProvider<UserModel?> (FirebaseAuth + Firestore + Hive)
+//   - isLoggedInProvider      → bool
+//   - currentUserRoleProvider → String
+//   - currentOrgIdProvider    → String?
 //
-// After generation, a `auth_generated_providers.g.dart` file will appear
-// containing the boilerplate that Riverpod Generator creates automatically.
-// ──────────────────────────────────────────────────────────────────────────────
+// To re-enable code generation in the future:
+//   1. Add `riverpod_generator: ^2.4.0` to dev_dependencies (already done)
+//   2. Run: dart run build_runner build --delete-conflicting-outputs
+//   3. Move @riverpod annotations here with proper `part` directive
+//
+// For now, all auth providers are in auth_providers.dart.
+// ──────────────────────────────────────────────────────────────────────────
 
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../data/auth_repository.dart';
-import '../domain/user_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/interfaces/i_auth_service.dart';
-
-part 'auth_generated_providers.g.dart';
-
-/// Production auth service provider.
-///
-/// Using @riverpod, the provider is auto-disposed and type-safe.
-/// Compare: manual version would be `final authServiceProvider = Provider<IAuthService>((ref) => AuthService());`
-@riverpod
-IAuthService authService(Ref ref) {
-  return AuthService();
-}
-
-/// Auth repository provider — depends on [authServiceProvider].
-@riverpod
-AuthRepository authRepository(Ref ref) {
-  return AuthRepository(ref.watch(authServiceProvider));
-}
-
-/// Current user provider — auto-disposed when no longer watched.
-///
-/// This is a placeholder that would normally read from FirebaseAuth + Hive.
-/// In a full migration, this would listen to `FirebaseAuth.instance.authStateChanges()`
-/// and map the result to a [UserModel].
-@riverpod
-UserModel? currentUser(Ref ref) {
-  // TODO: Wire to FirebaseAuth.authStateChanges() + Hive box
-  return null;
-}
-
-/// Whether the user is logged in — derived from [currentUserProvider].
-@riverpod
-bool isLoggedIn(Ref ref) {
-  return ref.watch(currentUserProvider) != null;
-}
-
-/// Current user's role — derived from [currentUserProvider].
-@riverpod
-String currentUserRole(Ref ref) {
-  final user = ref.watch(currentUserProvider);
-  return user?.role ?? 'unknown';
-}
+export 'auth_providers.dart';
