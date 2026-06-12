@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart' as notif_service;
 import 'search_keyword_service.dart';
+import 'performance_trace_service.dart';
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -188,48 +189,82 @@ class ExamService {
   }
 
   Future<void> deleteExam(String examId) async {
+    await PerformanceTraceService.instance.traceOperation(
+      PerformanceTraces.examDelete,
+      () => _deleteExamImpl(examId),
+      attributes: {'exam_id': examId},
+    );
+  }
+
+  Future<void> _deleteExamImpl(String examId) async {
     try {
       await notif_service.NotificationService.cancelExamReminders(examId);
 
+      // Fetch all related collections in parallel for better performance
+      final results = await Future.wait([
+        _firestore
+            .collection(AppConstants.questionsCollection)
+            .where('examId', isEqualTo: examId)
+            .get(),
+        _firestore
+            .collection(AppConstants.submissionsCollection)
+            .where('examId', isEqualTo: examId)
+            .get(),
+        _firestore
+            .collection(AppConstants.examInstancesCollection)
+            .where('examId', isEqualTo: examId)
+            .get(),
+        _firestore
+            .collection(AppConstants.examStatsCollection)
+            .where('examId', isEqualTo: examId)
+            .get(),
+      ]);
+
+      final questionsSnapshot = results[0];
+      final submissionsSnapshot = results[1];
+      final instancesSnapshot = results[2];
+      final statsSnapshot = results[3];
+
+      // Batch fetch all answers for all submissions at once (instead of N+1)
+      final submissionIds = submissionsSnapshot.docs.map((d) => d.id).toList();
+      final List<QuerySnapshot> answerSnapshots = [];
+      for (var i = 0; i < submissionIds.length; i += 30) {
+        final chunk = submissionIds.sublist(
+          i,
+          i + 30 > submissionIds.length ? submissionIds.length : i + 30,
+        );
+        final snap = await _firestore
+            .collection(AppConstants.answersCollection)
+            .where('submissionId', whereIn: chunk)
+            .get();
+        answerSnapshots.add(snap);
+      }
+
       final batch = _firestore.batch();
 
-      final questionsSnapshot = await _firestore
-          .collection(AppConstants.questionsCollection)
-          .where('examId', isEqualTo: examId)
-          .get();
+      // Delete questions
       for (final doc in questionsSnapshot.docs) {
         batch.delete(doc.reference);
       }
 
-      final submissionsSnapshot = await _firestore
-          .collection(AppConstants.submissionsCollection)
-          .where('examId', isEqualTo: examId)
-          .get();
+      // Delete submissions
       for (final doc in submissionsSnapshot.docs) {
-        final answersSnapshot = await _firestore
-            .collection(AppConstants.answersCollection)
-            .where('submissionId', isEqualTo: doc.id)
-            .get();
-        for (final ansDoc in answersSnapshot.docs) {
-          batch.delete(ansDoc.reference);
-        }
         batch.delete(doc.reference);
       }
 
-      // Delete exam instances
-      final instancesSnapshot = await _firestore
-          .collection(AppConstants.examInstancesCollection)
-          .where('examId', isEqualTo: examId)
-          .get();
+      // Delete answers
+      for (final snap in answerSnapshots) {
+        for (final doc in snap.docs) {
+          batch.delete(doc.reference);
+        }
+      }
+
+      // Delete instances
       for (final doc in instancesSnapshot.docs) {
         batch.delete(doc.reference);
       }
 
-      // Delete exam stats
-      final statsSnapshot = await _firestore
-          .collection(AppConstants.examStatsCollection)
-          .where('examId', isEqualTo: examId)
-          .get();
+      // Delete stats
       for (final doc in statsSnapshot.docs) {
         batch.delete(doc.reference);
       }

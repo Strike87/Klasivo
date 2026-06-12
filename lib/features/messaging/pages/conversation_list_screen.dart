@@ -86,53 +86,13 @@ class _ConversationListScreenState
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    showModalBottomSheet(
+    KlasivoModal.showContent(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(KlasivoRadius.bottomSheet),
-        ),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-          child: Column(
+      title: 'New Conversation',
+      child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ─── Handle bar ────────────────────────────────────────────
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: KlasivoSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? KlasivoColors.darkBorder
-                        : KlasivoColors.lightBorder,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                  ),
-                ),
-              ),
-              Text(
-                'New Conversation',
-                style: KlasivoTypography.headlineSmall.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextPrimary
-                      : KlasivoColors.lightTextPrimary,
-                ),
-              ),
-              const SizedBox(height: KlasivoSpacing.sm),
-              Text(
-                'Choose the type of conversation to start',
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
-                ),
-              ),
-              const SizedBox(height: KlasivoSpacing.xxl),
               // ─── Direct Message ────────────────────────────────────────
               _NewConversationOption(
                 icon: Icons.person_outline,
@@ -153,7 +113,6 @@ class _ConversationListScreenState
                 subtitle: 'Message an entire class',
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Navigate to class selection
                   KlasivoToast.info(context,
                       message: 'Class chat coming soon');
                 },
@@ -167,7 +126,6 @@ class _ConversationListScreenState
                 subtitle: 'Message a study group',
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Navigate to group selection
                   KlasivoToast.info(context,
                       message: 'Group chat coming soon');
                 },
@@ -175,8 +133,6 @@ class _ConversationListScreenState
               const SizedBox(height: KlasivoSpacing.lg),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -265,25 +221,9 @@ class _ConversationListScreenState
     return Scaffold(
       appBar: AppBar(
         title: _isSearching
-            ? TextField(
+            ? KlasivoTextField(
                 controller: _searchController,
-                autofocus: true,
-                style: KlasivoTypography.bodyLarge.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextPrimary
-                      : KlasivoColors.lightTextPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Search conversations...',
-                  hintStyle: KlasivoTypography.bodyLarge.copyWith(
-                    color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
+                hint: 'Search conversations...',
                 onChanged: (value) {
                   setState(() => _searchQuery = value);
                 },
@@ -507,14 +447,10 @@ class _ConversationTile extends ConsumerWidget {
                 size: KlasivoAvatarSize.md,
               )
             else
-              CircleAvatar(
-                radius: AppSpacing.avatarRadius,
-                backgroundColor: _getAvatarColor().withOpacity(0.12),
-                child: Icon(
-                  _getIcon(),
-                  color: _getAvatarColor(),
-                  size: 22,
-                ),
+              KlasivoAvatar(
+                backgroundColor: _getAvatarColor(),
+                size: KlasivoAvatarSize.md,
+                name: _getInitials(),
               ),
             const SizedBox(width: KlasivoSpacing.md),
 

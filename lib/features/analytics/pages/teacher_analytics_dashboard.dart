@@ -9,6 +9,7 @@ import '../../../providers/exam_provider.dart';
 import '../../../providers/submission_provider.dart';
 import '../../../providers/exam_stats_provider.dart';
 import '../../../core/services/exam_stats_service.dart';
+import '../../../widgets/klasivo_card.dart';
 
 class TeacherAnalyticsDashboard extends ConsumerStatefulWidget {
   const TeacherAnalyticsDashboard({Key? key}) : super(key: key);
@@ -159,24 +160,22 @@ class _OverviewTab extends ConsumerWidget {
           analyticsAsync.when(
             data: (summary) {
               if (summary.totalSubmissions == 0) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.analytics_outlined,
-                              size: 48, color: Colors.grey[400]),
-                          const SizedBox(height: 12),
-                          Text('No analytics data yet',
-                              style: TextStyle(
-                                  color: Colors.grey[500], fontSize: 14)),
-                          const SizedBox(height: 4),
-                          Text('Data will appear after students submit exams',
-                              style: TextStyle(
-                                  color: Colors.grey[400], fontSize: 12)),
-                        ],
-                      ),
+                return KlasivoCard(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.analytics_outlined,
+                            size: 48, color: Colors.grey[400]),
+                        const SizedBox(height: 12),
+                        Text('No analytics data yet',
+                            style: TextStyle(
+                                color: Colors.grey[500], fontSize: 14)),
+                        const SizedBox(height: 4),
+                        Text('Data will appear after students submit exams',
+                            style: TextStyle(
+                                color: Colors.grey[400], fontSize: 12)),
+                      ],
                     ),
                   ),
                 );
@@ -344,13 +343,10 @@ class _ClassPerformanceCard extends ConsumerWidget {
         ref.watch(classPerformanceTrendProvider(classId));
     final theme = Theme.of(context);
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      variant: KlasivoCardVariant.elevated,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -569,7 +565,6 @@ class _ClassPerformanceCard extends ConsumerWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -650,20 +645,18 @@ class _QuestionsTab extends ConsumerWidget {
           const SizedBox(height: 16),
 
           if (exams.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.quiz_outlined,
-                          size: 48, color: Colors.grey[400]),
-                      const SizedBox(height: 12),
-                      Text('No completed exams yet',
-                          style: TextStyle(
-                              color: Colors.grey[500], fontSize: 14)),
-                    ],
-                  ),
+            KlasivoCard(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.quiz_outlined,
+                        size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 12),
+                    Text('No completed exams yet',
+                        style: TextStyle(
+                            color: Colors.grey[500], fontSize: 14)),
+                  ],
                 ),
               ),
             )
@@ -692,13 +685,10 @@ class _ExamQuestionAnalysisCard extends ConsumerWidget {
     final questionsAsync =
         ref.watch(questionAnalysisProvider(examId));
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      variant: KlasivoCardVariant.elevated,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -924,32 +914,27 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        elevation: 1,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 12),
-              Text(value,
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-            ],
-          ),
+      child: KlasivoCard(
+        variant: KlasivoCardVariant.elevated,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(height: 12),
+            Text(value,
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+          ],
         ),
       ),
     );
@@ -972,33 +957,29 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        elevation: 0.5,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(value,
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: color)),
-                    Text(label,
-                        style: TextStyle(
-                            color: Colors.grey[600], fontSize: 11)),
-                  ],
-                ),
+      child: KlasivoCard(
+        variant: KlasivoCardVariant.elevated,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(value,
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: color)),
+                  Text(label,
+                      style: TextStyle(
+                          color: Colors.grey[600], fontSize: 11)),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1020,25 +1001,18 @@ class _QuickNavCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Text(title,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: color)),
-            ],
-          ),
-        ),
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Text(title,
+              style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+        ],
       ),
     );
   }
@@ -1110,23 +1084,17 @@ class _ScoreDistributionChart extends StatelessWidget {
     final maxCount =
         ranges.values.fold(0, (a, b) => a > b ? a : b).toDouble();
     if (maxCount == 0) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-              child: Text('No submission data yet',
-                  style: TextStyle(color: Colors.grey[500]))),
-        ),
+      return KlasivoCard(
+        padding: const EdgeInsets.all(32),
+        child: Center(
+            child: Text('No submission data yet',
+                style: TextStyle(color: Colors.grey[500]))),
       );
     }
 
-    return Card(
-      elevation: 1,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.elevated,
+      child: SizedBox(
           height: 200,
           child: BarChart(
             BarChartData(
@@ -1203,23 +1171,17 @@ class _PassFailChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = passCount + failCount;
     if (total == 0) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-              child: Text('No results yet',
-                  style: TextStyle(color: Colors.grey[500]))),
-        ),
+      return KlasivoCard(
+        padding: const EdgeInsets.all(32),
+        child: Center(
+            child: Text('No results yet',
+                style: TextStyle(color: Colors.grey[500]))),
       );
     }
 
-    return Card(
-      elevation: 1,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.elevated,
+      child: Row(
           children: [
             SizedBox(
               width: 120,
@@ -1302,21 +1264,16 @@ class _ExamStatusChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = upcoming + completed + draft;
     if (total == 0) {
-      return Card(
-          child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
+      return KlasivoCard(
+          padding: const EdgeInsets.all(32),
+          child: Center(
                   child: Text('No exams yet',
-                      style: TextStyle(color: Colors.grey[500])))));
+                      style: TextStyle(color: Colors.grey[500]))));
     }
 
-    return Card(
-      elevation: 1,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.elevated,
+      child: Row(
           children: [
             SizedBox(
               width: 120,

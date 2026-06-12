@@ -8,6 +8,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/parent_link_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_components.dart';
 
 // ─── Parent Progress Screen — View-Only Academic Progress Overview ────────────
@@ -291,13 +292,12 @@ class _OverallProgressCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final progressValue = overallProgress.clamp(0.0, 100.0);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-        child: Column(
-          children: [
-            // ── Student Name ──
-            Text(
+    return KlasivoCard(
+      padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+      child: Column(
+        children: [
+          // ── Student Name ──
+          Text(
               studentName,
               style: KlasivoTypography.titleMedium.copyWith(
                 color: isDark
@@ -363,8 +363,7 @@ class _OverallProgressCard extends StatelessWidget {
                 ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -445,13 +444,12 @@ class _GradeLevelBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.lg),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(KlasivoSpacing.md),
+    return KlasivoCard(
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.md),
               decoration: BoxDecoration(
                 color: config.color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(KlasivoRadius.md),
@@ -496,8 +494,7 @@ class _GradeLevelBadge extends StatelessWidget {
                 ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

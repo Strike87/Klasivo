@@ -1,0 +1,73 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  quick-check:
+    name: Quick Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run unit tests
+        run: flutter test test/core/ test/helpers/ test/widgets/ --reporter=compact
+
+  check-changes:
+    name: Change Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for breaking changes
+        run: |
+          echo "Checking for potentially breaking changes..."
+
+          # Check if any service interfaces changed
+          CHANGED_SERVICES=$(git diff --name-only origin/main...HEAD -- 'lib/core/services/*.dart' 2>/dev/null || echo "")
+          if [ -n "$CHANGED_SERVICES" ]; then
+            echo "::warning::Service files modified - verify backward compatibility"
+            echo "$CHANGED_SERVICES"
+          fi
+
+          # Check if any provider interfaces changed
+          CHANGED_PROVIDERS=$(git diff --name-only origin/main...HEAD -- 'lib/providers/*.dart' 2>/dev/null || echo "")
+          if [ -n "$CHANGED_PROVIDERS" ]; then
+            echo "::warning::Provider files modified - verify provider contracts"
+            echo "$CHANGED_PROVIDERS"
+          fi
+
+          # Check for new TODO/FIXME markers
+          NEW_TODOS=$(git diff origin/main...HEAD -- '*.dart' 2>/dev/null | grep -E '^\+.*TODO|^\+.*FIXME' || echo "")
+          if [ -n "$NEW_TODOS" ]; then
+            echo "::notice::New TODO/FIXME markers added"
+            echo "$NEW_TODOS"
+          fi
+
+          echo "Change detection complete."

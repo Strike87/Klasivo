@@ -13,6 +13,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
@@ -597,15 +598,10 @@ class _SubmissionCard extends StatelessWidget {
       child: Row(
         children: [
           // Avatar
-          CircleAvatar(
-            radius: 20,
+          KlasivoAvatar(
+            name: studentName.isNotEmpty ? studentName[0].toUpperCase() : '?',
+            size: KlasivoAvatarSize.md,
             backgroundColor: statusColor.withValues(alpha: 0.1),
-            child: Text(
-              studentName.isNotEmpty ? studentName[0].toUpperCase() : '?',
-              style: KlasivoTypography.titleMedium.copyWith(
-                color: statusColor,
-              ),
-            ),
           ),
           const SizedBox(width: KlasivoSpacing.md),
 

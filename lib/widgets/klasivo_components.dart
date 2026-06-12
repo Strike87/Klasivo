@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/config/theme.dart';
+import 'klasivo_card.dart';
+import 'klasivo_button.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO COMPONENTS — Reusable UI building blocks for Academic Neo-Minimalism
@@ -32,85 +34,80 @@ class KlasivoAnalyticsCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.sm),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(height: KlasivoSpacing.md),
+
+          // Large Number
+          Text(
+            value,
+            style: KlasivoTypography.displayMedium.copyWith(
+              color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+            ),
+          ),
+          const SizedBox(height: KlasivoSpacing.xs),
+
+          // Label + Trend
+          Row(
             children: [
-              // Icon
-              Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(height: KlasivoSpacing.md),
-
-              // Large Number
               Text(
-                value,
-                style: KlasivoTypography.displayMedium.copyWith(
-                  color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+                label,
+                style: KlasivoTypography.bodySmall.copyWith(
+                  color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
                 ),
               ),
-              const SizedBox(height: KlasivoSpacing.xs),
-
-              // Label + Trend
-              Row(
-                children: [
-                  Text(
-                    label,
-                    style: KlasivoTypography.bodySmall.copyWith(
-                      color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                    ),
+              if (trend != null) ...[
+                const SizedBox(width: KlasivoSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: KlasivoSpacing.sm,
+                    vertical: KlasivoSpacing.xs,
                   ),
-                  if (trend != null) ...[
-                    const SizedBox(width: KlasivoSpacing.sm),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: KlasivoSpacing.sm,
-                        vertical: KlasivoSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
+                  decoration: BoxDecoration(
+                    color: trendPositive
+                        ? KlasivoColors.secondarySurface
+                        : KlasivoColors.errorSurface,
+                    borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        trendPositive ? Icons.trending_up : Icons.trending_down,
+                        size: 12,
                         color: trendPositive
-                            ? KlasivoColors.secondarySurface
-                            : KlasivoColors.errorSurface,
-                        borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                            ? KlasivoColors.secondary
+                            : KlasivoColors.error,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            trendPositive ? Icons.trending_up : Icons.trending_down,
-                            size: 12,
-                            color: trendPositive
-                                ? KlasivoColors.secondary
-                                : KlasivoColors.error,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            trend!,
-                            style: KlasivoTypography.labelSmall.copyWith(
-                              color: trendPositive
-                                  ? KlasivoColors.secondary
-                                  : KlasivoColors.error,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 2),
+                      Text(
+                        trend!,
+                        style: KlasivoTypography.labelSmall.copyWith(
+                          color: trendPositive
+                              ? KlasivoColors.secondary
+                              : KlasivoColors.error,
+                        ),
                       ),
-                    ),
-                  ],
-                ],
-              ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -313,7 +310,9 @@ class _KlasivoExpandableCardState extends State<KlasivoExpandableCard> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Card(
+    return KlasivoCard(
+      variant: KlasivoCardVariant.outlined,
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           InkWell(
@@ -420,48 +419,40 @@ class KlasivoSubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        child: Container(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-            border: Border(left: BorderSide(color: color, width: 4)),
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      accentColor: color,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+            ),
+            child: Icon(Icons.menu_book_outlined, color: color, size: 20),
           ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.sm + 2),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                ),
-                child: Icon(Icons.menu_book_outlined, color: color, size: 20),
-              ),
-              const SizedBox(width: KlasivoSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name, style: KlasivoTypography.titleMedium),
-                    if (subtitle != null)
-                      Text(
-                        subtitle!,
-                        style: KlasivoTypography.bodySmall.copyWith(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 20),
-            ],
+          const SizedBox(width: KlasivoSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: KlasivoTypography.titleMedium),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: KlasivoTypography.bodySmall.copyWith(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? KlasivoColors.darkTextTertiary
+                          : KlasivoColors.lightTextTertiary,
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
+          const Icon(Icons.chevron_right, size: 20),
+        ],
       ),
     );
   }
@@ -589,9 +580,9 @@ class KlasivoEmptyState extends StatelessWidget {
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: KlasivoSpacing.xxl),
-              ElevatedButton(
+              KlasivoButton(
+                label: actionLabel!,
                 onPressed: onAction,
-                child: Text(actionLabel!),
               ),
             ],
           ],
@@ -631,9 +622,10 @@ class KlasivoSectionHeader extends StatelessWidget {
           ),
         ),
         if (actionLabel != null && onAction != null)
-          TextButton(
+          KlasivoButton(
+            label: actionLabel!,
             onPressed: onAction,
-            child: Text(actionLabel!),
+            variant: KlasivoButtonVariant.tertiary,
           ),
       ],
     );

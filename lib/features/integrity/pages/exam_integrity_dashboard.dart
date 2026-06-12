@@ -8,6 +8,8 @@ import '../../../providers/student_provider.dart';
 import '../../../providers/violation_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/violation_service.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_avatar.dart';
 
 class ExamIntegrityDashboard extends ConsumerStatefulWidget {
   const ExamIntegrityDashboard({Key? key}) : super(key: key);
@@ -65,20 +67,18 @@ class _ExamIntegrityDashboardState
             if (_selectedExamId != null)
               _ExamIntegrityContent(examId: _selectedExamId!)
             else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.shield_outlined,
-                            size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 12),
-                        Text('Select an exam to view integrity data',
-                            style: TextStyle(
-                                color: Colors.grey[500], fontSize: 14)),
-                      ],
-                    ),
+              KlasivoCard(
+                padding: const EdgeInsets.all(32),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.shield_outlined,
+                          size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 12),
+                      Text('Select an exam to view integrity data',
+                          style: TextStyle(
+                              color: Colors.grey[500], fontSize: 14)),
+                    ],
                   ),
                 ),
               ),
@@ -108,27 +108,21 @@ class _ExamIntegrityContent extends ConsumerWidget {
             .toList();
 
         if (violations.isEmpty) {
-          return Card(
-            color: Colors.green.withValues(alpha: 0.05),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  const Icon(Icons.verified_user_outlined,
-                      size: 48, color: Colors.green),
-                  const SizedBox(height: 12),
-                  Text('No Violations Detected',
-                      style: TextStyle(
-                          color: Colors.green[700],
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('All students completed this exam without violations',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                ],
-              ),
+          return KlasivoCard(
+            child: Column(
+              children: [
+                const Icon(Icons.verified_user_outlined,
+                    size: 48, color: Colors.green),
+                const SizedBox(height: 12),
+                Text('No Violations Detected',
+                    style: TextStyle(
+                        color: Colors.green[700],
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text('All students completed this exam without violations',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
             ),
           );
         }
@@ -207,13 +201,9 @@ class _ExamIntegrityContent extends ConsumerWidget {
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
+            KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
+              child: SizedBox(
                   height: 160,
                   child: PieChart(
                     PieChartData(
@@ -256,7 +246,6 @@ class _ExamIntegrityContent extends ConsumerWidget {
                   ),
                 ),
               ),
-            ),
             const SizedBox(height: 24),
 
             // ── Violation Type Breakdown ──
@@ -264,13 +253,9 @@ class _ExamIntegrityContent extends ConsumerWidget {
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
+              child: Column(
                   children: typeCounts.entries.map((entry) {
                     final typeLabel = _getTypeLabel(entry.key);
                     final icon = _getTypeIcon(entry.key);
@@ -317,8 +302,6 @@ class _ExamIntegrityContent extends ConsumerWidget {
                     );
                   }).toList(),
                 ),
-              ),
-            ),
             const SizedBox(height: 24),
 
             // ── Top Violators ──
@@ -326,29 +309,19 @@ class _ExamIntegrityContent extends ConsumerWidget {
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
+              child: Column(
                   children: _getTopViolators(studentCounts, ref).map((item) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 16,
+                          KlasivoAvatar(
+                            name: '${item.count}',
+                            size: KlasivoAvatarSize.sm,
                             backgroundColor:
                                 item.count >= 3 ? Colors.red.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
-                            child: Text('${item.count}',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: item.count >= 3
-                                        ? Colors.red
-                                        : Colors.orange,
-                                    fontSize: 12)),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -380,8 +353,6 @@ class _ExamIntegrityContent extends ConsumerWidget {
                     );
                   }).toList(),
                 ),
-              ),
-            ),
             const SizedBox(height: 24),
 
             // ── Violation Timeline ──
@@ -500,25 +471,21 @@ class _IntegrityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 4),
-              Text(value,
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16, color: color)),
-              Text(title,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
+      child: KlasivoCard(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 4),
+            Text(value,
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+            Text(title,
+                style: TextStyle(color: Colors.grey[600], fontSize: 10),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ],
         ),
       ),
     );
@@ -540,10 +507,9 @@ class _ViolationTile extends StatelessWidget {
         students.where((s) => s.id == violation.studentId).firstOrNull;
     final studentName = student?.fullName ?? 'Unknown';
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      variant: KlasivoCardVariant.elevated,
       child: ListTile(
         dense: true,
         leading: Container(

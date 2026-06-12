@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/student_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
 
@@ -157,19 +158,12 @@ class _StudentCard extends StatelessWidget {
       child: Row(
         children: [
           // ── Avatar ──
-          CircleAvatar(
-            radius: 24,
+          KlasivoAvatar(
+            name: student.fullName.isNotEmpty
+                ? student.fullName[0].toUpperCase()
+                : '?',
+            size: KlasivoAvatarSize.lg,
             backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-            child: Text(
-              student.fullName.isNotEmpty
-                  ? student.fullName[0].toUpperCase()
-                  : '?',
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
           ),
           const SizedBox(width: 12),
 

@@ -5,6 +5,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_badge.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // OWNER SHELL — Owner-specific bottom navigation with admin tabs
@@ -98,15 +99,37 @@ class _OwnerShellState extends ConsumerState<OwnerShell> {
           final isInbox = dest.label == 'Inbox';
 
           return NavigationDestination(
-            icon: Badge(
-              isLabelVisible: isInbox && unreadNotifs > 0,
-              label: Text('$unreadNotifs'),
-              child: Icon(dest.icon),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(dest.icon),
+                if (isInbox && unreadNotifs > 0)
+                  Positioned(
+                    top: -4,
+                    right: -12,
+                    child: KlasivoBadge(
+                      label: '$unreadNotifs',
+                      variant: KlasivoBadgeVariant.danger,
+                      size: KlasivoBadgeSize.sm,
+                    ),
+                  ),
+              ],
             ),
-            selectedIcon: Badge(
-              isLabelVisible: isInbox && unreadNotifs > 0,
-              label: Text('$unreadNotifs'),
-              child: Icon(dest.selectedIcon),
+            selectedIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(dest.selectedIcon),
+                if (isInbox && unreadNotifs > 0)
+                  Positioned(
+                    top: -4,
+                    right: -12,
+                    child: KlasivoBadge(
+                      label: '$unreadNotifs',
+                      variant: KlasivoBadgeVariant.danger,
+                      size: KlasivoBadgeSize.sm,
+                    ),
+                  ),
+              ],
             ),
             label: dest.label,
           );

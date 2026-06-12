@@ -8,6 +8,7 @@ import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 import 'academic_year_form_screen.dart';
 
 class AcademicYearListScreen extends ConsumerWidget {
@@ -19,24 +20,22 @@ class AcademicYearListScreen extends ConsumerWidget {
     final activeYears = ref.watch(activeAcademicYearsProvider);
     final archivedYears = ref.watch(archivedAcademicYearsProvider);
     final theme = Theme.of(context);
-    final userRole = ref.watch(userRoleProvider);
-    final canEdit = userRole == AppConstants.roleOwner;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Academic Years'),
       ),
-      floatingActionButton: canEdit
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AcademicYearFormScreen(isEditing: false)),
-                );
-              },
-              backgroundColor: const Color(0xFF3B5BDB),
-              child: const Icon(Icons.add, color: Colors.white),
-            )
-          : null,
+      floatingActionButton: KlasivoRoleGate(
+        allowedRoles: [AppConstants.roleOwner],
+        child: FloatingActionButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AcademicYearFormScreen(isEditing: false)),
+            );
+          },
+          backgroundColor: const Color(0xFF3B5BDB),
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
+      ),
       body: years.isEmpty
           ? Center(
               child: Column(
@@ -48,18 +47,23 @@ class AcademicYearListScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text('Create your first academic year to get started',
                       style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
-                  if (canEdit) ...[
-                    const SizedBox(height: 24),
-                    KlasivoButton(
-                      label: 'Create Year',
-                      icon: Icons.add,
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const AcademicYearFormScreen(isEditing: false)),
-                        );
-                      },
+                  KlasivoRoleGate(
+                    allowedRoles: [AppConstants.roleOwner],
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 24),
+                        KlasivoButton(
+                          label: 'Create Year',
+                          icon: Icons.add,
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const AcademicYearFormScreen(isEditing: false)),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             )
@@ -71,7 +75,7 @@ class AcademicYearListScreen extends ConsumerWidget {
                     fontWeight: FontWeight.w600, color: const Color(0xFF12B886),
                   )),
                   const SizedBox(height: 8),
-                  ...activeYears.map((y) => _YearCard(year: y, canEdit: canEdit)),
+                  ...activeYears.map((y) => _YearCard(year: y)),
                   const SizedBox(height: 24),
                 ],
                 if (archivedYears.isNotEmpty) ...[
@@ -79,7 +83,7 @@ class AcademicYearListScreen extends ConsumerWidget {
                     fontWeight: FontWeight.w600, color: Colors.grey,
                   )),
                   const SizedBox(height: 8),
-                  ...archivedYears.map((y) => _YearCard(year: y, canEdit: canEdit)),
+                  ...archivedYears.map((y) => _YearCard(year: y)),
                 ],
               ],
             ),
@@ -89,9 +93,8 @@ class AcademicYearListScreen extends ConsumerWidget {
 
 class _YearCard extends ConsumerWidget {
   final AcademicYearData year;
-  final bool canEdit;
 
-  const _YearCard({required this.year, required this.canEdit});
+  const _YearCard({required this.year});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -147,46 +150,52 @@ class _YearCard extends ConsumerWidget {
               Text('${year.durationInDays} days', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
             ],
           ),
-          if (canEdit && !year.isArchived) ...[
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (!year.isCurrent)
-                  KlasivoButton(
-                    variant: KlasivoButtonVariant.tertiary,
-                    label: 'Set Current',
-                    icon: Icons.check_circle_outline,
-                    size: KlasivoButtonSize.sm,
-                    onPressed: () async {
-                      final orgId = ref.read(currentOrganizationIdProvider);
-                      if (orgId != null) {
-                        await ref.read(academicYearServiceProvider).setCurrentAcademicYear(orgId, year.id);
-                      }
-                    },
+          if (!year.isArchived)
+            KlasivoRoleGate(
+              allowedRoles: [AppConstants.roleOwner],
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (!year.isCurrent)
+                        KlasivoButton(
+                          variant: KlasivoButtonVariant.tertiary,
+                          label: 'Set Current',
+                          icon: Icons.check_circle_outline,
+                          size: KlasivoButtonSize.sm,
+                          onPressed: () async {
+                            final orgId = ref.read(currentOrganizationIdProvider);
+                            if (orgId != null) {
+                              await ref.read(academicYearServiceProvider).setCurrentAcademicYear(orgId, year.id);
+                            }
+                          },
+                        ),
+                      const SizedBox(width: 8),
+                      KlasivoButton(
+                        variant: KlasivoButtonVariant.tertiary,
+                        label: 'Archive',
+                        icon: Icons.archive_outlined,
+                        size: KlasivoButtonSize.sm,
+                        onPressed: () async {
+                          final confirm = await KlasivoModal.confirm(
+                            context: context,
+                            title: 'Archive Academic Year',
+                            message: 'Archive "${year.name}"? This will hide it from active views.',
+                            confirmLabel: 'Archive',
+                            isDangerous: true,
+                          );
+                          if (confirm == true) {
+                            await ref.read(academicYearServiceProvider).archiveAcademicYear(year.id);
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                const SizedBox(width: 8),
-                KlasivoButton(
-                  variant: KlasivoButtonVariant.tertiary,
-                  label: 'Archive',
-                  icon: Icons.archive_outlined,
-                  size: KlasivoButtonSize.sm,
-                  onPressed: () async {
-                    final confirm = await KlasivoModal.confirm(
-                      context: context,
-                      title: 'Archive Academic Year',
-                      message: 'Archive "${year.name}"? This will hide it from active views.',
-                      confirmLabel: 'Archive',
-                      isDangerous: true,
-                    );
-                    if (confirm == true) {
-                      await ref.read(academicYearServiceProvider).archiveAcademicYear(year.id);
-                    }
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
-          ],
         ],
       ),
     );

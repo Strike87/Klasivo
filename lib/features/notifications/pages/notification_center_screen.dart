@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../core/services/pagination_service.dart';
+import '../../../widgets/klasivo_paginated_list.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
@@ -15,7 +18,8 @@ class NotificationCenterScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifications = ref.watch(notificationsProvider);
     final unreadCount = ref.watch(unreadNotificationsProvider);
-    final theme = Theme.of(context);
+    final userId = ref.watch(currentUserIdProvider);
+    final paginationService = ref.watch(paginationServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -40,21 +44,29 @@ class NotificationCenterScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: notifications.isEmpty
-          ? const EmptyState(
-              icon: Icons.notifications_none_outlined,
-              title: 'No Notifications',
-              subtitle: 'You\'re all caught up!',
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: notifications.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final n = notifications[index];
-                return _NotificationCard(notification: n);
-              },
-            ),
+      body: KlasivoPaginatedList<NotificationData>(
+        loader: (cursor) => paginationService.fetchPage(
+          collectionPath: 'notifications',
+          fromFirestore: NotificationData.fromFirestore,
+          cursor: cursor,
+          pageSize: 20,
+          orderBy: 'createdAt',
+          descending: true,
+          filters: [
+            if (userId != null) QueryFilter.equalTo('userId', userId),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        separator: const SizedBox(height: 8),
+        emptyWidget: const EmptyState(
+          icon: Icons.notifications_none_outlined,
+          title: 'No Notifications',
+          subtitle: 'You\'re all caught up!',
+        ),
+        itemBuilder: (context, notification, index) {
+          return _NotificationCard(notification: notification);
+        },
+      ),
     );
   }
 }

@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 
 import '../../../providers/exam_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/pagination_service.dart';
+import '../../../widgets/klasivo_paginated_list.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
@@ -16,9 +19,7 @@ class ExamListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final examsAsync = ref.watch(examsStreamProvider);
     final classes = ref.watch(classesProvider);
-    final theme = Theme.of(context);
 
     return DefaultTabController(
       length: 3,
@@ -34,58 +35,33 @@ class ExamListScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: examsAsync.when(
-          loading: () => const LoadingIndicator(message: 'Loading exams...'),
-          error: (error, stack) => ErrorWidgetCustom(
-            message: 'Failed to load exams: $error',
-            onRetry: () => ref.invalidate(examsStreamProvider),
-          ),
-          data: (snapshot) {
-            final allExams = snapshot.docs
-                .map((doc) => ExamData.fromFirestore(doc))
-                .toList();
-
-            final now = DateTime.now();
-            final upcoming = allExams
-                .where((e) =>
-                    e.status == AppConstants.statusPublished &&
-                    e.endDate.isAfter(now))
-                .toList();
-            final completed = allExams
-                .where((e) =>
-                    e.status == AppConstants.statusPublished &&
-                    e.endDate.isBefore(now))
-                .toList();
-            final drafts = allExams
-                .where((e) => e.status == AppConstants.statusDraft)
-                .toList();
-
-            return TabBarView(
-              children: [
-                _ExamTabList(
-                  exams: upcoming,
-                  classes: classes,
-                  emptyIcon: Icons.event_note,
-                  emptyTitle: 'No Upcoming Exams',
-                  emptySubtitle: 'Create and publish an exam to see it here',
-                ),
-                _ExamTabList(
-                  exams: completed,
-                  classes: classes,
-                  emptyIcon: Icons.check_circle_outline,
-                  emptyTitle: 'No Completed Exams',
-                  emptySubtitle: 'Completed exams will appear here',
-                ),
-                _ExamTabList(
-                  exams: drafts,
-                  classes: classes,
-                  emptyIcon: Icons.edit_note,
-                  emptyTitle: 'No Draft Exams',
-                  emptySubtitle: 'Draft exams are shown here before publishing',
-                ),
-              ],
-            );
-          },
+        body: TabBarView(
+          children: [
+            _PaginatedExamTab(
+              status: AppConstants.statusPublished,
+              isUpcoming: true,
+              classes: classes,
+              emptyIcon: Icons.event_note,
+              emptyTitle: 'No Upcoming Exams',
+              emptySubtitle: 'Create and publish an exam to see it here',
+            ),
+            _PaginatedExamTab(
+              status: AppConstants.statusPublished,
+              isUpcoming: false,
+              classes: classes,
+              emptyIcon: Icons.check_circle_outline,
+              emptyTitle: 'No Completed Exams',
+              emptySubtitle: 'Completed exams will appear here',
+            ),
+            _PaginatedExamTab(
+              status: AppConstants.statusDraft,
+              isUpcoming: null,
+              classes: classes,
+              emptyIcon: Icons.edit_note,
+              emptyTitle: 'No Draft Exams',
+              emptySubtitle: 'Draft exams are shown here before publishing',
+            ),
+          ],
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.go('/teacher/exams/create'),
@@ -97,15 +73,19 @@ class ExamListScreen extends ConsumerWidget {
   }
 }
 
-class _ExamTabList extends ConsumerWidget {
-  final List<ExamData> exams;
+/// A single tab that uses KlasivoPaginatedList for server-side
+/// paginated exam listing instead of loading all exams at once.
+class _PaginatedExamTab extends ConsumerWidget {
+  final String status;
+  final bool? isUpcoming; // null = drafts (no date filter)
   final List<ClassData> classes;
   final IconData emptyIcon;
   final String emptyTitle;
   final String emptySubtitle;
 
-  const _ExamTabList({
-    required this.exams,
+  const _PaginatedExamTab({
+    required this.status,
+    required this.isUpcoming,
     required this.classes,
     required this.emptyIcon,
     required this.emptyTitle,
@@ -114,55 +94,80 @@ class _ExamTabList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (exams.isEmpty) {
-      return EmptyState(
+    final teacherId = ref.watch(currentUserIdProvider);
+    final orgId = ref.watch(currentOrganizationIdProvider);
+    final paginationService = ref.watch(paginationServiceProvider);
+
+    final filters = <QueryFilter>[
+      if (teacherId != null) QueryFilter.equalTo('teacherId', teacherId),
+      if (orgId != null) QueryFilter.equalTo('organizationId', orgId),
+      QueryFilter.equalTo('status', status),
+    ];
+
+    // For upcoming exams, sort by startDate ascending (nearest first)
+    // For completed/drafts, sort by createdAt descending (newest first)
+    final orderBy = isUpcoming == true ? 'startDate' : 'createdAt';
+    final descending = isUpcoming != true;
+
+    return KlasivoPaginatedList<ExamData>(
+      loader: (cursor) => paginationService.fetchPage(
+        collectionPath: 'exams',
+        fromFirestore: ExamData.fromFirestore,
+        cursor: cursor,
+        pageSize: 20,
+        orderBy: orderBy,
+        descending: descending,
+        filters: filters,
+      ),
+      padding: const EdgeInsets.all(16),
+      separator: const SizedBox(height: 12),
+      emptyWidget: EmptyState(
         icon: emptyIcon,
         title: emptyTitle,
         subtitle: emptySubtitle,
         actionLabel: 'Create Exam',
         onAction: () => context.go('/teacher/exams/create'),
-      );
-    }
+      ),
+      itemBuilder: (context, exam, index) {
+        // Client-side filter for upcoming vs completed
+        if (status == AppConstants.statusPublished && isUpcoming != null) {
+          final now = DateTime.now();
+          if (isUpcoming! && exam.endDate.isBefore(now)) {
+            return const SizedBox.shrink();
+          }
+          if (!isUpcoming! && exam.endDate.isAfter(now)) {
+            return const SizedBox.shrink();
+          }
+        }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(examsStreamProvider);
-      },
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: exams.length,
-        itemBuilder: (context, index) {
-          final exam = exams[index];
-          return _ExamCard(
-            exam: exam,
-            className: exam.getClassName(classes),
-            onTap: () => context.go('/teacher/exams/${exam.id}'),
-            onDelete: () async {
-              final confirmed = await KlasivoModal.confirm(
-                context: context,
-                title: 'Delete Exam',
-                message:
-                    'Are you sure you want to delete "${exam.title}"? All questions and submissions will also be deleted.',
-                confirmLabel: 'Delete',
-                isDangerous: true,
-              );
-              if (confirmed == true) {
-                try {
-                  await ref.read(examServiceProvider).deleteExam(exam.id);
-                  if (context.mounted) {
-                    KlasivoToast.success(context, message: 'Exam deleted');
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    KlasivoToast.error(context,
-                        message: 'Failed: $e');
-                  }
+        return _ExamCard(
+          exam: exam,
+          className: exam.getClassName(classes),
+          onTap: () => context.go('/teacher/exams/${exam.id}'),
+          onDelete: () async {
+            final confirmed = await KlasivoModal.confirm(
+              context: context,
+              title: 'Delete Exam',
+              message:
+                  'Are you sure you want to delete "${exam.title}"? All questions and submissions will also be deleted.',
+              confirmLabel: 'Delete',
+              isDangerous: true,
+            );
+            if (confirmed == true) {
+              try {
+                await ref.read(examServiceProvider).deleteExam(exam.id);
+                if (context.mounted) {
+                  KlasivoToast.success(context, message: 'Exam deleted');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  KlasivoToast.error(context, message: 'Failed: $e');
                 }
               }
-            },
-          );
-        },
-      ),
+            }
+          },
+        );
+      },
     );
   }
 }
@@ -187,7 +192,7 @@ class _ExamCard extends StatelessWidget {
     final timeFormat = DateFormat('hh:mm a');
 
     return KlasivoCard(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(16),
       variant: KlasivoCardVariant.interactive,
       onTap: onTap,

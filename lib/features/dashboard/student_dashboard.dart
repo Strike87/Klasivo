@@ -11,6 +11,9 @@ import '../../core/config/app_constants.dart';
 import '../../core/config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/klasivo_card.dart';
+import '../../widgets/klasivo_badge.dart';
+import '../../widgets/klasivo_avatar.dart';
+import '../../widgets/klasivo_modal.dart';
 import '../../widgets/klasivo_components.dart';
 
 class StudentDashboard extends ConsumerWidget {
@@ -48,15 +51,26 @@ class StudentDashboard extends ConsumerWidget {
               ),
               actions: [
                 IconButton(
-                  icon: Badge(
-                    isLabelVisible: (ref.watch(unreadNotificationsProvider)) > 0,
-                    label: Text('${ref.watch(unreadNotificationsProvider)}'),
-                    child: Icon(
-                      Icons.notifications_outlined,
-                      color: isDark
-                          ? KlasivoColors.darkIconDefault
-                          : KlasivoColors.lightIconDefault,
-                    ),
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(
+                        Icons.notifications_outlined,
+                        color: isDark
+                            ? KlasivoColors.darkIconDefault
+                            : KlasivoColors.lightIconDefault,
+                      ),
+                      if ((ref.watch(unreadNotificationsProvider)) > 0)
+                        Positioned(
+                          top: -4,
+                          right: -8,
+                          child: KlasivoBadge(
+                            label: '${ref.watch(unreadNotificationsProvider)}',
+                            variant: KlasivoBadgeVariant.danger,
+                            size: KlasivoBadgeSize.sm,
+                          ),
+                        ),
+                    ],
                   ),
                   onPressed: () => context.go('/student/notifications'),
                 ),
@@ -72,7 +86,7 @@ class StudentDashboard extends ConsumerWidget {
                 PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'logout') {
-                      final confirmed = await showConfirmationDialog(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
                         title: 'Logout',
                         message: 'Are you sure you want to logout?',
@@ -509,19 +523,12 @@ class _RecentResultsList extends ConsumerWidget {
           padding: EdgeInsets.zero,
           child: ListTile(
             dense: true,
-            leading: CircleAvatar(
-              radius: 20,
+            leading: KlasivoAvatar(
+              name: '${sub.percentage}%',
+              size: KlasivoAvatarSize.md,
               backgroundColor:
                   (passed ? KlasivoColors.secondary : KlasivoColors.error)
                       .withValues(alpha: 0.1),
-              child: Text(
-                '${sub.percentage}%',
-                style: KlasivoTypography.labelMedium.copyWith(
-                  color: passed
-                      ? KlasivoColors.secondary
-                      : KlasivoColors.error,
-                ),
-              ),
             ),
             title: Row(
               children: [

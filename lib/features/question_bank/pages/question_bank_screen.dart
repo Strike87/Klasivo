@@ -166,27 +166,11 @@ class _QuestionBankScreenState extends ConsumerState<QuestionBankScreen> {
   PreferredSizeWidget _buildAppBar(bool isDark) {
     return AppBar(
       title: _isSearching
-          ? TextField(
+          ? KlasivoTextField(
               controller: _searchController,
+              borderless: true,
               autofocus: true,
-              style: KlasivoTypography.bodyLarge.copyWith(
-                color: isDark
-                    ? KlasivoColors.darkTextPrimary
-                    : KlasivoColors.lightTextPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search questions, subjects, tags…',
-                hintStyle: KlasivoTypography.bodyMedium.copyWith(
-                  color: isDark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
+              hint: 'Search questions, subjects, tags…',
               onChanged: (value) => setState(() => _searchQuery = value),
             )
           : Text(

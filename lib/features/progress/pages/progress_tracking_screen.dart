@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/services/progress_tracking_service.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
 
 // ─── Progress Service Provider ────────────────────────────────────────────────
 
@@ -277,16 +278,10 @@ class _StudentProgressCard extends StatelessWidget {
         gradeLabel = gradeLevel;
     }
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: isAtRisk ? 2 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isAtRisk ? BorderSide(color: KlasivoColors.error.withOpacity(0.3)) : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      variant: isAtRisk ? KlasivoCardVariant.elevated : KlasivoCardVariant.outlined,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -342,7 +337,6 @@ class _StudentProgressCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }

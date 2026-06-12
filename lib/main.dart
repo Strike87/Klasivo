@@ -7,6 +7,10 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'core/services/firebase_analytics_service.dart';
 
 import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
@@ -99,16 +103,31 @@ import 'core/services/notification_service.dart';
 import 'core/services/feature_flag_service.dart';
 import 'core/services/permission_service.dart';
 import 'core/services/event_bus.dart';
+import 'core/services/image_cache_service.dart';
+import 'core/services/offline_manager.dart';
+import 'core/services/connectivity_service.dart';
+import 'core/services/performance_trace_service.dart';
+import 'widgets/offline_banner.dart';
 import 'firebase_options.dart';
+import 'core/config/app_environment.dart';
+import 'core/config/firebase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ─── Initialize Firebase with error handling ────────────────────────
+  // ─── Print current environment ──────────────────────────────────
+  debugPrint('[Klasivo] Environment: ${EnvironmentConfig.current}');
+
+  // ─── Initialize Firebase with environment-aware config ────────────────
   try {
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: FirebaseConfig.getOptions(AppEnvironment.current),
     );
+
+    // Configure environment-specific Firebase settings
+    FirebaseConfig.configureFirestore();
+    FirebaseConfig.configureAuth();
+    await FirebaseConfig.configureCrashlytics();
 
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
@@ -117,9 +136,12 @@ Future<void> main() async {
       return true;
     };
 
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-      !kDebugMode,
+    // ─── Initialize Firebase App Check ─────────────────────────────
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+      appleProvider: AppleProvider.deviceCheck,
     );
+    debugPrint('[main] Firebase App Check activated');
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }
@@ -127,13 +149,83 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
 
+  // ─── Initialize Image Cache Service ───────────────────────────────
+  try {
+    await ImageCacheService.instance.init();
+  } catch (e) {
+    debugPrint('Image cache initialization failed: $e');
+  }
+
   try {
     await NotificationService.initialize();
   } catch (e) {
     debugPrint('Notification initialization failed: $e');
   }
 
-  runApp(const ProviderScope(child: MyApp()));
+  // ─── Initialize Performance Monitoring ────────────────────────────────
+  try {
+    await PerformanceTraceService.instance.initialize();
+    debugPrint('[Klasivo] Performance monitoring initialized');
+  } catch (e) {
+    debugPrint('Performance monitoring initialization failed: $e');
+  }
+
+  // ─── Initialize Offline Mode ─────────────────────────────────────────
+  try {
+    await OfflineManager.instance.enableOfflineMode();
+    await ConnectivityService.instance.startMonitoring();
+    debugPrint('[Klasivo] Offline mode initialized');
+  } catch (e) {
+    debugPrint('Offline mode initialization failed: $e');
+  }
+
+  // ─── Initialize Sentry ─────────────────────────────────────────────
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = 'https://c523c263a4f3fee05ea0fce5b477d606@o4511553244692480.ingest.us.sentry.io/4511553494319105';
+      options.tracesSampleRate = 1.0;
+      options.profilesSampleRate = 1.0;
+      options.release = 'klasivo@2.0.0';
+    },
+    appRunner: () => runApp(const ProviderScope(child: MyApp())),
+  );
+
+  // ─── Identify users in Sentry + Analytics after auth state changes ────
+  FirebaseAuth.instance.authStateChanges().listen((user) {
+    if (user != null) {
+      Sentry.configureScope((scope) {
+        scope.setUser(SentryUser(
+          id: user.uid,
+          email: user.email,
+        ));
+      });
+
+      // ─── Set Firebase Analytics user properties ────────────────
+      try {
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get()
+            .then((userDoc) {
+          if (userDoc.exists) {
+            final data = userDoc.data()!;
+            FirebaseAnalyticsService.setUserProperties(
+              uid: user.uid,
+              role: data['role'] as String? ?? 'unknown',
+              organizationId: data['organizationId'] as String?,
+            );
+          }
+        });
+      } catch (_) {
+        // Non-critical — don't block app startup
+      }
+    } else {
+      Sentry.configureScope((scope) {
+        scope.setUser(null);
+      });
+      FirebaseAnalyticsService.clearUserProperties();
+    }
+  });
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -215,7 +307,14 @@ class _MyAppState extends ConsumerState<MyApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
+      builder: (context, child) {
+        // Wrap with OfflineBanner for connectivity awareness
+        return OfflineBanner(child: child!);
+      },
       routerConfig: router,
+      navigatorObservers: [
+        FirebaseAnalyticsService.observer,
+      ],
     );
   }
 }

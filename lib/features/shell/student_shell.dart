@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../widgets/klasivo_badge.dart';
 
 // ─── Student Navigation Shell ────────────────────────────────────────────────
 
@@ -65,15 +66,37 @@ class _StudentShellState extends ConsumerState<StudentShell> {
           final isInbox = dest.label == 'Inbox';
 
           return NavigationDestination(
-            icon: Badge(
-              isLabelVisible: isInbox && unreadNotifs > 0,
-              label: Text('$unreadNotifs'),
-              child: Icon(dest.icon),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(dest.icon),
+                if (isInbox && unreadNotifs > 0)
+                  Positioned(
+                    top: -4,
+                    right: -12,
+                    child: KlasivoBadge(
+                      label: '$unreadNotifs',
+                      variant: KlasivoBadgeVariant.danger,
+                      size: KlasivoBadgeSize.sm,
+                    ),
+                  ),
+              ],
             ),
-            selectedIcon: Badge(
-              isLabelVisible: isInbox && unreadNotifs > 0,
-              label: Text('$unreadNotifs'),
-              child: Icon(dest.selectedIcon),
+            selectedIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(dest.selectedIcon),
+                if (isInbox && unreadNotifs > 0)
+                  Positioned(
+                    top: -4,
+                    right: -12,
+                    child: KlasivoBadge(
+                      label: '$unreadNotifs',
+                      variant: KlasivoBadgeVariant.danger,
+                      size: KlasivoBadgeSize.sm,
+                    ),
+                  ),
+              ],
             ),
             label: dest.label,
           );

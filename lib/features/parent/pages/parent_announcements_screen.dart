@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_components.dart';
 
 // ─── Parent Announcements Screen — View-Only Org Announcements ────────────────
@@ -179,25 +180,12 @@ class _ParentAnnouncementsListState extends State<_ParentAnnouncementsList> {
                 _readAnnouncements.contains(announcementId);
             final dateFormat = DateFormat('MMM dd, yyyy');
 
-            return Card(
+            return KlasivoCard(
+              variant: KlasivoCardVariant.interactive,
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: isPinned ? 1.0 : 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-                side: isPinned
-                    ? BorderSide(
-                        color: KlasivoColors.primary.withValues(alpha: 0.3),
-                        width: 1,
-                      )
-                    : BorderSide.none,
-              ),
-              child: InkWell(
-                onTap: () => _markAsRead(announcementId),
-                borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                child: Padding(
-                  padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                  child: Column(
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+              onTap: () => _markAsRead(announcementId),
+              child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── Top Row: Pin Badge + Read Status ──
@@ -321,7 +309,6 @@ class _ParentAnnouncementsListState extends State<_ParentAnnouncementsList> {
                       ),
                     ],
                   ),
-                ),
               ),
             );
           },

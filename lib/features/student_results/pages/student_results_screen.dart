@@ -9,6 +9,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_toast.dart';
 import '../../../core/services/pdf_service.dart';
@@ -557,22 +558,13 @@ class _AnswersReviewList extends ConsumerWidget {
                     children: [
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 14,
+                          KlasivoAvatar(
+                            name: '${index + 1}',
+                            size: KlasivoAvatarSize.sm,
                             backgroundColor: (isCorrect
                                     ? Colors.green
                                     : Colors.red)
                                 .withValues(alpha: 0.1),
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                color: isCorrect
-                                    ? Colors.green
-                                    : Colors.red,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
                           ),
                           const SizedBox(width: 8),
                           Container(

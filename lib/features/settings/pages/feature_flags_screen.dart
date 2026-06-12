@@ -5,7 +5,9 @@ import '../../../core/config/theme.dart';
 import '../../../core/services/feature_flag_service.dart';
 import '../../../providers/feature_flag_provider.dart';
 import '../../../providers/permission_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FEATURE FLAGS MANAGEMENT SCREEN — Klasivo v1.8
@@ -455,13 +457,10 @@ class _FeatureFlagTile extends ConsumerWidget {
   }
 
   void _showFlagDetail(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    KlasivoModal.showContent(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(KlasivoRadius.bottomSheet)),
-      ),
-      builder: (context) => _FlagDetailSheet(flagKey: flagKey, label: label),
+      title: label,
+      child: _FlagDetailSheet(flagKey: flagKey, label: label),
     );
   }
 }
@@ -504,39 +503,14 @@ class _FlagDetailSheetState extends ConsumerState<_FlagDetailSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (context, scrollController) {
-        return SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Handle ──
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: KlasivoSpacing.xxl),
-                  decoration: BoxDecoration(
-                    color: isDark ? KlasivoColors.darkBorder : KlasivoColors.lightBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-
-              // ── Title ──
-              Text(widget.label, style: KlasivoTypography.headlineSmall),
-              const SizedBox(height: KlasivoSpacing.xs),
-              Text('Flag: ${widget.flagKey}', style: KlasivoTypography.caption.copyWith(
-                color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                fontFamily: 'RobotoMono',
-              )),
-              const SizedBox(height: KlasivoSpacing.xxl),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Flag: ${widget.flagKey}', style: KlasivoTypography.caption.copyWith(
+          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+          fontFamily: 'RobotoMono',
+        )),
+        const SizedBox(height: KlasivoSpacing.xxl),
 
               // ── Enable/Disable ──
               _SettingRow(
@@ -600,13 +574,9 @@ class _FlagDetailSheetState extends ConsumerState<_FlagDetailSheet> {
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: KlasivoTextField(
                       controller: _userIdController,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter user ID',
-                        isDense: true,
-                      ),
-                      style: KlasivoTypography.bodySmall,
+                      hint: 'Enter user ID',
                     ),
                   ),
                   const SizedBox(width: KlasivoSpacing.sm),
@@ -660,11 +630,8 @@ class _FlagDetailSheetState extends ConsumerState<_FlagDetailSheet> {
                       : const Text('Save Changes'),
                 ),
               ),
-              const SizedBox(height: KlasivoSpacing.xxl),
-            ],
-          ),
-        );
-      },
+        const SizedBox(height: KlasivoSpacing.xxl),
+      ],
     );
   }
 

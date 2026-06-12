@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/services/qr_service.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 
 class QrGenerateScreen extends ConsumerWidget {
   final String classId;
@@ -25,13 +26,10 @@ class QrGenerateScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Class QR Code'), centerTitle: true),
       body: Center(
-        child: Card(
+        child: KlasivoCard(
           margin: const EdgeInsets.all(24),
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
+          variant: KlasivoCardVariant.elevated,
+          child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.qr_code_2, size: 40, color: theme.colorScheme.primary),
@@ -68,8 +66,6 @@ class QrGenerateScreen extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
-        ),
       ),
     );
   }

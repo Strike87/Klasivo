@@ -7,14 +7,18 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/assignment_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../core/services/pagination_service.dart';
+import '../../../widgets/klasivo_paginated_list.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ASSIGNMENT LIST SCREEN — Klasivo v1.7
+// ASSIGNMENT LIST SCREEN — Klasivo v1.9
 // Teacher's assignment overview with tabbed filtering (All / Draft / Published)
+// Now uses KlasivoPaginatedList for server-side cursor-based pagination.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class AssignmentListScreen extends ConsumerWidget {
@@ -22,17 +26,14 @@ class AssignmentListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final assignments = ref.watch(assignmentsProvider);
     final classes = ref.watch(classesProvider);
-    final assignmentsAsync = ref.watch(assignmentsByOrgProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Assignments'),
-          bottom: TabBar(
+          bottom: const TabBar(
             tabs: [
               Tab(text: 'All'),
               Tab(text: 'Draft'),
@@ -40,54 +41,30 @@ class AssignmentListScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: assignmentsAsync.when(
-          loading: () => const KlasivoLoading(message: 'Loading assignments...'),
-          error: (error, stack) => ErrorWidgetCustom(
-            message: 'Failed to load assignments: $error',
-            onRetry: () => ref.invalidate(assignmentsByOrgProvider),
-          ),
-          data: (_) {
-            final allAssignments = assignments
-                .where((a) => !a.isArchived)
-                .toList();
-
-            final drafts = allAssignments
-                .where((a) => a.isDraft)
-                .toList();
-
-            final published = allAssignments
-                .where((a) => a.isPublished)
-                .toList();
-
-            return TabBarView(
-              children: [
-                _AssignmentTabList(
-                  assignments: allAssignments,
-                  classes: classes,
-                  emptyIcon: Icons.assignment_outlined,
-                  emptyTitle: 'No Assignments Yet',
-                  emptySubtitle: 'Create your first assignment to get started',
-                  onRefresh: () => ref.invalidate(assignmentsByOrgProvider),
-                ),
-                _AssignmentTabList(
-                  assignments: drafts,
-                  classes: classes,
-                  emptyIcon: Icons.edit_note,
-                  emptyTitle: 'No Drafts',
-                  emptySubtitle: 'Draft assignments will appear here',
-                  onRefresh: () => ref.invalidate(assignmentsByOrgProvider),
-                ),
-                _AssignmentTabList(
-                  assignments: published,
-                  classes: classes,
-                  emptyIcon: Icons.check_circle_outline,
-                  emptyTitle: 'No Published Assignments',
-                  emptySubtitle: 'Publish an assignment to make it visible to students',
-                  onRefresh: () => ref.invalidate(assignmentsByOrgProvider),
-                ),
-              ],
-            );
-          },
+        body: TabBarView(
+          children: [
+            _PaginatedAssignmentTab(
+              statusFilter: null,
+              classes: classes,
+              emptyIcon: Icons.assignment_outlined,
+              emptyTitle: 'No Assignments Yet',
+              emptySubtitle: 'Create your first assignment to get started',
+            ),
+            _PaginatedAssignmentTab(
+              statusFilter: AppConstants.statusDraft,
+              classes: classes,
+              emptyIcon: Icons.edit_note,
+              emptyTitle: 'No Drafts',
+              emptySubtitle: 'Draft assignments will appear here',
+            ),
+            _PaginatedAssignmentTab(
+              statusFilter: AppConstants.statusPublished,
+              classes: classes,
+              emptyIcon: Icons.check_circle_outline,
+              emptyTitle: 'No Published Assignments',
+              emptySubtitle: 'Publish an assignment to make it visible to students',
+            ),
+          ],
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.go('/teacher/assignments/create'),
@@ -99,79 +76,85 @@ class AssignmentListScreen extends ConsumerWidget {
   }
 }
 
-// ─── Tab Content List ─────────────────────────────────────────────────────────
-
-class _AssignmentTabList extends ConsumerWidget {
-  final List<AssignmentData> assignments;
+/// A single tab using KlasivoPaginatedList for server-side pagination.
+class _PaginatedAssignmentTab extends ConsumerWidget {
+  final String? statusFilter; // null = all, 'draft', 'published'
   final List<ClassData> classes;
   final IconData emptyIcon;
   final String emptyTitle;
   final String emptySubtitle;
-  final VoidCallback onRefresh;
 
-  const _AssignmentTabList({
-    required this.assignments,
+  const _PaginatedAssignmentTab({
+    required this.statusFilter,
     required this.classes,
     required this.emptyIcon,
     required this.emptyTitle,
     required this.emptySubtitle,
-    required this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (assignments.isEmpty) {
-      return KlasivoEmptyState(
+    final orgId = ref.watch(currentOrganizationIdProvider);
+    final paginationService = ref.watch(paginationServiceProvider);
+
+    final filters = <QueryFilter>[
+      if (orgId != null) QueryFilter.equalTo('organizationId', orgId),
+      QueryFilter.equalTo('isArchived', false),
+      if (statusFilter != null) QueryFilter.equalTo('status', statusFilter),
+    ];
+
+    return KlasivoPaginatedList<AssignmentData>(
+      loader: (cursor) => paginationService.fetchPage(
+        collectionPath: 'assignments',
+        fromFirestore: AssignmentData.fromFirestore,
+        cursor: cursor,
+        pageSize: 20,
+        orderBy: 'createdAt',
+        descending: true,
+        filters: filters,
+      ),
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      separator: const SizedBox(height: KlasivoSpacing.sm),
+      emptyWidget: KlasivoEmptyState(
         icon: emptyIcon,
         title: emptyTitle,
         subtitle: emptySubtitle,
         actionLabel: 'Create Assignment',
         onAction: () => context.go('/teacher/assignments/create'),
-      );
-    }
+      ),
+      itemBuilder: (context, assignment, index) {
+        final className = _getClassName(assignment.classId);
 
-    return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
-      child: ListView.separated(
-        padding: const EdgeInsets.all(KlasivoSpacing.lg),
-        itemCount: assignments.length,
-        separatorBuilder: (_, __) => const SizedBox(height: KlasivoSpacing.sm),
-        itemBuilder: (context, index) {
-          final assignment = assignments[index];
-          final className = _getClassName(assignment.classId);
-
-          return _AssignmentCard(
-            assignment: assignment,
-            className: className,
-            onTap: () => context.go('/teacher/assignments/${assignment.id}'),
-            onDelete: () async {
-              final confirmed = await KlasivoModal.confirm(
-                context: context,
-                title: 'Delete Assignment',
-                message:
-                    'Are you sure you want to delete "${assignment.title}"? All submissions will also be deleted.',
-                confirmLabel: 'Delete',
-                isDangerous: true,
-              );
-              if (confirmed == true) {
-                try {
-                  await ref
-                      .read(assignmentServiceProvider)
-                      .deleteAssignment(assignment.id);
-                  if (context.mounted) {
-                    KlasivoToast.success(context, message: 'Assignment deleted');
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    KlasivoToast.error(context,
-                        message: 'Failed: $e');
-                  }
+        return _AssignmentCard(
+          assignment: assignment,
+          className: className,
+          onTap: () => context.go('/teacher/assignments/${assignment.id}'),
+          onDelete: () async {
+            final confirmed = await KlasivoModal.confirm(
+              context: context,
+              title: 'Delete Assignment',
+              message:
+                  'Are you sure you want to delete "${assignment.title}"? All submissions will also be deleted.',
+              confirmLabel: 'Delete',
+              isDangerous: true,
+            );
+            if (confirmed == true) {
+              try {
+                await ref
+                    .read(assignmentServiceProvider)
+                    .deleteAssignment(assignment.id);
+                if (context.mounted) {
+                  KlasivoToast.success(context, message: 'Assignment deleted');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  KlasivoToast.error(context, message: 'Failed: $e');
                 }
               }
-            },
-          );
-        },
-      ),
+            }
+          },
+        );
+      },
     );
   }
 
@@ -206,6 +189,7 @@ class _AssignmentCard extends StatelessWidget {
     final dateFormat = DateFormat('MMM dd, yyyy');
 
     return KlasivoCard(
+      margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(KlasivoSpacing.lg),
       variant: KlasivoCardVariant.interactive,
       onTap: onTap,

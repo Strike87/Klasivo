@@ -8,8 +8,10 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/parent_link_provider.dart';
-import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_avatar.dart';
+import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_modal.dart';
 
 // ─── Parent Dashboard — View-Only Child Overview ──────────────────────────────
 
@@ -49,7 +51,7 @@ class ParentDashboard extends ConsumerWidget {
                 PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'logout') {
-                      final confirmed = await showConfirmationDialog(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
                         title: 'Logout',
                         message: 'Are you sure you want to logout?',
@@ -160,7 +162,7 @@ class ParentDashboard extends ConsumerWidget {
                     KlasivoSpacing.lg,
                     0,
                   ),
-                  child: Card(
+                  child: KlasivoCard(
                     child: KlasivoEmptyState(
                       icon: Icons.child_care_outlined,
                       title: 'No children linked',
@@ -333,40 +335,38 @@ class _ResultsAnalyticsRow extends ConsumerWidget {
   }
 
   Widget _skeletonCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(KlasivoSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-              ),
+    return KlasivoCard(
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(KlasivoRadius.sm),
             ),
-            const SizedBox(height: KlasivoSpacing.md),
-            Container(
-              width: 60,
-              height: 24,
-              decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(KlasivoRadius.xs),
-              ),
+          ),
+          const SizedBox(height: KlasivoSpacing.md),
+          Container(
+            width: 60,
+            height: 24,
+            decoration: BoxDecoration(
+              color: KlasivoColors.lightBorder.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(KlasivoRadius.xs),
             ),
-            const SizedBox(height: KlasivoSpacing.xs),
-            Container(
-              width: 80,
-              height: 12,
-              decoration: BoxDecoration(
-                color: KlasivoColors.lightBorder.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(KlasivoRadius.xs),
-              ),
+          ),
+          const SizedBox(height: KlasivoSpacing.xs),
+          Container(
+            width: 80,
+            height: 12,
+            decoration: BoxDecoration(
+              color: KlasivoColors.lightBorder.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(KlasivoRadius.xs),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -390,7 +390,7 @@ class _ParentResultsList extends ConsumerWidget {
         height: 80,
         child: KlasivoLoading(),
       ),
-      error: (_, __) => Card(
+      error: (_, __) => KlasivoCard(
         child: KlasivoEmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Error loading results',
@@ -402,7 +402,7 @@ class _ParentResultsList extends ConsumerWidget {
         final docs = snapshot.docs.take(5).toList();
 
         if (docs.isEmpty) {
-          return Card(
+          return KlasivoCard(
             child: KlasivoEmptyState(
               icon: Icons.assessment_outlined,
               title: 'No results yet',
@@ -429,29 +429,15 @@ class _ParentResultsList extends ConsumerWidget {
             final submittedAt = data['submittedAt'] as Timestamp?;
             final dateFormat = DateFormat('MMM dd, yyyy');
 
-            return Card(
+            return KlasivoCard(
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 dense: true,
-                leading: CircleAvatar(
-                  radius: 20,
-                  backgroundColor: (passed
-                          ? KlasivoColors.secondary
-                          : KlasivoColors.error)
-                      .withValues(alpha: 0.1),
-                  child: Text(
-                    '$percentage%',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: passed
-                          ? KlasivoColors.secondary
-                          : KlasivoColors.error,
-                    ),
-                  ),
+                leading: KlasivoAvatar(
+                  name: '$percentage%',
+                  backgroundColor: passed ? KlasivoColors.secondary : KlasivoColors.error,
+                  size: KlasivoAvatarSize.md,
                 ),
                 title: Text(
                   examTitle,
@@ -517,10 +503,9 @@ class _AttendanceAnalyticsCard extends ConsumerWidget {
     return attendanceAsync.when(
       loading: () => Padding(
         padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(KlasivoSpacing.lg),
-            child: Column(
+        child: KlasivoCard(
+          padding: const EdgeInsets.all(KlasivoSpacing.lg),
+          child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -605,7 +590,7 @@ class _ParentAttendanceList extends ConsumerWidget {
         height: 80,
         child: KlasivoLoading(),
       ),
-      error: (_, __) => Card(
+      error: (_, __) => KlasivoCard(
         child: KlasivoEmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Error loading attendance',
@@ -617,7 +602,7 @@ class _ParentAttendanceList extends ConsumerWidget {
         final docs = snapshot.docs.take(7).toList();
 
         if (docs.isEmpty) {
-          return Card(
+          return KlasivoCard(
             child: KlasivoEmptyState(
               icon: Icons.event_available_outlined,
               title: 'No attendance records',
@@ -673,13 +658,9 @@ class _ParentAttendanceList extends ConsumerWidget {
                 statusLabel = status;
             }
 
-            return Card(
+            return KlasivoCard(
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 dense: true,
                 leading: Container(

@@ -7,6 +7,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_toast.dart';
 
 // ─── Forgot Password Screen ────────────────────────────────────────────────────
 
@@ -41,12 +42,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       setState(() => _emailSent = true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: KlasivoColors.error,
-          ),
-        );
+        KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -172,16 +168,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   const SizedBox(height: KlasivoSpacing.xxl),
 
                   // ── Resend ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton(
-                      onPressed: _isLoading ? null : () {
-                        setState(() => _emailSent = false);
-                        _sendResetEmail();
-                      },
-                      child: const Text('Resend Email'),
-                    ),
+                  KlasivoButton(
+                    label: 'Resend Email',
+                    variant: KlasivoButtonVariant.secondary,
+                    onPressed: _isLoading ? null : () {
+                      setState(() => _emailSent = false);
+                      _sendResetEmail();
+                    },
+                    fullWidth: true,
+                    size: KlasivoButtonSize.lg,
                   ),
                 ],
                 const SizedBox(height: KlasivoSpacing.xxl),

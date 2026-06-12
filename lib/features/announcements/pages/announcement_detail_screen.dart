@@ -4,7 +4,9 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/announcement_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 import 'announcement_form_screen.dart';
 
 class AnnouncementDetailScreen extends ConsumerStatefulWidget {
@@ -72,7 +74,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
     }
 
     final a = _announcement!;
-    final isOwner = ref.read(userRoleProvider) == AppConstants.roleOwner;
+    final isOwnerOrCreator = ref.read(userRoleProvider) == AppConstants.roleOwner || a.createdBy == userId;
 
     return Scaffold(
       appBar: AppBar(
@@ -86,7 +88,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
               _loadAnnouncement();
             },
           ),
-          if (isOwner || a.createdBy == userId)
+          if (isOwnerOrCreator)
             PopupMenuButton(
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'edit', child: Text('Edit')),
@@ -132,13 +134,10 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
             Row(
               children: [
                 if (a.createdByName != null) ...[
-                  CircleAvatar(
-                    radius: 14,
+                  KlasivoAvatar(
+                    name: a.createdByName![0].toUpperCase(),
+                    size: KlasivoAvatarSize.sm,
                     backgroundColor: KlasivoColors.primary.withOpacity(0.1),
-                    child: Text(
-                      a.createdByName![0].toUpperCase(),
-                      style: const TextStyle(color: KlasivoColors.primary, fontWeight: FontWeight.w600),
-                    ),
                   ),
                   const SizedBox(width: KlasivoSpacing.sm),
                   Text(a.createdByName!, style: KlasivoTypography.bodyMedium.copyWith(fontWeight: FontWeight.w500)),

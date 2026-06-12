@@ -8,6 +8,7 @@ import '../../../core/services/question_service.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
@@ -232,11 +233,10 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
   }
 
   void _showAddQuestionDialog(BuildContext context, String questionType) {
-    showModalBottomSheet(
+    KlasivoModal.showForm(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _QuestionFormSheet(
+      title: 'Add $_typeLabel',
+      child: _QuestionFormSheet(
         examId: widget.examId,
         questionType: questionType,
         questionService: ref.read(questionServiceProvider),
@@ -246,11 +246,10 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
   }
 
   void _showEditQuestionDialog(BuildContext context, QuestionData question) {
-    showModalBottomSheet(
+    KlasivoModal.showForm(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _QuestionFormSheet(
+      title: 'Edit $_typeLabel',
+      child: _QuestionFormSheet(
         examId: widget.examId,
         questionType: question.questionType,
         questionService: ref.read(questionServiceProvider),
@@ -290,17 +289,10 @@ class _QuestionCard extends StatelessWidget {
           // ── Header ──
           Row(
             children: [
-              CircleAvatar(
-                radius: 16,
+              KlasivoAvatar(
+                name: '$questionNumber',
+                size: KlasivoAvatarSize.sm,
                 backgroundColor: question.typeColor.withValues(alpha: 0.1),
-                child: Text(
-                  '$questionNumber',
-                  style: TextStyle(
-                    color: question.typeColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
               ),
               const SizedBox(width: 8),
               Container(

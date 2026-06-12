@@ -1,166 +1,258 @@
 # Klasivo — Development Roadmap
 
+> **Current Version:** v2.0.0+7  
+> **Platform:** Android (Flutter 3.x / Dart 3.x)  
+> **Architecture:** Clean Architecture + Riverpod + Firebase  
+> **Last Updated:** 2026-06-12
+
+---
+
 ## Version History
 
-### v1.0 — Foundation (Weeks 1-2)
-- [x] Flutter project with Riverpod + GoRouter
-- [x] Firebase Auth (Email/Password, Google Sign-In)
-- [x] Firestore backend with security rules
-- [x] Auth screens: Splash, Login, Register, Role Selection
-- [x] GoRouter with auth guards and redirect logic
-
-### v1.1–v1.3 — Core Exam System (Weeks 3-8)
-- [x] Teacher Dashboard with real-time stats
-- [x] Class & Student CRUD with invite codes
-- [x] Exam creation with question builder (MCQ, T/F, Short Answer)
-- [x] Student exam taking with auto-save & timer
-- [x] Auto-grading engine with partial credit
-- [x] Results screens (student & teacher views)
-
-### v1.4–v1.5 — Security & Notifications (Weeks 9-13)
-- [x] App leave detection & violation tracking
-- [x] Screen security (no screenshots during exam)
-- [x] Firebase Cloud Messaging setup
-- [x] Local notifications with type-specific triggers
-- [x] Violation dashboard for teachers
-
-### v1.6 — Feature Complete (Week 14)
-- [x] Announcements (create, detail, list screens)
-- [x] Calendar with event creation
-- [x] Academic Years management
-- [x] Audit Logs (owner-only access)
-- [x] 6 new routes added
-- [x] Organization → Stage → Class → Group hierarchy
-
-### v1.7 — Enterprise Foundations (Week 15)
-- [x] Design Tokens system (6 files: colors, spacing, radius, typography, elevation, animation)
-- [x] Enterprise Component Library (7 widgets: KlasivoButton, KlasivoCard, KlasivoTextField, KlasivoBadge, KlasivoAvatar, KlasivoModal, KlasivoToast)
-- [x] KlasivoPermissionGate & KlasivoFeatureGate
-- [x] Feature Flag Service (27 flags, percentage rollout, user targeting)
-- [x] Event Bus (25+ typed events across 8 domains)
-- [x] Permission Service (8 roles, 80+ granular permissions, Firestore overrides)
-- [x] Enterprise service initialization on app startup
-
-### v1.8 — Feature Completion (Week 16)
-- [x] LessonDetailScreen (1,346 lines) — YouTube, Zoom, Google Drive, Recorded lesson types
-- [x] MaterialViewerScreen (918 lines) — File-type hero banner, metadata, open/share/download
-- [x] ConversationListScreen (703 lines) — WhatsApp-style list with search, FAB, unread indicators
-- [x] ChatScreen (717 lines) — Full chat UI with message bubbles, read receipts, auto-scroll
-- [x] Fixed TODO navigation in SubjectContentScreen
-- [x] Removed 3 orphaned GradeService files
-- [x] 4 new routes: /lms/lessons/:lessonId, /lms/materials/:materialId, /inbox/messages, /inbox/messages/:conversationId
-
-### v1.9 — Polish & Production Readiness (Current)
-- [x] Owner Shell — role-aware shell that switches between OwnerShell and TeacherShell
-- [x] Messaging UI integrated with ConversationListScreen + ChatScreen
-- [x] LMS detail screens integrated (LessonDetailScreen + MaterialViewerScreen)
-- [x] Firestore security rules hardened:
-  - Added `isOwner()`, `isStudent()`, `isInSameOrg()`, `isResourceOwner()` helpers
-  - Admin role included in `isTeacherOrOwner()`
-  - Messages restricted to same-organization reads
-  - Message updates restricted to sender only
-  - Feature flags & permission overrides restricted to owner-only writes
-  - Added search_keywords and deep_links collections
-- [x] Removed orphaned grade_service.dart, grade_provider.dart, grade_list_screen.dart
-- [x] Added url_launcher dependency for LMS external links
-- [x] Version bumped to 1.9.0+6
+| Version | Focus | Status |
+|---------|-------|--------|
+| **v1.0** | Core exam platform (auth, exams, grading) | ✅ Complete |
+| **v1.1–v1.4** | Student dashboard, auto-save, timer, violations | ✅ Complete |
+| **v1.5** | QR enrollment, notifications, PDF reports | ✅ Complete |
+| **v1.6** | Announcements, Calendar, Academic Years, Audit Logs | ✅ Complete |
+| **v1.7** | Enterprise foundations (Design Tokens, Component Library, Feature Flags, Event Bus, Permission Service) | ✅ Complete |
+| **v1.8** | Feature Completion (LMS screens, Messaging UI, legacy cleanup) | ✅ Complete |
+| **v1.9** | Polish & Integration (component migration, tests, CI/CD) | ✅ Complete |
+| **v2.0** | Advanced features (LMS video player, offline mode, analytics warehouse) | 🔲 Planned |
 
 ---
 
-## v2.0 — Next Phase (Planned)
+## v1.8 — Feature Completion ✅
 
-### Component Migration
-- [ ] Migrate remaining screens from raw Material widgets to KlasivoButton/KlasivoCard/KlasivoTextField
-- [ ] Standardize all confirmation dialogs to use KlasivoModal.confirm()
-- [ ] Replace all SnackBar usage with KlasivoToast
+### LMS Screens
+- [x] Lesson Detail Screen — video player placeholder, type-specific cards (YouTube/Zoom/Drive/Recorded), metadata, related materials
+- [x] Material Viewer Screen — file type hero banner, metadata, open/share/download actions
+- [x] Fixed TODO navigations in SubjectContentScreen
+
+### Messaging/Chat
+- [x] Conversation List Screen — WhatsApp-style conversation list with search, FAB for new conversations
+- [x] Chat Screen — full chat UI with message bubbles, read receipts, auto-scroll, message deletion
+- [x] Routes wired: `/inbox/messages`, `/inbox/messages/:conversationId`
+
+### Legacy Cleanup
+- [x] Removed orphaned GradeService, GradeProvider, GradeListScreen (replaced by Stage → Class → Group)
+
+### Routes Added
+| Route | Screen |
+|-------|--------|
+| `/lms/lessons/:lessonId` | LessonDetailScreen |
+| `/lms/materials/:materialId` | MaterialViewerScreen |
+| `/inbox/messages` | ConversationListScreen |
+| `/inbox/messages/:conversationId` | ChatScreen |
+
+---
+
+## v1.7 — Enterprise Foundations ✅
+
+### Design Tokens System (7 files)
+- [x] `app_colors.dart` — Full palette with semantic helpers
+- [x] `app_spacing.dart` — 4px base grid with semantic aliases
+- [x] `app_radius.dart` — Radius scale with semantic aliases
+- [x] `app_typography.dart` — Complete type scale with Arabic variants
+- [x] `app_elevation.dart` — Shadow system with "border-first" philosophy
+- [x] `app_animation.dart` — Duration scale, curves, stagger patterns
+- [x] `tokens.dart` — Barrel export
+
+### Enterprise Component Library (8 files)
+- [x] `klasivo_button.dart` — 5 variants, 3 sizes, loading state
+- [x] `klasivo_card.dart` — 4 variants with accent support
+- [x] `klasivo_text_field.dart` — Validation states
+- [x] `klasivo_badge.dart` — 5 variants, factory methods
+- [x] `klasivo_avatar.dart` — 4 sizes, role color coding
+- [x] `klasivo_modal.dart` — confirm/showForm/showContent
+- [x] `klasivo_toast.dart` — success/error/warning/info
+- [x] `klasivo_permission_gate.dart` — Permission/Role/Feature gates
+
+### Feature Flag Service
+- [x] 27 feature flags covering v1.6–v2.0
+- [x] Percentage rollout, user targeting, Firestore persistence
+- [x] Real-time streaming via Riverpod providers
+- [x] Feature Flags admin screen at `/settings/feature-flags`
+
+### Event Bus
+- [x] Singleton broadcast event bus with typed streams
+- [x] 25+ event models across 8 domains (Auth, Exam, Academic, Attendance, Assignment, LMS, Parent, Integrity, Organization)
+
+### Permission Service
+- [x] 8 roles: owner, admin, teacher, student, parent, campus_manager, observer, super_admin
+- [x] 80+ granular permissions
+- [x] Firestore overrides (allow/deny), resource-level ownership, wildcard support
+- [x] Riverpod providers with bulk checks and convenience providers
+
+---
+
+## v1.6 — Feature Expansion ✅
+
+### Announcements
+- [x] AnnouncementListScreen, AnnouncementFormScreen, AnnouncementDetailScreen
+- [x] Routes: `/inbox/announcements`, `/inbox/announcements/create`, `/inbox/announcements/:id`
+
+### Calendar
+- [x] CalendarScreen, CalendarEventFormScreen
+- [x] Route: `/teacher/calendar`
+
+### Academic Years
+- [x] AcademicYearListScreen, AcademicYearFormScreen
+- [x] Route: `/teacher/academic-years`
+
+### Audit Logs
+- [x] AuditLogScreen with filtering
+- [x] Route: `/teacher/audit-log`
+
+---
+
+## v1.0–v1.5 — Core Platform ✅
+
+### Authentication
+- [x] Firebase Auth (email/password + Google Sign-In)
+- [x] Multi-role: Owner, Teacher, Student, Parent
+- [x] Splash → Role Selection → Login/Register flow
+- [x] Hive-persisted session management
+
+### Teacher Features
+- [x] Dashboard with analytics cards
+- [x] Stage → Class → Group hierarchy with Smart Setup Wizard
+- [x] Exam creation with 3 question types (MCQ, True/False, Short Answer)
+- [x] Question Bank
+- [x] Exam publishing and scheduling
+- [x] Auto-grading engine
+- [x] Results with export and visualization
+- [x] Attendance tracking
+- [x] Gradebook
+- [x] Assignment management
+- [x] Excel import for students
+- [x] QR enrollment and generation
+
+### Student Features
+- [x] Dashboard with upcoming/active/completed exams
+- [x] Exam taking with auto-save, countdown timer
+- [x] Exam integrity (app leave detection, violation tracking, screen security)
+- [x] Results review
+
+### Parent Features
+- [x] Dashboard with child overview
+- [x] Results, attendance, assignments, progress, announcements views
+
+### Notifications
+- [x] Firebase Cloud Messaging integration
+- [x] Local notifications
+- [x] Notification center with read/unread
+
+### Reports
+- [x] PDF report generation
+- [x] Exam statistics with charts
+- [x] Analytics dashboard
+
+---
+
+## Current Codebase Stats
+
+| Metric | Count |
+|--------|-------|
+| Services | 56 |
+| Providers | 54 |
+| Screens | 71 |
+| Routes | 65+ |
+| Custom Widgets | 14 |
+| Feature Flags | 27 |
+| Permissions | 80+ |
+| Event Types | 25+ |
+| User Roles | 8 |
+| Firestore Indexes | 126 |
+| Paginated Screens | 5 |
+| CI/CD Workflows | 3 |
+| Performance Traces | 30+ |
+
+---
+
+## v1.9 — Polish & Integration ✅
+
+### Component Migration ✅
+- [x] Migrate existing screens from raw `ElevatedButton` → `KlasivoButton`
+- [x] Migrate raw `Card` → `KlasivoCard` variants
+- [x] Migrate raw `TextField` → `KlasivoTextField` (added `borderless` + `autofocus` for AppBar search)
+- [x] Migrate raw `SnackBar` → `KlasivoToast`
+- [x] Migrate raw `showDialog` → `KlasivoModal`
 
 ### Testing
-- [ ] Unit tests for ExamService (create, publish, grade)
-- [ ] Unit tests for AuthService (login, register, role routing)
-- [ ] Unit tests for GradingEngine (MCQ, T/F, short answer)
-- [ ] Integration tests for exam creation → taking → grading cycle
-- [ ] Widget tests for KlasivoButton variants and states
+- [x] Unit tests for grading engine (1030 lines — submission_service_test.dart)
+- [x] Unit tests for permission service (900+ lines — permission_service_test.dart)
+- [x] Unit tests for feature flag service (700+ lines — feature_flag_service_test.dart)
+- [x] Integration tests for auth flow (auth_flow_test.dart — 30+ tests)
+- [x] Integration tests for exam creation flow (exam_creation_flow_test.dart — 25+ tests)
 
-### Performance & Quality
-- [ ] Firestore composite indexes for common queries
-- [ ] Lazy loading / pagination for large lists (students, exams, messages)
-- [ ] Image caching for avatars and thumbnails
-- [ ] Offline mode with Firestore cache persistence
-- [ ] Error boundary wrapper for all screens
+### CI/CD ✅
+- [x] GitHub Actions for PR checks (test.yml, build.yml, pr-checks.yml)
+- [x] Automated test execution — 3-workflow matrix (analyze, unit, integration)
+- [x] APK build pipeline — debug APK, release APK, AAB with GitHub Release
 
-### Infrastructure
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Firebase Crashlytics integration (already wired, needs testing)
-- [ ] App store listing (Google Play)
-- [ ] Environment-based Firebase config (dev/staging/prod)
+### Performance ✅
+- [x] Optimize Firestore queries (composite indexes) — 43 new indexes, 126 total
+- [x] Add pagination to large lists — 5 major screens converted to KlasivoPaginatedList
+- [x] Profile app performance — PerformanceTraceService, N+1 fixes, FirebaseService tracing
 
 ---
 
-## Route Map (70+ routes)
+## v2.0 — Advanced Features (Future)
 
-| Path | Screen | Shell |
-|------|--------|-------|
-| `/` | SplashScreen | — |
-| `/auth` | RoleSelectionScreen | — |
-| `/auth/teacher-login` | TeacherLoginScreen | — |
-| `/auth/teacher-register` | TeacherRegistrationScreen | — |
-| `/auth/student-login` | StudentLoginScreen | — |
-| `/auth/parent-login` | ParentLoginScreen | — |
-| `/auth/parent-register` | ParentRegisterScreen | — |
-| `/auth/parent-link` | ParentLinkScreen | — |
-| `/welcome` | WelcomeScreen | — |
-| `/dashboard` | OwnerDashboard | Owner/Teacher Shell |
-| `/academic` | StageListScreen | Owner/Teacher Shell |
-| `/academic/stages/:stageId/classes` | ClassListScreen | Owner/Teacher Shell |
-| `/people` | AllStudentsScreen | Owner/Teacher Shell |
-| `/inbox` | NotificationCenterScreen | Owner/Teacher Shell |
-| `/inbox/messages` | ConversationListScreen | Owner/Teacher Shell |
-| `/inbox/messages/:conversationId` | ChatScreen | Owner/Teacher Shell |
-| `/inbox/announcements` | AnnouncementListScreen | Owner/Teacher Shell |
-| `/settings` | SettingsScreen | Owner/Teacher Shell |
-| `/lms/subject/:subjectId` | SubjectContentScreen | — |
-| `/lms/lessons/:lessonId` | LessonDetailScreen | — |
-| `/lms/materials/:materialId` | MaterialViewerScreen | — |
-| `/student` | StudentDashboard | Student Shell |
-| `/student/exams` | StudentExamListScreen | — |
-| `/student/exams/:examId/take` | ExamTakingScreen | — |
-| `/student/results` | StudentResultsScreen | — |
-| `/parent` | ParentDashboard | Parent Shell |
-| `/parent/assignments` | ParentAssignmentsScreen | Parent Shell |
-| `/parent/progress` | ParentProgressScreen | Parent Shell |
-| `/parent/announcements` | ParentAnnouncementsScreen | Parent Shell |
-| `/teacher/exams` | ExamListScreen | — |
-| `/teacher/calendar` | CalendarScreen | — |
-| `/teacher/academic-years` | AcademicYearListScreen | — |
-| `/teacher/assignments` | AssignmentListScreen | — |
-| `/teacher/gradebook` | GradebookScreen | — |
-| `/teacher/attendance` | AttendanceScreen | — |
-| `/teacher/analytics` | TeacherAnalyticsDashboard | — |
-| `/teacher/reports` | ReportGenerationScreen | — |
-| `/teacher/integrity` | ExamIntegrityDashboard | — |
-| `/teacher/audit-log` | AuditLogScreen | — |
-| `/teacher/moderation` | ModerationQueueScreen | — |
-| `/teacher/question-bank` | QuestionBankScreen | — |
+### LMS Enhancement
+- [ ] Video player with progress tracking
+- [ ] Content completion tracking
+- [ ] Lesson plan templates
+- [ ] Offline content caching
+
+### Communication
+- [ ] Push notification for new messages
+- [ ] File/image attachments in chat
+- [ ] Message reactions
+
+### Analytics
+- [ ] Analytics warehouse (BigQuery integration)
+- [ ] Custom report builder
+- [ ] Student performance prediction
+
+### Platform
+- [ ] iOS support
+- [ ] Web support
+- [ ] Multi-tenant campus model
+- [ ] SSO integration
+- [ ] Dark mode toggle (system tokens ready)
+- [ ] RTL layout support (Arabic fonts loaded)
 
 ---
 
-## Architecture Summary
+## Architecture Overview
 
-| Layer | Technology | Count |
-|-------|-----------|-------|
-| Services | FirebaseFirestore CRUD | 44 |
-| Providers | Riverpod StateNotifier/Stream | 40 |
-| Screens | ConsumerWidget/StatefulWidget | 67 |
-| Routes | GoRouter | 70+ |
-| Data Models | Firestore-mapped classes | 30+ |
-| Widgets | Klasivo Component Library | 11 |
-| Tokens | Design system constants | 7 files |
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Presentation Layer                    │
+│  Screens (71)  ·  Widgets (18)  ·  Shells (3)           │
+├──────────────────────────────────────────────────────────┤
+│                     State Management                      │
+│  Providers (38)  ·  Riverpod  ·  StreamProviders        │
+├──────────────────────────────────────────────────────────┤
+│                     Business Logic                        │
+│  Services (48)  ·  Event Bus  ·  Feature Flags           │
+│  Permission Service  ·  Audit  ·  Grading Engine         │
+├──────────────────────────────────────────────────────────┤
+│                     Data Layer                            │
+│  Firebase Auth  ·  Firestore  ·  FCM  ·  Hive  ·  PDF   │
+└──────────────────────────────────────────────────────────┘
+```
 
-## Design System
+## Key Implementation Principles
 
-- **Primary**: #3B5BDB (Royal Indigo)
-- **Secondary**: #12B886 (Emerald)
-- **Accent**: #F59F00 (Amber Gold)
-- **Font**: PlusJakartaSans (Latin) + NotoSansArabic (Arabic)
-- **Spacing**: 4px base grid
-- **Radius**: sm=6, md=8, lg=12, xl=16, pill=999
+1. **Use Design Tokens** — All colors, spacing, typography from `lib/core/tokens/`
+2. **Use Enterprise Components** — KlasivoButton, KlasivoCard, KlasivoBadge, etc.
+3. **Use Feature Flags** — Gate new features behind flags
+4. **Use Permission Gates** — `KlasivoPermissionGate`, `KlasivoRoleGate`
+5. **Use Event Bus** — Decouple feature modules via typed events
+6. **Follow Clean Architecture** — Services → Providers → Screens
+7. **Soft Delete** — All entities use `isArchived` + `archivedAt` pattern
+8. **Riverpod Functional Style** — Functional providers, not Notifiers (except where needed)
+9. **Firestore Security** — Role-based rules with field-level security

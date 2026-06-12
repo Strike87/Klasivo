@@ -9,6 +9,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -46,15 +47,10 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.go('/settings/profile'),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
-                    child: Text(
-                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                      style: KlasivoTypography.headlineSmall.copyWith(
-                        color: KlasivoColors.primary,
-                      ),
-                    ),
+                  KlasivoAvatar(
+                    name: userName,
+                    backgroundColor: KlasivoColors.primary,
+                    size: KlasivoAvatarSize.lg,
                   ),
                   const SizedBox(width: KlasivoSpacing.md),
                   Expanded(
@@ -272,177 +268,56 @@ class SettingsScreen extends ConsumerWidget {
 
   void _showInviteCodes(BuildContext context, WidgetRef ref, String? orgId) {
     if (orgId == null) return;
-    showModalBottomSheet(
+    KlasivoModal.showContent(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(KlasivoRadius.lg)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (ctx, controller) => _InviteCodesSheet(
-          orgId: orgId,
-          scrollController: controller,
-        ),
-      ),
+      title: 'Invite Codes',
+      child: _InviteCodesSheet(orgId: orgId),
     );
   }
 
   void _showTeacherList(BuildContext context, String? orgId) {
     if (orgId == null) return;
-    showModalBottomSheet(
+    KlasivoModal.showContent(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(KlasivoRadius.lg)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (ctx, controller) => _TeacherListSheet(
-          orgId: orgId,
-          scrollController: controller,
-        ),
-      ),
+      title: 'Teachers',
+      child: _TeacherListSheet(orgId: orgId),
     );
   }
 
   void _showChangePassword(BuildContext context, WidgetRef ref) {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool obscureCurrent = true;
-    bool obscureNew = true;
-
-    showDialog(
+    KlasivoModal.showForm(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Change Password'),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                KlasivoTextField(
-                  controller: currentPasswordController,
-                  label: 'Current Password',
-                  obscureText: obscureCurrent,
-                  prefixIcon: Icons.lock_outline_rounded,
-                  suffixIcon: IconButton(
-                    icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-                    onPressed: () => setState(() => obscureCurrent = !obscureCurrent),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.md),
-                KlasivoTextField(
-                  controller: newPasswordController,
-                  label: 'New Password',
-                  obscureText: obscureNew,
-                  prefixIcon: Icons.lock_outline_rounded,
-                  suffixIcon: IconButton(
-                    icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-                    onPressed: () => setState(() => obscureNew = !obscureNew),
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.md),
-                KlasivoTextField(
-                  controller: confirmPasswordController,
-                  label: 'Confirm New Password',
-                  obscureText: true,
-                  prefixIcon: Icons.lock_outline_rounded,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            KlasivoButton(
-              label: 'Cancel',
-              variant: KlasivoButtonVariant.tertiary,
-              onPressed: () => Navigator.of(ctx).pop(),
-            ),
-            KlasivoButton(
-              label: 'Update',
-              onPressed: () async {
-                if (newPasswordController.text != confirmPasswordController.text) {
-                  KlasivoToast.error(context, message: 'Passwords do not match');
-                  return;
-                }
-                if (newPasswordController.text.length < 6) {
-                  KlasivoToast.error(context, message: 'Password must be at least 6 characters');
-                  return;
-                }
-                try {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user != null && user.email != null) {
-                    final credential = EmailAuthProvider.credential(
-                      email: user.email!,
-                      password: currentPasswordController.text,
-                    );
-                    await user.reauthenticateWithCredential(credential);
-                    await user.updatePassword(newPasswordController.text);
-                  }
-                  if (context.mounted) {
-                    Navigator.of(ctx).pop();
-                    KlasivoToast.success(context, message: 'Password updated successfully');
-                  }
-                } catch (e) {
-                  KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
-                }
-              },
-            ),
-          ],
-        ),
-      ),
+      title: 'Change Password',
+      child: const _ChangePasswordForm(),
     );
   }
 
   void _showNotificationSettings(BuildContext context) {
-    showDialog(
+    KlasivoModal.showContent(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Notification Settings'),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile(
-              title: const Text('Exam Published'),
-              subtitle: const Text('When a new exam is published'),
-              value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              title: const Text('Exam Reminders'),
-              subtitle: const Text('Before an exam starts'),
-              value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              title: const Text('Results Published'),
-              subtitle: const Text('When exam results are available'),
-              value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              title: const Text('Announcements'),
-              subtitle: const Text('Organization announcements'),
-              value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
-            ),
-          ],
-        ),
-        actions: [
-          KlasivoButton(
-            label: 'Done',
-            variant: KlasivoButtonVariant.tertiary,
-            onPressed: () => Navigator.of(ctx).pop(),
+      title: 'Notification Settings',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SwitchListTile(
+            title: const Text('Exam Published'),
+            subtitle: const Text('When a new exam is published'),
+            value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
+          ),
+          SwitchListTile(
+            title: const Text('Exam Reminders'),
+            subtitle: const Text('Before an exam starts'),
+            value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
+          ),
+          SwitchListTile(
+            title: const Text('Results Published'),
+            subtitle: const Text('When exam results are available'),
+            value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
+          ),
+          SwitchListTile(
+            title: const Text('Announcements'),
+            subtitle: const Text('Organization announcements'),
+            value: true, onChanged: (v) {}, contentPadding: EdgeInsets.zero,
           ),
         ],
       ),
@@ -450,61 +325,57 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showHelp(BuildContext context) {
-    showDialog(
+    KlasivoModal.showContent(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Help & Support'),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _HelpItem(icon: Icons.email_outlined, title: 'Email Support', value: AppConstants.supportEmail),
-            const SizedBox(height: KlasivoSpacing.md),
-            _HelpItem(icon: Icons.language_outlined, title: 'Website', value: AppConstants.appBaseUrl),
-            const SizedBox(height: KlasivoSpacing.md),
-            _HelpItem(icon: Icons.description_outlined, title: 'Documentation', value: '${AppConstants.appBaseUrl}/docs'),
-          ],
-        ),
-        actions: [
-          KlasivoButton(
-            label: 'Close',
-            variant: KlasivoButtonVariant.tertiary,
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
+      title: 'Help & Support',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _HelpItem(icon: Icons.email_outlined, title: 'Email Support', value: AppConstants.supportEmail),
+          const SizedBox(height: KlasivoSpacing.md),
+          _HelpItem(icon: Icons.language_outlined, title: 'Website', value: AppConstants.appBaseUrl),
+          const SizedBox(height: KlasivoSpacing.md),
+          _HelpItem(icon: Icons.description_outlined, title: 'Documentation', value: '${AppConstants.appBaseUrl}/docs'),
         ],
       ),
     );
   }
 
   void _showAbout(BuildContext context) {
-    showAboutDialog(
+    KlasivoModal.showContent(
       context: context,
-      applicationName: 'Klasivo',
-      applicationVersion: '1.7.1',
-      applicationIcon: Container(
-        padding: const EdgeInsets.all(KlasivoSpacing.md),
-        decoration: BoxDecoration(
-          color: KlasivoColors.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        ),
-        child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.primary),
+      title: 'About Klasivo',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(KlasivoSpacing.md),
+              decoration: BoxDecoration(
+                color: KlasivoColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(KlasivoRadius.md),
+              ),
+              child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.primary),
+            ),
+          ),
+          const SizedBox(height: KlasivoSpacing.lg),
+          Center(child: Text('Version 1.7.1', style: KlasivoTypography.bodyMedium)),
+          const SizedBox(height: KlasivoSpacing.lg),
+          const Text('Professional Exam Management Platform'),
+          const SizedBox(height: KlasivoSpacing.sm),
+          Text(
+            'Built with Flutter & Firebase',
+            style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.lightTextTertiary),
+          ),
+          const SizedBox(height: KlasivoSpacing.lg),
+          Text(
+            'Support: ${AppConstants.supportEmail}',
+            style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.primary),
+          ),
+        ],
       ),
-      children: [
-        const Text('Professional Exam Management Platform'),
-        const SizedBox(height: KlasivoSpacing.sm),
-        Text(
-          'Built with Flutter & Firebase',
-          style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.lightTextTertiary),
-        ),
-        const SizedBox(height: KlasivoSpacing.lg),
-        Text(
-          'Support: ${AppConstants.supportEmail}',
-          style: KlasivoTypography.bodySmall.copyWith(color: KlasivoColors.primary),
-        ),
-      ],
     );
   }
 }
@@ -636,12 +507,118 @@ class _HelpItem extends StatelessWidget {
   }
 }
 
+// ─── Change Password Form ──────────────────────────────────────────────────────
+
+class _ChangePasswordForm extends StatefulWidget {
+  const _ChangePasswordForm();
+
+  @override
+  State<_ChangePasswordForm> createState() => _ChangePasswordFormState();
+}
+
+class _ChangePasswordFormState extends State<_ChangePasswordForm> {
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+
+  @override
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        KlasivoTextField(
+          controller: _currentPasswordController,
+          label: 'Current Password',
+          obscureText: _obscureCurrent,
+          prefixIcon: Icons.lock_outline_rounded,
+          suffixIcon: IconButton(
+            icon: Icon(_obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+            onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
+          ),
+        ),
+        const SizedBox(height: KlasivoSpacing.md),
+        KlasivoTextField(
+          controller: _newPasswordController,
+          label: 'New Password',
+          obscureText: _obscureNew,
+          prefixIcon: Icons.lock_outline_rounded,
+          suffixIcon: IconButton(
+            icon: Icon(_obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+            onPressed: () => setState(() => _obscureNew = !_obscureNew),
+          ),
+        ),
+        const SizedBox(height: KlasivoSpacing.md),
+        KlasivoTextField(
+          controller: _confirmPasswordController,
+          label: 'Confirm New Password',
+          obscureText: true,
+          prefixIcon: Icons.lock_outline_rounded,
+        ),
+        const SizedBox(height: KlasivoSpacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: KlasivoButton(
+                label: 'Cancel',
+                variant: KlasivoButtonVariant.tertiary,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            const SizedBox(width: KlasivoSpacing.md),
+            Expanded(
+              child: KlasivoButton(
+                label: 'Update',
+                onPressed: () async {
+                  if (_newPasswordController.text != _confirmPasswordController.text) {
+                    KlasivoToast.error(context, message: 'Passwords do not match');
+                    return;
+                  }
+                  if (_newPasswordController.text.length < 6) {
+                    KlasivoToast.error(context, message: 'Password must be at least 6 characters');
+                    return;
+                  }
+                  try {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null && user.email != null) {
+                      final credential = EmailAuthProvider.credential(
+                        email: user.email!,
+                        password: _currentPasswordController.text,
+                      );
+                      await user.reauthenticateWithCredential(credential);
+                      await user.updatePassword(_newPasswordController.text);
+                    }
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      KlasivoToast.success(context, message: 'Password updated successfully');
+                    }
+                  } catch (e) {
+                    KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 // ─── Invite Codes Bottom Sheet ─────────────────────────────────────────────────
 
 class _InviteCodesSheet extends ConsumerStatefulWidget {
   final String orgId;
-  final ScrollController scrollController;
-  const _InviteCodesSheet({required this.orgId, required this.scrollController});
+  const _InviteCodesSheet({required this.orgId});
 
   @override
   ConsumerState<_InviteCodesSheet> createState() => _InviteCodesSheetState();
@@ -694,25 +671,19 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Column(
-      children: [
-        Center(
-          child: Container(
-            margin: const EdgeInsets.only(top: KlasivoSpacing.md),
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? KlasivoColors.darkBorder : KlasivoColors.lightBorder,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: KlasivoSpacing.xxl),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_codes.isEmpty) {
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Text('Invite Codes', style: KlasivoTypography.headlineSmall),
               KlasivoButton(
                 label: 'Generate',
                 icon: Icons.add_rounded,
@@ -721,66 +692,74 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
               ),
             ],
           ),
+          const SizedBox(height: KlasivoSpacing.lg),
+          KlasivoEmptyState(
+            icon: Icons.vpn_key_outlined,
+            title: 'No Invite Codes',
+            subtitle: 'Generate a code to invite teachers to your workspace',
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            KlasivoButton(
+              label: 'Generate',
+              icon: Icons.add_rounded,
+              onPressed: _generateCode,
+              size: KlasivoButtonSize.sm,
+            ),
+          ],
         ),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _codes.isEmpty
-                  ? KlasivoEmptyState(
-                      icon: Icons.vpn_key_outlined,
-                      title: 'No Invite Codes',
-                      subtitle: 'Generate a code to invite teachers to your workspace',
-                    )
-                  : ListView.builder(
-                      controller: widget.scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-                      itemCount: _codes.length,
-                      itemBuilder: (context, index) {
-                        final code = _codes[index];
-                        final isActive = code['isActive'] ?? true;
-                        return KlasivoCard(
-                          margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
-                          padding: const EdgeInsets.all(KlasivoSpacing.md),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                                decoration: BoxDecoration(
-                                  color: isActive
-                                      ? KlasivoColors.secondary.withValues(alpha: 0.1)
-                                      : KlasivoColors.error.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                                ),
-                                child: Icon(
-                                  isActive ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
-                                  color: isActive ? KlasivoColors.secondary : KlasivoColors.error, size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: KlasivoSpacing.md),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(code['code'] ?? '',
-                                      style: KlasivoTypography.titleMedium.copyWith(fontFamily: 'monospace')),
-                                    Text(isActive ? 'Active' : 'Deactivated',
-                                      style: KlasivoTypography.bodySmall.copyWith(
-                                        color: isActive ? KlasivoColors.secondary : KlasivoColors.error)),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.copy_rounded, size: 20),
-                                onPressed: () {
-                                  KlasivoToast.success(context, message: 'Code copied: ${code['code']}');
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-        ),
+        const SizedBox(height: KlasivoSpacing.md),
+        ..._codes.map((code) {
+          final isActive = code['isActive'] ?? true;
+          return KlasivoCard(
+            margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
+            padding: const EdgeInsets.all(KlasivoSpacing.md),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(KlasivoSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? KlasivoColors.secondary.withValues(alpha: 0.1)
+                        : KlasivoColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+                  ),
+                  child: Icon(
+                    isActive ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
+                    color: isActive ? KlasivoColors.secondary : KlasivoColors.error, size: 20,
+                  ),
+                ),
+                const SizedBox(width: KlasivoSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(code['code'] ?? '',
+                        style: KlasivoTypography.titleMedium.copyWith(fontFamily: 'monospace')),
+                      Text(isActive ? 'Active' : 'Deactivated',
+                        style: KlasivoTypography.bodySmall.copyWith(
+                          color: isActive ? KlasivoColors.secondary : KlasivoColors.error)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_rounded, size: 20),
+                  onPressed: () {
+                    KlasivoToast.success(context, message: 'Code copied: ${code['code']}');
+                  },
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ],
     );
   }
@@ -790,8 +769,7 @@ class _InviteCodesSheetState extends ConsumerState<_InviteCodesSheet> {
 
 class _TeacherListSheet extends ConsumerStatefulWidget {
   final String orgId;
-  final ScrollController scrollController;
-  const _TeacherListSheet({required this.orgId, required this.scrollController});
+  const _TeacherListSheet({required this.orgId});
 
   @override
   ConsumerState<_TeacherListSheet> createState() => _TeacherListSheetState();
@@ -827,24 +805,27 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: KlasivoSpacing.xxl),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_teachers.isEmpty) {
+      return KlasivoEmptyState(
+        icon: Icons.people_outline_rounded,
+        title: 'No Teachers',
+        subtitle: 'No teachers found in your workspace',
+      );
+    }
+
     return Column(
       children: [
-        Center(
-          child: Container(
-            margin: const EdgeInsets.only(top: KlasivoSpacing.md),
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? KlasivoColors.darkBorder : KlasivoColors.lightBorder,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
         Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
+          padding: const EdgeInsets.only(bottom: KlasivoSpacing.md),
           child: Row(
             children: [
-              Text('Teachers', style: KlasivoTypography.headlineSmall),
-              const SizedBox(width: KlasivoSpacing.sm),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
                 decoration: BoxDecoration(
@@ -857,57 +838,45 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
             ],
           ),
         ),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView.builder(
-                  controller: widget.scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
-                  itemCount: _teachers.length,
-                  itemBuilder: (context, index) {
-                    final teacher = _teachers[index];
-                    final isOwner = teacher['role'] == AppConstants.roleOwner;
-                    final name = teacher['fullName'] ?? 'Unknown';
-                    return KlasivoCard(
-                      margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
-                      padding: const EdgeInsets.all(KlasivoSpacing.md),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: (isOwner ? KlasivoColors.primary : KlasivoColors.secondary).withValues(alpha: 0.1),
-                            child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                              style: KlasivoTypography.titleMedium.copyWith(
-                                color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
-                          ),
-                          const SizedBox(width: KlasivoSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(name, style: KlasivoTypography.titleMedium),
-                                Text(teacher['email'] ?? '',
-                                  style: KlasivoTypography.bodySmall.copyWith(
-                                    color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary)),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
-                            decoration: BoxDecoration(
-                              color: isOwner ? KlasivoColors.primary.withValues(alpha: 0.1) : KlasivoColors.secondary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                            ),
-                            child: Text(isOwner ? 'Owner' : 'Teacher',
-                              style: KlasivoTypography.labelSmall.copyWith(
-                                color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+        ..._teachers.map((teacher) {
+          final isOwner = teacher['role'] == AppConstants.roleOwner;
+          final name = teacher['fullName'] ?? 'Unknown';
+          return KlasivoCard(
+            margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),
+            padding: const EdgeInsets.all(KlasivoSpacing.md),
+            child: Row(
+              children: [
+                KlasivoAvatar(
+                  name: name,
+                  backgroundColor: isOwner ? KlasivoColors.primary : KlasivoColors.secondary,
+                  size: KlasivoAvatarSize.md,
                 ),
-        ),
+                const SizedBox(width: KlasivoSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: KlasivoTypography.titleMedium),
+                      Text(teacher['email'] ?? '',
+                        style: KlasivoTypography.bodySmall.copyWith(
+                          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.sm, vertical: KlasivoSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: isOwner ? KlasivoColors.primary.withValues(alpha: 0.1) : KlasivoColors.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                  ),
+                  child: Text(isOwner ? 'Owner' : 'Teacher',
+                    style: KlasivoTypography.labelSmall.copyWith(
+                      color: isOwner ? KlasivoColors.primary : KlasivoColors.secondary)),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ],
     );
   }

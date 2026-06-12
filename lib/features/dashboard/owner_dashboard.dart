@@ -13,6 +13,8 @@ import '../../../providers/permission_provider.dart';
 import '../../../providers/feature_flag_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_badge.dart';
 class OwnerDashboard extends ConsumerWidget {
   const OwnerDashboard({Key? key}) : super(key: key);
 
@@ -69,10 +71,21 @@ class OwnerDashboard extends ConsumerWidget {
               ),
               actions: [
                 IconButton(
-                  icon: Badge(
-                    isLabelVisible: unreadNotifs > 0,
-                    label: Text('$unreadNotifs'),
-                    child: const Icon(Icons.notifications_outlined),
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_outlined),
+                      if (unreadNotifs > 0)
+                        Positioned(
+                          top: -4,
+                          right: -8,
+                          child: KlasivoBadge(
+                            label: '$unreadNotifs',
+                            variant: KlasivoBadgeVariant.danger,
+                            size: KlasivoBadgeSize.sm,
+                          ),
+                        ),
+                    ],
                   ),
                   onPressed: () => context.go('/inbox'),
                 ),
@@ -235,30 +248,28 @@ class OwnerDashboard extends ConsumerWidget {
                         children: [
                           const KlasivoSectionHeader(title: 'Coming Soon'),
                           const SizedBox(height: KlasivoSpacing.md),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.search_outlined, color: KlasivoColors.primary, size: 28),
-                                  const SizedBox(width: KlasivoSpacing.md),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Global Search', style: KlasivoTypography.titleMedium),
-                                        const SizedBox(height: KlasivoSpacing.xs),
-                                        Text(
-                                          'Search across students, classes, exams, and assignments',
-                                          style: KlasivoTypography.bodySmall.copyWith(
-                                            color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                                          ),
+                          KlasivoCard(
+                            padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                            child: Row(
+                              children: [
+                                Icon(Icons.search_outlined, color: KlasivoColors.primary, size: 28),
+                                const SizedBox(width: KlasivoSpacing.md),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Global Search', style: KlasivoTypography.titleMedium),
+                                      const SizedBox(height: KlasivoSpacing.xs),
+                                      Text(
+                                        'Search across students, classes, exams, and assignments',
+                                        style: KlasivoTypography.bodySmall.copyWith(
+                                          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: KlasivoSpacing.xxl),
@@ -376,22 +387,21 @@ class _RecentNotificationsList extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (notifications.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.xxl),
-          child: KlasivoEmptyState(
-            icon: Icons.notifications_none_outlined,
-            title: 'No Notifications',
-            subtitle: 'Notifications will appear here as your organization grows',
-            iconColor: KlasivoColors.primary,
-          ),
+      return KlasivoCard(
+        padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+        child: KlasivoEmptyState(
+          icon: Icons.notifications_none_outlined,
+          title: 'No Notifications',
+          subtitle: 'Notifications will appear here as your organization grows',
+          iconColor: KlasivoColors.primary,
         ),
       );
     }
 
     final recent = notifications.take(5).toList();
 
-    return Card(
+    return KlasivoCard(
+      padding: EdgeInsets.zero,
       child: Column(
         children: recent.map((n) {
           return ListTile(

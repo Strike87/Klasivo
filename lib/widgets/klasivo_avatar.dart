@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/tokens/tokens.dart';
+import '../core/services/image_cache_service.dart';
+import 'klasivo_cached_image.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO AVATAR — Consistent avatar component with fallback initials
@@ -21,7 +24,7 @@ enum KlasivoAvatarStatus {
   away,       // Amber dot
 }
 
-class KlasivoAvatar extends StatelessWidget {
+class KlasivoAvatar extends ConsumerWidget {
   final String? imageUrl;
   final String? name;          // Used for initials fallback
   final String? role;          // Used for color coding
@@ -42,7 +45,7 @@ class KlasivoAvatar extends StatelessWidget {
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final radius = switch (size) {
       KlasivoAvatarSize.sm => AppSpacing.avatarRadiusSm,
       KlasivoAvatarSize.md => AppSpacing.avatarRadius,
@@ -70,14 +73,15 @@ class KlasivoAvatar extends StatelessWidget {
 
     Widget avatarChild;
     if (imageUrl != null && imageUrl!.isNotEmpty) {
-      avatarChild = ClipOval(
-        child: Image.network(
-          imageUrl!,
-          width: radius * 2,
-          height: radius * 2,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildInitials(initials, avatarColor, fontSize),
-        ),
+      avatarChild = KlasivoCachedImage(
+        imageUrl: imageUrl!,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        isCircular: true,
+        tag: 'avatar',
+        ttl: defaultAvatarTtl,
+        errorWidget: _buildInitials(initials, avatarColor, fontSize),
       );
     } else {
       avatarChild = _buildInitials(initials, avatarColor, fontSize);

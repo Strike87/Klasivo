@@ -1,0 +1,45 @@
+import { onCall } from 'firebase-functions/v2/https';
+import * as Sentry from '@sentry/node';
+
+import { queueEmail } from '../services/queueService';
+import { isValidEmail, missingField } from '../utils/validators';
+import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
+import { initSentry } from '../config/sentry';
+
+export const sendTeacherInvitation = onCall(
+  { secrets: ['SENTRY_DSN'], enforceAppCheck: true },
+  async (request) => {
+    initSentry();
+    Sentry.setTag('service', 'email');
+    Sentry.setTag('function', 'sendTeacherInvitation');
+
+    if (!request.auth) throw new Error('User must be authenticated.');
+
+    const data = request.data;
+    const required = ['email', 'teacherName', 'schoolName', 'inviterName', 'inviteCode', 'orgId'];
+    const missing = missingField(data ?? {}, required);
+    if (missing) throw new Error(`Missing required field: ${missing}`);
+
+    const fields = data as Record<string, string>;
+    if (!isValidEmail(fields['email'] ?? '')) throw new Error('Invalid email address.');
+
+    const cleanEmail = sanitizeEmail(fields['email'] ?? '');
+    const cleanTeacherName = sanitizeText(fields['teacherName'] ?? '', 100);
+    const cleanSchoolName = sanitizeText(fields['schoolName'] ?? '', 150);
+    const cleanInviterName = sanitizeText(fields['inviterName'] ?? '', 100);
+    const cleanInviteCode = sanitizeText(fields['inviteCode'] ?? '', 20);
+    const cleanOrgId = sanitizeText(fields['orgId'] ?? '', 50);
+
+    try {
+      const result = await queueEmail({
+        type: 'teacher_invitation', category: 'teacher_invitation', to: cleanEmail,
+        payload: { teacherName: cleanTeacherName, schoolName: cleanSchoolName, inviterName: cleanInviterName, inviteCode: cleanInviteCode, orgId: cleanOrgId },
+        idempotencyKey: `invite_${cleanOrgId}_${cleanEmail}`,
+      });
+      if (!result.queued && result.reason === 'duplicate') return { success: true, id: result.queueId, message: 'Invitation already queued or sent' };
+      return { success: true, id: result.queueId };
+    } catch (err: unknown) {
+      Sentry.captureException(err);
+      throw new Error('Failed to queue teacher invitation');
+    }
+  });

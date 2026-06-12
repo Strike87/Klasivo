@@ -8,6 +8,8 @@ import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/parent_link_provider.dart';
 import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 // ─── Parent-Student Linking Screen ────────────────────────────────────────────
@@ -80,14 +82,11 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
 
       if (mounted) {
         // Show success dialog
-        await showDialog(
+        await KlasivoModal.showContent(
           context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(KlasivoRadius.lg),
-            ),
-            content: Column(
+          title: 'Successfully Linked!',
+          child: Builder(
+            builder: (innerContext) => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
@@ -104,35 +103,25 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
                 Text(
-                  'Successfully Linked!',
-                  style: KlasivoTypography.titleLarge.copyWith(
-                    color: Theme.of(ctx).brightness == Brightness.dark
-                        ? KlasivoColors.darkTextPrimary
-                        : KlasivoColors.lightTextPrimary,
-                  ),
-                ),
-                const SizedBox(height: KlasivoSpacing.sm),
-                Text(
                   'You are now linked to ${result['studentName'] ?? 'your child'}. You can view their results and attendance.',
                   textAlign: TextAlign.center,
                   style: KlasivoTypography.bodyMedium.copyWith(
-                    color: Theme.of(ctx).brightness == Brightness.dark
+                    color: Theme.of(innerContext).brightness == Brightness.dark
                         ? KlasivoColors.darkTextSecondary
                         : KlasivoColors.lightTextSecondary,
                   ),
                 ),
+                const SizedBox(height: KlasivoSpacing.lg),
+                KlasivoButton(
+                  label: 'Go to Dashboard',
+                  onPressed: () {
+                    Navigator.of(innerContext).pop();
+                    context.go(AppConstants.routeParentHome);
+                  },
+                  fullWidth: true,
+                ),
               ],
             ),
-            actions: [
-              KlasivoButton(
-                label: 'Go to Dashboard',
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  context.go(AppConstants.routeParentHome);
-                },
-                fullWidth: true,
-              ),
-            ],
           ),
         );
       }
@@ -231,61 +220,12 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
                     child: KeyboardListener(
                       focusNode: FocusNode(),
                       onKeyEvent: (event) => _onKeyEvent(index, event),
-                      child: TextFormField(
+                      child: KlasivoTextField(
                         controller: _controllers[index],
                         focusNode: _focusNodes[index],
-                        textAlign: TextAlign.center,
-                        textCapitalization: TextCapitalization.characters,
                         textInputAction: index < 7
                             ? TextInputAction.next
                             : TextInputAction.done,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                              RegExp(r'[A-Za-z0-9]')),
-                          LengthLimitingTextInputFormatter(1),
-                        ],
-                        style: KlasivoTypography.headlineMedium.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextPrimary
-                              : KlasivoColors.lightTextPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        decoration: InputDecoration(
-                          counterText: '',
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: KlasivoSpacing.md,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(KlasivoRadius.md),
-                            borderSide: BorderSide(
-                              color: isDark
-                                  ? KlasivoColors.darkBorder
-                                  : KlasivoColors.lightBorder,
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(KlasivoRadius.md),
-                            borderSide: BorderSide(
-                              color: isDark
-                                  ? KlasivoColors.darkBorder
-                                  : KlasivoColors.lightBorder,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(KlasivoRadius.md),
-                            borderSide: const BorderSide(
-                              color: KlasivoColors.secondary,
-                              width: 2,
-                            ),
-                          ),
-                          filled: true,
-                          fillColor: isDark
-                              ? KlasivoColors.darkSurface
-                              : KlasivoColors.lightSurface,
-                        ),
                         onChanged: (value) {
                           if (value.isNotEmpty) {
                             _controllers[index].text =

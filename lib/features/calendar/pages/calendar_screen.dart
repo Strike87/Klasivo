@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/calendar_event_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 import 'calendar_event_form_screen.dart';
 
 class CalendarScreen extends ConsumerWidget {
@@ -228,13 +229,8 @@ class _EventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(

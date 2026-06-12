@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/exam_instance_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 
 /// Exam Instances Screen - Shows per-student exam instances for a specific exam
 /// Teachers can see which students have started, randomized question order, and completion status
@@ -92,7 +93,7 @@ class ExamInstancesScreen extends ConsumerWidget {
   }
 
   Widget _buildInstanceCard(ThemeData theme, ExamInstanceData instance) {
-    return Card(
+    return KlasivoCard(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),

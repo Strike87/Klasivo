@@ -5,19 +5,23 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/announcement_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../core/services/pagination_service.dart';
+import '../../../widgets/klasivo_paginated_list.dart';
+import '../../../widgets/klasivo_components.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import 'announcement_form_screen.dart';
 import 'announcement_detail_screen.dart';
-import '../../../widgets/klasivo_components.dart';
 
 class AnnouncementListScreen extends ConsumerWidget {
   const AnnouncementListScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final announcements = ref.watch(announcementsProvider);
     final pinned = ref.watch(pinnedAnnouncementsProvider);
+    final orgId = ref.watch(currentOrganizationIdProvider);
     final userId = ref.watch(userIdProvider);
-    final theme = Theme.of(context);
+    final paginationService = ref.watch(paginationServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -40,51 +44,24 @@ class AnnouncementListScreen extends ConsumerWidget {
         backgroundColor: KlasivoColors.primary,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: announcements.isEmpty
-          ? KlasivoEmptyState(
-              icon: Icons.campaign_outlined,
-              title: 'No Announcements',
-              subtitle: 'Create your first announcement to reach your organization',
-              actionLabel: 'Create Announcement',
-              onAction: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AnnouncementFormScreen(isEditing: false)),
-                );
-              },
-            )
-          : RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(announcementsByOrgProvider);
-              },
-              child: ListView(
-                padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      body: Column(
+        children: [
+          // ── Pinned announcements (kept as stream — small, needs real-time) ──
+          if (pinned.isNotEmpty)
+            Container(
+              color: KlasivoColors.secondary.withValues(alpha: 0.05),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (pinned.isNotEmpty) ...[
-                    KlasivoSectionHeader(
-                      title: 'Pinned',
-                    ),
-                    const SizedBox(height: KlasivoSpacing.sm),
-                    ...pinned.map((a) => _AnnouncementCard(
-                      announcement: a,
-                      userId: userId ?? '',
-                      isPinned: true,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AnnouncementDetailScreen(announcementId: a.id),
-                          ),
-                        );
-                      },
-                    )),
-                    const Divider(height: KlasivoSpacing.xxxl),
-                  ],
-                  KlasivoSectionHeader(
-                    title: 'Recent',
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      KlasivoSpacing.lg, KlasivoSpacing.md, KlasivoSpacing.lg, 0),
+                    child: KlasivoSectionHeader(title: 'Pinned'),
                   ),
-                  const SizedBox(height: KlasivoSpacing.sm),
-                  ...announcements.where((a) => !a.isPinned).map((a) => _AnnouncementCard(
+                  ...pinned.map((a) => _AnnouncementCard(
                     announcement: a,
                     userId: userId ?? '',
+                    isPinned: true,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -93,9 +70,56 @@ class AnnouncementListScreen extends ConsumerWidget {
                       );
                     },
                   )),
+                  const Divider(height: KlasivoSpacing.xxxl),
                 ],
               ),
             ),
+
+          // ── Recent announcements (paginated) ──
+          Expanded(
+            child: KlasivoPaginatedList<AnnouncementData>(
+              loader: (cursor) => paginationService.fetchPage(
+                collectionPath: 'announcements',
+                fromFirestore: AnnouncementData.fromFirestore,
+                cursor: cursor,
+                pageSize: 20,
+                orderBy: 'createdAt',
+                descending: true,
+                filters: [
+                  if (orgId != null) QueryFilter.equalTo('organizationId', orgId),
+                  QueryFilter.equalTo('isActive', true),
+                ],
+              ),
+              padding: const EdgeInsets.all(KlasivoSpacing.lg),
+              separator: const SizedBox(height: KlasivoSpacing.md),
+              emptyWidget: KlasivoEmptyState(
+                icon: Icons.campaign_outlined,
+                title: 'No Announcements',
+                subtitle: 'Create your first announcement to reach your organization',
+                actionLabel: 'Create Announcement',
+                onAction: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AnnouncementFormScreen(isEditing: false)),
+                  );
+                },
+              ),
+              itemBuilder: (context, announcement, index) {
+                return _AnnouncementCard(
+                  announcement: announcement,
+                  userId: userId ?? '',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => AnnouncementDetailScreen(announcementId: announcement.id),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -118,71 +142,58 @@ class _AnnouncementCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final isRead = announcement.isReadBy(userId);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: KlasivoSpacing.md),
-      elevation: isPinned ? 2 : 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        side: isPinned
-            ? const BorderSide(color: KlasivoColors.secondary, width: 1.5)
-            : BorderSide(color: theme.dividerColor.withOpacity(0.3)),
-      ),
-      child: InkWell(
-        onTap: () {
-          // Mark as read
-          if (!isRead) {
-            ref.read(announcementServiceProvider).markAsRead(announcement.id, userId);
-          }
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return KlasivoCard(
+      margin: EdgeInsets.zero,
+      variant: isPinned ? KlasivoCardVariant.elevated : KlasivoCardVariant.outlined,
+      onTap: () {
+        // Mark as read
+        if (!isRead) {
+          ref.read(announcementServiceProvider).markAsRead(announcement.id, userId);
+        }
+        onTap();
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  if (isPinned)
-                    const Padding(
-                      padding: EdgeInsets.only(right: KlasivoSpacing.sm),
-                      child: Icon(Icons.push_pin, size: 16, color: KlasivoColors.secondary),
-                    ),
-                  Expanded(
-                    child: Text(
-                      announcement.title,
-                      style: KlasivoTypography.titleMedium.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isRead ? null : KlasivoColors.primary,
-                      ),
-                    ),
+              if (isPinned)
+                const Padding(
+                  padding: EdgeInsets.only(right: KlasivoSpacing.sm),
+                  child: Icon(Icons.push_pin, size: 16, color: KlasivoColors.secondary),
+                ),
+              Expanded(
+                child: Text(
+                  announcement.title,
+                  style: KlasivoTypography.titleMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isRead ? null : KlasivoColors.primary,
                   ),
-                  _TargetBadge(targetType: announcement.targetType),
-                ],
-              ),
-              const SizedBox(height: KlasivoSpacing.sm),
-              Text(
-                announcement.content,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: KlasivoTypography.bodyMedium.copyWith(
-                  color: theme.brightness == Brightness.dark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
                 ),
               ),
-              const SizedBox(height: KlasivoSpacing.md),
-              Row(
-                children: [
-                  if (announcement.createdByName != null) ...[
-                    CircleAvatar(
-                      radius: 10,
-                      backgroundColor: KlasivoColors.primary.withOpacity(0.1),
-                      child: Text(
-                        announcement.createdByName![0].toUpperCase(),
-                        style: const TextStyle(fontSize: 10, color: KlasivoColors.primary),
-                      ),
-                    ),
+              _TargetBadge(targetType: announcement.targetType),
+            ],
+          ),
+          const SizedBox(height: KlasivoSpacing.sm),
+          Text(
+            announcement.content,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: KlasivoTypography.bodyMedium.copyWith(
+              color: theme.brightness == Brightness.dark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
+            ),
+          ),
+          const SizedBox(height: KlasivoSpacing.md),
+          Row(
+            children: [
+              if (announcement.createdByName != null) ...[
+                KlasivoAvatar(
+                  name: announcement.createdByName![0].toUpperCase(),
+                  size: KlasivoAvatarSize.sm,
+                  backgroundColor: KlasivoColors.primary.withOpacity(0.1),
+                ),
                     const SizedBox(width: KlasivoSpacing.xs),
                     Text(
                       announcement.createdByName!,

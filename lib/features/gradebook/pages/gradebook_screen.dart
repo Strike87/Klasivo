@@ -9,6 +9,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_button.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
@@ -664,17 +665,12 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
             width: studentColWidth,
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 14,
+                KlasivoAvatar(
+                  name: student.fullName.isNotEmpty
+                      ? student.fullName[0].toUpperCase()
+                      : '?',
+                  size: KlasivoAvatarSize.sm,
                   backgroundColor: KlasivoColors.primarySurface,
-                  child: Text(
-                    student.fullName.isNotEmpty
-                        ? student.fullName[0].toUpperCase()
-                        : '?',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: KlasivoColors.primary,
-                    ),
-                  ),
                 ),
                 const SizedBox(width: KlasivoSpacing.sm),
                 Expanded(

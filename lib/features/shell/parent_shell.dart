@@ -8,6 +8,8 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/parent_link_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../parent/pages/parent_dashboard.dart';
 import '../parent/pages/parent_assignments_screen.dart';
@@ -250,28 +252,18 @@ class _ParentFullResultsList extends ConsumerWidget {
             final submittedAt = data['submittedAt'] as Timestamp?;
             final dateFormat = DateFormat('MMM dd, yyyy');
 
-            return Card(
+            return KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
-                leading: CircleAvatar(
-                  radius: 20,
+                leading: KlasivoAvatar(
+                  name: '$percentage%',
+                  size: KlasivoAvatarSize.md,
                   backgroundColor: (passed
                           ? KlasivoColors.secondary
                           : KlasivoColors.error)
                       .withValues(alpha: 0.1),
-                  child: Text(
-                    '$percentage%',
-                    style: KlasivoTypography.labelMedium.copyWith(
-                      color: passed
-                          ? KlasivoColors.secondary
-                          : KlasivoColors.error,
-                    ),
-                  ),
                 ),
                 title: Text(
                   examTitle,
@@ -450,13 +442,10 @@ class _ParentFullAttendanceList extends ConsumerWidget {
                 statusLabel = status;
             }
 
-            return Card(
+            return KlasivoCard(
+              variant: KlasivoCardVariant.elevated,
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.sm),

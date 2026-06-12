@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_card.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);
@@ -148,57 +149,54 @@ class _RoleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-        child: Padding(
-          padding: const EdgeInsets.all(KlasivoSpacing.lg),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.md),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(width: KlasivoSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: KlasivoTypography.titleLarge.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextPrimary
-                            : KlasivoColors.lightTextPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: KlasivoSpacing.xs),
-                    Text(
-                      subtitle,
-                      style: KlasivoTypography.bodySmall.copyWith(
-                        color: isDark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: isDark
-                    ? KlasivoColors.darkTextTertiary
-                    : KlasivoColors.lightTextTertiary,
-                size: 18,
-              ),
-            ],
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      margin: EdgeInsets.zero,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.md),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+            ),
+            child: Icon(icon, color: color, size: 28),
           ),
-        ),
+          const SizedBox(width: KlasivoSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: KlasivoTypography.titleLarge.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextPrimary
+                        : KlasivoColors.lightTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xs),
+                Text(
+                  subtitle,
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: isDark
+                ? KlasivoColors.darkTextTertiary
+                : KlasivoColors.lightTextTertiary,
+            size: 18,
+          ),
+        ],
       ),
     );
   }

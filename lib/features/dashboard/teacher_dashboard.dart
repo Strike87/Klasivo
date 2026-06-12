@@ -10,6 +10,9 @@ import '../../providers/exam_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/klasivo_card.dart';
+import '../../widgets/klasivo_badge.dart';
+import '../../widgets/klasivo_avatar.dart';
+import '../../widgets/klasivo_modal.dart';
 import '../../widgets/klasivo_components.dart';
 
 class TeacherDashboard extends ConsumerWidget {
@@ -64,17 +67,28 @@ class TeacherDashboard extends ConsumerWidget {
               ),
               actions: [
                 IconButton(
-                  icon: Badge(
-                    isLabelVisible: unreadNotifs > 0,
-                    label: Text('$unreadNotifs'),
-                    child: const Icon(Icons.notifications_outlined),
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_outlined),
+                      if (unreadNotifs > 0)
+                        Positioned(
+                          top: -4,
+                          right: -8,
+                          child: KlasivoBadge(
+                            label: '$unreadNotifs',
+                            variant: KlasivoBadgeVariant.danger,
+                            size: KlasivoBadgeSize.sm,
+                          ),
+                        ),
+                    ],
                   ),
                   onPressed: () => context.go('/teacher/notifications'),
                 ),
                 PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'logout') {
-                      final confirmed = await showConfirmationDialog(
+                      final confirmed = await KlasivoModal.confirm(
                         context: context,
                         title: 'Logout',
                         message: 'Are you sure you want to logout?',
@@ -378,18 +392,10 @@ class _RecentStudentsList extends ConsumerWidget {
         children: recentStudents.map((student) {
           return ListTile(
             dense: true,
-            leading: CircleAvatar(
-              radius: 18,
+            leading: KlasivoAvatar(
+              name: student.fullName,
+              size: KlasivoAvatarSize.md,
               backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
-              child: Text(
-                student.fullName.isNotEmpty
-                    ? student.fullName[0].toUpperCase()
-                    : '?',
-                style: KlasivoTypography.titleMedium.copyWith(
-                  color: KlasivoColors.secondary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
             title: Text(
               student.fullName,

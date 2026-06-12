@@ -1,3 +1,5 @@
+import 'app_environment.dart';
+
 class AppConstants {
   // Local Storage
   static const String authBox = 'auth_box';
@@ -385,9 +387,21 @@ class AppConstants {
   static const int maxSlugLength = 40;
   static const int notificationsPageSize = 50;
 
+  // ─── Environment ────────────────────────────────────────────────────────
+
+  /// The name of the current environment ("dev", "staging", or "prod").
+  static String get environmentName =>
+      EnvironmentConfig.current.environment.name;
+
+  /// Convenience: `true` when the app is running in the dev environment.
+  static bool get isDevEnvironment => EnvironmentConfig.current.isDev;
+
   // ─── Default Values ──────────────────────────────────────────────────────
 
-  static const String defaultInstitutionId = 'default';
+  /// Environment-aware default institution ID.
+  /// Both dev and prod use 'default'; the prefix isolation is handled
+  /// via [EnvironmentConfig.databasePrefix] at the collection level.
+  static String get defaultInstitutionId => 'default';
 
   // ─── Extra Collections (referenced by services) ─────────────────────────
 

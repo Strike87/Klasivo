@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../config/app_constants.dart';
+import 'performance_trace_service.dart';
 
 class ExamStatsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -12,6 +14,14 @@ class ExamStatsService {
   /// Recalculate and upsert precomputed exam stats.
   /// Called after every submission to keep stats fresh.
   Future<void> recalculateExamStats(String examId) async {
+    await PerformanceTraceService.instance.traceOperation(
+      PerformanceTraces.statsRecalculate,
+      () => _recalculateExamStatsImpl(examId),
+      attributes: {'exam_id': examId},
+    );
+  }
+
+  Future<void> _recalculateExamStatsImpl(String examId) async {
     try {
       // Get exam info
       final examDoc = await _firestore
@@ -218,24 +228,45 @@ class ExamStatsService {
 
       if (submittedSubmissionIds.isEmpty) return;
 
-      // Get all answers for these submissions
+      // Batch fetch ALL answers for this exam's submissions in ONE query
+      // instead of N queries (one per question).
+      // We query by examId (requires composite index on answers.examId).
+      // Then group by questionId in memory.
+      final allAnswersSnapshot = submittedSubmissionIds.isNotEmpty
+          ? await _firestore
+              .collection(AppConstants.answersCollection)
+              .where('examId', isEqualTo: examId)
+              .get()
+          : await _firestore
+              .collection(AppConstants.answersCollection)
+              .where('submissionId', whereIn: submittedSubmissionIds.take(30).toList())
+              .get();
+
+      // Group answers by questionId for O(1) lookup
+      final answersByQuestion = <String, List<QueryDocumentSnapshot>>{};
+      for (final aDoc in allAnswersSnapshot.docs) {
+        final data = aDoc.data();
+        final questionId = data['questionId'] as String? ?? '';
+        final submissionId = data['submissionId'] as String? ?? '';
+
+        // Only count answers from submitted submissions
+        if (!submittedSubmissionIds.contains(submissionId)) continue;
+
+        answersByQuestion.putIfAbsent(questionId, () => []).add(aDoc);
+      }
+
+      // Batch update all question stats using a WriteBatch
+      final batch = _firestore.batch();
+      int batchOpCount = 0;
+
       for (final qDoc in questionsSnapshot.docs) {
         final questionId = qDoc.id;
-        int totalAttempts = 0;
+        final questionAnswers = answersByQuestion[questionId] ?? [];
+        int totalAttempts = questionAnswers.length;
         int correctAttempts = 0;
 
-        // Batch fetch answers for this question across all submissions
-        final answersSnapshot = await _firestore
-            .collection(AppConstants.answersCollection)
-            .where('questionId', isEqualTo: questionId)
-            .get();
-
-        for (final aDoc in answersSnapshot.docs) {
+        for (final aDoc in questionAnswers) {
           final data = aDoc.data();
-          final submissionId = data['submissionId'] as String? ?? '';
-          if (!submittedSubmissionIds.contains(submissionId)) continue;
-
-          totalAttempts++;
           if (data['isCorrect'] as bool? ?? false) {
             correctAttempts++;
           }
@@ -245,16 +276,27 @@ class ExamStatsService {
             ? (correctAttempts / totalAttempts * 100).round()
             : 0;
 
-        // Update question with stats
-        await _firestore
-            .collection(AppConstants.questionsCollection)
-            .doc(questionId)
-            .update({
-          'stats.totalAttempts': totalAttempts,
-          'stats.correctAttempts': correctAttempts,
-          'stats.correctPercentage': correctPercentage,
-          'stats.updatedAt': FieldValue.serverTimestamp(),
-        });
+        batch.update(
+          _firestore.collection(AppConstants.questionsCollection).doc(questionId),
+          {
+            'stats.totalAttempts': totalAttempts,
+            'stats.correctAttempts': correctAttempts,
+            'stats.correctPercentage': correctPercentage,
+            'stats.updatedAt': FieldValue.serverTimestamp(),
+          },
+        );
+        batchOpCount++;
+
+        // Firestore batches support max 500 operations
+        if (batchOpCount >= 450) {
+          await batch.commit();
+          batchOpCount = 0;
+        }
+      }
+
+      // Commit remaining batch operations
+      if (batchOpCount > 0) {
+        await batch.commit();
       }
     } catch (e) {
       // Non-critical: don't fail the submission
@@ -385,27 +427,43 @@ class ExamStatsService {
       String classId) async {
     try {
       final stats = await getClassExamStats(classId);
-      // Need exam titles and dates
+      // Batch fetch exam documents instead of N+1 individual queries
+      final examIds = stats.map((s) => s.examId).toList();
+      final Map<String, DocumentSnapshot> examDocs = {};
+
+      // Firestore 'in' queries support max 30 items per query
+      for (var i = 0; i < examIds.length; i += 30) {
+        final chunk = examIds.sublist(
+          i,
+          i + 30 > examIds.length ? examIds.length : i + 30,
+        );
+        final snapshot = await _firestore
+            .collection(AppConstants.examsCollection)
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snapshot.docs) {
+          examDocs[doc.id] = doc;
+        }
+      }
+
       final List<PerformanceTrendPoint> trend = [];
 
       for (final stat in stats) {
-        final examDoc = await _firestore
-            .collection(AppConstants.examsCollection)
-            .doc(stat.examId)
-            .get();
-
-        if (examDoc.exists) {
-          final data = examDoc.data()!;
-          trend.add(PerformanceTrendPoint(
-            examId: stat.examId,
-            examTitle: data['title'] as String? ?? 'Unknown',
-            date: (data['publishedAt'] as Timestamp?)?.toDate() ??
-                (data['createdAt'] as Timestamp?)?.toDate() ??
-                DateTime.now(),
-            averageScore: stat.averagePercentage,
-            passRate: stat.passRate,
-            submittedStudents: stat.submittedStudents,
-          ));
+        final examDoc = examDocs[stat.examId];
+        if (examDoc != null && examDoc.exists) {
+          final data = examDoc.data() as Map<String, dynamic>?;
+          if (data != null) {
+            trend.add(PerformanceTrendPoint(
+              examId: stat.examId,
+              examTitle: data['title'] as String? ?? 'Unknown',
+              date: (data['publishedAt'] as Timestamp?)?.toDate() ??
+                  (data['createdAt'] as Timestamp?)?.toDate() ??
+                  DateTime.now(),
+              averageScore: stat.averagePercentage,
+              passRate: stat.passRate,
+              submittedStudents: stat.submittedStudents,
+            ));
+          }
         }
       }
 
@@ -429,20 +487,34 @@ class ExamStatsService {
           .orderBy('publishedAt', descending: false)
           .get();
 
+      // Batch fetch all submissions for this student across these exams
+      // instead of N+1 individual queries per exam
+      final examIds = examsSnapshot.docs.map((d) => d.id).toList();
+      final Map<String, Map<String, dynamic>> submissionsByExam = {};
+
+      for (var i = 0; i < examIds.length; i += 30) {
+        final chunk = examIds.sublist(
+          i,
+          i + 30 > examIds.length ? examIds.length : i + 30,
+        );
+        final subSnapshot = await _firestore
+            .collection(AppConstants.submissionsCollection)
+            .where('examId', whereIn: chunk)
+            .where('studentId', isEqualTo: studentId)
+            .get();
+        for (final doc in subSnapshot.docs) {
+          final data = doc.data();
+          submissionsByExam[data['examId'] as String? ?? ''] = data;
+        }
+      }
+
       final List<StudentPerformancePoint> trend = [];
 
       for (final examDoc in examsSnapshot.docs) {
         final examData = examDoc.data();
-        // Get this student's submission for this exam
-        final subSnapshot = await _firestore
-            .collection(AppConstants.submissionsCollection)
-            .where('examId', isEqualTo: examDoc.id)
-            .where('studentId', isEqualTo: studentId)
-            .limit(1)
-            .get();
+        final subData = submissionsByExam[examDoc.id];
 
-        if (subSnapshot.docs.isNotEmpty) {
-          final subData = subSnapshot.docs.first.data();
+        if (subData != null) {
           trend.add(StudentPerformancePoint(
             examId: examDoc.id,
             examTitle: examData['title'] as String? ?? 'Unknown',

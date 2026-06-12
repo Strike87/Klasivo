@@ -8,6 +8,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
@@ -40,15 +41,10 @@ class StudentSettingsScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(KlasivoSpacing.lg),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: KlasivoColors.secondary.withValues(alpha: 0.1),
-                    child: Text(
-                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                      style: KlasivoTypography.headlineSmall.copyWith(
-                        color: KlasivoColors.secondary,
-                      ),
-                    ),
+                  KlasivoAvatar(
+                    name: userName,
+                    backgroundColor: KlasivoColors.secondary,
+                    size: KlasivoAvatarSize.lg,
                   ),
                   const SizedBox(width: KlasivoSpacing.md),
                   Expanded(
@@ -198,13 +194,16 @@ class StudentSettingsScreen extends ConsumerWidget {
                     trailing: Icon(Icons.chevron_right_rounded,
                       color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary, size: 20),
                     onTap: () {
-                      showAboutDialog(
+                      KlasivoModal.showContent(
                         context: context,
-                        applicationName: 'Klasivo',
-                        applicationVersion: '1.6.0',
-                        children: [
-                          Text('Support: ${AppConstants.supportEmail}'),
-                        ],
+                        title: 'About Klasivo',
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Support: ${AppConstants.supportEmail}'),
+                          ],
+                        ),
                       );
                     },
                   ),
@@ -225,21 +224,29 @@ class StudentSettingsScreen extends ConsumerWidget {
                     trailing: Icon(Icons.chevron_right_rounded,
                       color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary, size: 20),
                     onTap: () {
-                      showAboutDialog(
+                      KlasivoModal.showContent(
                         context: context,
-                        applicationName: 'Klasivo',
-                        applicationVersion: '1.6.0',
-                        applicationIcon: Container(
-                          padding: const EdgeInsets.all(KlasivoSpacing.md),
-                          decoration: BoxDecoration(
-                            color: KlasivoColors.secondary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                          ),
-                          child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.secondary),
+                        title: 'About Klasivo',
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(KlasivoSpacing.md),
+                                decoration: BoxDecoration(
+                                  color: KlasivoColors.secondary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(KlasivoRadius.md),
+                                ),
+                                child: const Icon(Icons.school_outlined, size: 40, color: KlasivoColors.secondary),
+                              ),
+                            ),
+                            const SizedBox(height: KlasivoSpacing.lg),
+                            Center(child: Text('Version 1.6.0', style: KlasivoTypography.bodyMedium)),
+                            const SizedBox(height: KlasivoSpacing.lg),
+                            const Text('Professional Exam Management for Students'),
+                          ],
                         ),
-                        children: [
-                          const Text('Professional Exam Management for Students'),
-                        ],
                       );
                     },
                   ),

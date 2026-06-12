@@ -131,13 +131,10 @@ class StageListScreen extends ConsumerWidget {
   }
 
   void _showSetupWizard(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    KlasivoModal.showForm(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _SetupWizardSheet(ref: ref),
+      title: 'Setup Academic Structure',
+      child: _SetupWizardSheet(ref: ref),
     );
   }
 }

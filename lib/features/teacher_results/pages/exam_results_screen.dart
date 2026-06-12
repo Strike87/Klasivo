@@ -11,6 +11,7 @@ import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_toast.dart';
 import '../../../core/services/pdf_service.dart';
 
@@ -452,18 +453,11 @@ class _StudentResultCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: CircleAvatar(
-          radius: 22,
+        leading: KlasivoAvatar(
+          name: '${submission.percentage}%',
+          size: KlasivoAvatarSize.md,
           backgroundColor:
               (passed ? Colors.green : Colors.red).withValues(alpha: 0.1),
-          child: Text(
-            '${submission.percentage}%',
-            style: TextStyle(
-              color: passed ? Colors.green : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
         ),
         title: Row(
           children: [

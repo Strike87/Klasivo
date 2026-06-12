@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';
@@ -130,15 +131,10 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                   Center(
                     child: Stack(
                       children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: KlasivoColors.primary.withValues(alpha: 0.1),
-                          child: Text(
-                            userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                            style: KlasivoTypography.displayMedium.copyWith(
-                              color: KlasivoColors.primary,
-                            ),
-                          ),
+                        KlasivoAvatar(
+                          name: userName,
+                          backgroundColor: KlasivoColors.primary,
+                          size: KlasivoAvatarSize.xl,
                         ),
                         Positioned(
                           bottom: 0,

@@ -8,6 +8,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/parent_link_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_components.dart';
 
 // ─── Parent Assignments Screen — View-Only Class Assignments ──────────────────
@@ -232,13 +233,9 @@ class _ParentAssignmentsListState
                 dueDate.toDate().isBefore(DateTime.now()) &&
                 status != AppConstants.assignmentStatusGraded;
 
-            return Card(
+            return KlasivoCard(
               margin: const EdgeInsets.only(bottom: KlasivoSpacing.xs),
-              elevation: 0.5,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(KlasivoRadius.sm),
-              ),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(KlasivoSpacing.sm),

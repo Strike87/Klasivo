@@ -10,7 +10,7 @@ import '../../../core/config/app_constants.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
-import '../../../widgets/klasivo_modal.dart';
+import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 class ExamDetailScreen extends ConsumerWidget {
@@ -435,17 +435,10 @@ class _QuestionsList extends ConsumerWidget {
               padding: EdgeInsets.zero,
               child: ListTile(
                 dense: true,
-                leading: CircleAvatar(
-                  radius: 14,
+                leading: KlasivoAvatar(
+                  name: '${index + 1}',
+                  size: KlasivoAvatarSize.sm,
                   backgroundColor: q.typeColor.withValues(alpha: 0.1),
-                  child: Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: q.typeColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
                 ),
                 title: Text(
                   q.questionText,

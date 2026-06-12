@@ -8,7 +8,7 @@ import '../../../providers/organization_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
-import '../../../widgets/klasivo_toast.dart';
+import '../../../widgets/klasivo_avatar.dart';
 
 class ExcelImportScreen extends ConsumerStatefulWidget {
   final String classId;
@@ -216,7 +216,10 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
                         children: [
                           ..._mappedStudents.take(10).map((s) => ListTile(
                                 dense: true,
-                                leading: CircleAvatar(child: Text(s.name[0].toUpperCase())),
+                                leading: KlasivoAvatar(
+                                  name: s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+                                  size: KlasivoAvatarSize.md,
+                                ),
                                 title: Text(s.name),
                                 subtitle: Text(s.password.isNotEmpty ? 'Password: ${s.password}' : 'Default password will be used'),
                               )),
@@ -261,7 +264,7 @@ class _StepCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            CircleAvatar(radius: 14, child: Text('$step', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+            KlasivoAvatar(name: '$step', size: KlasivoAvatarSize.sm),
             const SizedBox(width: 12),
             Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
           ]),

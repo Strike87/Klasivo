@@ -275,24 +275,13 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
                 const SizedBox(height: KlasivoSpacing.lg),
 
                 // ── Google Sign-Up ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: isLoading ? null : _registerWithGoogle,
-                    icon: Image.asset(
-                      'assets/images/google_logo.png',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 24),
-                    ),
-                    label: const Text('Continue with Google'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-                      ),
-                    ),
-                  ),
+                KlasivoButton(
+                  label: 'Continue with Google',
+                  variant: KlasivoButtonVariant.secondary,
+                  icon: Icons.g_mobiledata,
+                  onPressed: isLoading ? null : _registerWithGoogle,
+                  fullWidth: true,
+                  size: KlasivoButtonSize.lg,
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
 

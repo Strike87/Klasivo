@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../core/config/theme.dart';
 import 'klasivo_components.dart';
+import 'klasivo_button.dart';
+import 'klasivo_modal.dart';
+import 'klasivo_toast.dart';
 
 /// A reusable empty state widget with icon, title, and subtitle.
 /// Uses the KlasivoEmptyState from klasivo_components.dart for the new design.
@@ -89,10 +92,11 @@ class ErrorWidgetCustom extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: KlasivoSpacing.xxl),
-              OutlinedButton.icon(
+              KlasivoButton(
+                label: 'Retry',
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Retry'),
+                variant: KlasivoButtonVariant.secondary,
+                icon: Icons.refresh_rounded,
               ),
             ],
           ],
@@ -103,6 +107,8 @@ class ErrorWidgetCustom extends StatelessWidget {
 }
 
 /// A reusable confirmation dialog.
+/// @deprecated Use KlasivoModal.confirm() instead.
+@Deprecated('Use KlasivoModal.confirm() instead')
 Future<bool?> showConfirmationDialog({
   required BuildContext context,
   required String title,
@@ -111,47 +117,27 @@ Future<bool?> showConfirmationDialog({
   String cancelLabel = 'Cancel',
   bool isDangerous = false,
 }) {
-  return showDialog<bool>(
+  return KlasivoModal.confirm(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: Text(cancelLabel),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          style: isDangerous
-              ? TextButton.styleFrom(foregroundColor: KlasivoColors.error)
-              : null,
-          child: Text(
-            confirmLabel,
-            style: isDangerous
-                ? const TextStyle(color: KlasivoColors.error)
-                : null,
-          ),
-        ),
-      ],
-    ),
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    cancelLabel: cancelLabel,
+    isDangerous: isDangerous,
   );
 }
 
 /// A reusable snack bar helper.
+/// @deprecated Use KlasivoToast.show(), KlasivoToast.success(), KlasivoToast.error(), etc. instead.
+@Deprecated('Use KlasivoToast.show() or KlasivoToast.success()/error() instead')
 void showSnackBar(
   BuildContext context, {
   required String message,
   bool isError = false,
 }) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? KlasivoColors.error : KlasivoColors.secondary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KlasivoRadius.md),
-      ),
-    ),
+  KlasivoToast.show(
+    context: context,
+    message: message,
+    type: isError ? KlasivoToastType.error : KlasivoToastType.success,
   );
 }
