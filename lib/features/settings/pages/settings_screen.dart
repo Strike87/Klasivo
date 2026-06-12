@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/config/theme_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../widgets/klasivo_avatar.dart';
@@ -442,15 +443,12 @@ class _SettingsTile extends StatelessWidget {
   }
 }
 
-class _ThemeToggleTile extends ConsumerStatefulWidget {
+class _ThemeToggleTile extends ConsumerWidget {
   @override
-  ConsumerState<_ThemeToggleTile> createState() => _ThemeToggleTileState();
-}
-
-class _ThemeToggleTileState extends ConsumerState<_ThemeToggleTile> {
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.sm),
@@ -458,21 +456,110 @@ class _ThemeToggleTileState extends ConsumerState<_ThemeToggleTile> {
           color: KlasivoColors.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         ),
-        child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-          color: KlasivoColors.accent, size: 20),
+        child: Icon(
+          themeModeIcon(themeMode),
+          color: KlasivoColors.accent,
+          size: 20,
+        ),
       ),
       title: Text('Appearance', style: KlasivoTypography.titleMedium),
       subtitle: Text(
-        isDark ? 'Dark mode' : 'Light mode',
+        themeModeLabel(themeMode),
         style: KlasivoTypography.bodySmall.copyWith(
-          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+          color: isDark
+              ? KlasivoColors.darkTextTertiary
+              : KlasivoColors.lightTextTertiary,
         ),
       ),
-      trailing: Switch(
-        value: isDark,
-        onChanged: (v) {
-          KlasivoToast.info(context, message: 'Theme follows your system settings');
+      trailing: _ThemeSegmentedControl(
+        currentMode: themeMode,
+        onModeChanged: (mode) {
+          ref.read(themeModeProvider.notifier).setThemeMode(mode);
         },
+      ),
+    );
+  }
+}
+
+class _ThemeSegmentedControl extends StatelessWidget {
+  final ThemeMode currentMode;
+  final ValueChanged<ThemeMode> onModeChanged;
+
+  const _ThemeSegmentedControl({
+    required this.currentMode,
+    required this.onModeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? KlasivoColors.darkBorder.withValues(alpha: 0.6)
+            : KlasivoColors.lightBorder,
+        borderRadius: BorderRadius.circular(KlasivoRadius.sm + 2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segmentButton(
+            icon: Icons.light_mode_rounded,
+            mode: ThemeMode.light,
+            isSelected: currentMode == ThemeMode.light,
+            colorScheme: colorScheme,
+            isDark: isDark,
+          ),
+          _segmentButton(
+            icon: Icons.dark_mode_rounded,
+            mode: ThemeMode.dark,
+            isSelected: currentMode == ThemeMode.dark,
+            colorScheme: colorScheme,
+            isDark: isDark,
+          ),
+          _segmentButton(
+            icon: Icons.brightness_auto_rounded,
+            mode: ThemeMode.system,
+            isSelected: currentMode == ThemeMode.system,
+            colorScheme: colorScheme,
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentButton({
+    required IconData icon,
+    required ThemeMode mode,
+    required bool isSelected,
+    required ColorScheme colorScheme,
+    required bool isDark,
+  }) {
+    return GestureDetector(
+      onTap: () => onModeChanged(mode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: isSelected
+              ? colorScheme.onPrimary
+              : isDark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
+        ),
       ),
     );
   }

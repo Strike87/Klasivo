@@ -209,9 +209,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: 'Edit Lesson',
                     onPressed: () {
-                      // TODO: Navigate to lesson edit screen
-                      KlasivoToast.info(context,
-                          message: 'Lesson editing coming soon');
+                      context.go('/teacher/lms/lessons/$lessonId/edit');
                     },
                   ),
                   // Overflow menu

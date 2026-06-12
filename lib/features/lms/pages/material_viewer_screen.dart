@@ -290,9 +290,7 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
             onSelected: (value) {
               switch (value) {
                 case 'edit':
-                  // TODO: Navigate to edit material screen
-                  KlasivoToast.info(context,
-                      message: 'Edit material — coming soon');
+                  context.go('/teacher/lms/materials/$materialId/edit');
                   break;
                 case 'archive':
                   _archiveMaterial();
