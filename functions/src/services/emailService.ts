@@ -5,12 +5,31 @@ import type { SendEmailParams, EmailResult } from '../types/email';
 import { SENDER } from '../types/email';
 import { logEmail } from './emailLogService';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const db = admin.firestore();
+
+// ─── Lazy-initialized Resend client ────────────────────────────
+// Firebase secrets (RESEND_API_KEY) are only available at runtime
+// inside function invocations, NOT during the deploy analysis phase.
+// Creating `new Resend()` at module top-level would crash deployment
+// because the key is empty during source analysis.
+
+let _resend: Resend | null = null;
+
+function getResendClient(): Resend {
+  if (_resend === null) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY secret is not configured. Set it with: firebase functions:secrets:set RESEND_API_KEY');
+    }
+    _resend = new Resend(apiKey);
+  }
+  return _resend;
+}
 
 export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
   const { to, subject, html, category, queueId, from, replyTo } = params;
   const sender = from ?? SENDER.noreply;
+  const resend = getResendClient();
 
   try {
     const { data, error } = await resend.emails.send({
