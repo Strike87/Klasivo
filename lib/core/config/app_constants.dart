@@ -387,6 +387,29 @@ class AppConstants {
   static const int maxSlugLength = 40;
   static const int notificationsPageSize = 50;
 
+  // ─── Timing (seconds) ───────────────────────────────────────────────────
+
+  /// Splash screen display duration before navigation
+  static const int splashDurationSeconds = 2;
+  /// Default toast/snackbar display duration
+  static const int toastDurationSeconds = 3;
+  /// Clipboard monitoring check interval during exams
+  static const int clipboardCheckIntervalSeconds = 2;
+  /// Connectivity ping interval (Firestore health check)
+  static const int connectivityPingIntervalSeconds = 30;
+  /// Threshold for "poor" connectivity detection
+  static const int poorConnectivityThresholdSeconds = 2;
+  /// Sync indicator animation duration
+  static const int syncIndicatorAnimSeconds = 1;
+  /// Sync queue batch size per cycle
+  static const int syncBatchSize = 10;
+  /// Max retry attempts before dead-lettering a sync queue entry
+  static const int syncMaxRetries = 5;
+  /// Image cache max size in MB
+  static const int imageCacheMaxSizeMB = 100;
+  /// Firestore cache size in MB
+  static const int firestoreCacheSizeMB = 100;
+
   // ─── Environment ────────────────────────────────────────────────────────
 
   /// The name of the current environment ("dev", "staging", or "prod").
