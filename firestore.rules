@@ -318,6 +318,15 @@ service cloud.firestore {
       allow delete: if isTeacherOrOwner();
     }
 
+    // ====== Campuses Collection ======
+    match /campuses/{campusId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isOwner();
+    }
+
+
     // ═══════════════════════════════════════════════════════════════════════
     // v1.7 New Collections
     // ═══════════════════════════════════════════════════════════════════════

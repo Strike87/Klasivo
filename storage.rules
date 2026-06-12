@@ -10,7 +10,7 @@ service firebase.storage {
     // Helper: Check if user is a teacher, admin, or owner
     function isTeacherOrOwner() {
       return isAuth() &&
-        firetore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'owner', 'admin'];
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'owner', 'admin'];
     }
 
     // ═══════════════════════════════════════════════════════════════════════
