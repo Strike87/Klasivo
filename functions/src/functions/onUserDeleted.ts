@@ -56,6 +56,13 @@ async function deleteOrganizationData(orgId: string): Promise<void> {
     'teacher_assignments', 'exams', 'question_banks', 'invite_codes',
     'assignments', 'assignment_submissions', 'attendance', 'conversations',
     'messages', 'analytics_cache', 'notifications',
+    // v1.7 Feature-Complete
+    'gradebook', 'gradebook_categories', 'gradebook_entries', 'parent_links',
+    'exam_templates', 'calendar_events', 'announcements', 'academic_years',
+    'audit_logs', 'resources', 'materials', 'lessons', 'lesson_plans',
+    'progress_tracking', 'moderation_queue', 'units', 'content_progress',
+    // v1.9 Enterprise
+    'feature_flags', 'permission_overrides', 'search_keywords', 'deep_links',
   ];
 
   for (const collectionName of collectionsToClean) {
@@ -110,7 +117,7 @@ async function deleteOrganizationData(orgId: string): Promise<void> {
   const examIds = examsSnapshot.docs.map((doc) => doc.id);
 
   if (examIds.length > 0) {
-    const examCollections = ['questions', 'submissions', 'violations', 'exam_attempts', 'exam_stats'];
+    const examCollections = ['questions', 'submissions', 'violations', 'exam_attempts', 'exam_stats', 'exam_instances'];
     for (const collectionName of examCollections) {
       let totalDeleted = 0;
       for (let i = 0; i < examIds.length; i += 30) {
@@ -141,6 +148,10 @@ async function deleteOrganizationData(orgId: string): Promise<void> {
 
   await db.collection('organizations').doc(orgId).delete();
   console.log(`Deleted organization document: ${orgId}`);
+
+  // Clean up email queue/logs for this org (if they have orgId field)
+  const emailQueueSnapshot = await db.collection('emailQueue').where('orgId', '==', orgId).limit(500).get();
+  if (!emailQueueSnapshot.empty) { await deleteSnapshot(emailQueueSnapshot); console.log(`Deleted ${emailQueueSnapshot.size} emailQueue items for org ${orgId}`); }
 }
 
 async function cleanupUserReferences(uid: string): Promise<void> {
@@ -158,6 +169,29 @@ async function cleanupUserReferences(uid: string): Promise<void> {
 
   const attSnapshot = await db.collection('attendance').where('studentId', '==', uid).get();
   if (!attSnapshot.empty) { await deleteSnapshot(attSnapshot); console.log(`Deleted ${attSnapshot.size} attendance records for user ${uid}`); }
+
+  // v1.7: Clean up student's content progress, assignment submissions, and gradebook entries
+  const cpSnapshot = await db.collection('content_progress').where('studentId', '==', uid).get();
+  if (!cpSnapshot.empty) { await deleteSnapshot(cpSnapshot); console.log(`Deleted ${cpSnapshot.size} content_progress for user ${uid}`); }
+
+  const asSnapshot = await db.collection('assignment_submissions').where('studentId', '==', uid).get();
+  if (!asSnapshot.empty) { await deleteSnapshot(asSnapshot); console.log(`Deleted ${asSnapshot.size} assignment_submissions for user ${uid}`); }
+
+  const geSnapshot = await db.collection('gradebook_entries').where('studentId', '==', uid).get();
+  if (!geSnapshot.empty) { await deleteSnapshot(geSnapshot); console.log(`Deleted ${geSnapshot.size} gradebook_entries for user ${uid}`); }
+
+  // v1.9: Clean up user's audit logs and moderation queue items
+  const alSnapshot = await db.collection('audit_logs').where('actorId', '==', uid).get();
+  if (!alSnapshot.empty) { await deleteSnapshot(alSnapshot); console.log(`Deleted ${alSnapshot.size} audit_logs for user ${uid}`); }
+
+  const mqSnapshot = await db.collection('moderation_queue').where('reportedBy', '==', uid).get();
+  if (!mqSnapshot.empty) { await deleteSnapshot(mqSnapshot); console.log(`Deleted ${mqSnapshot.size} moderation_queue items for user ${uid}`); }
+
+  // Clean up parent links for this user (parent or student side)
+  const plParentSnapshot = await db.collection('parent_links').where('parentId', '==', uid).get();
+  if (!plParentSnapshot.empty) { await deleteSnapshot(plParentSnapshot); console.log(`Deleted ${plParentSnapshot.size} parent_links (as parent) for user ${uid}`); }
+  const plStudentSnapshot = await db.collection('parent_links').where('studentId', '==', uid).get();
+  if (!plStudentSnapshot.empty) { await deleteSnapshot(plStudentSnapshot); console.log(`Deleted ${plStudentSnapshot.size} parent_links (as student) for user ${uid}`); }
 
   const convSnapshot = await db.collection('conversations').where('participantIds', 'array-contains', uid).get();
   if (!convSnapshot.empty) {
