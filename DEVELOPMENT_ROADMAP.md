@@ -18,7 +18,9 @@
 | **v1.7** | Enterprise foundations (Design Tokens, Component Library, Feature Flags, Event Bus, Permission Service) | ✅ Complete |
 | **v1.8** | Feature Completion (LMS screens, Messaging UI, legacy cleanup) | ✅ Complete |
 | **v1.9** | Polish & Integration (component migration, tests, CI/CD) | ✅ Complete |
-| **v2.0** | Advanced features (LMS video player, offline mode, analytics warehouse) | 🔲 Planned |
+| **v2.0** | Dark mode, Push notifications, Video player, Content tracking | ✅ Complete |
+| **v2.1** | Chat attachments, Offline caching, Multi-tenant | 🔲 Planned |
+| **v2.2** | RTL, iOS, Web, SSO, Analytics warehouse | 🔲 Planned |
 
 ---
 
@@ -198,31 +200,63 @@
 
 ---
 
-## v2.0 — Advanced Features (Future)
+## v2.0 — Dark Mode, Push Notifications, Video Player, Content Tracking ✅
 
-### LMS Enhancement
-- [ ] Video player with progress tracking
-- [ ] Content completion tracking
-- [ ] Lesson plan templates
-- [ ] Offline content caching
+### Dark Mode ✅
+- [x] Theme provider with light/dark/system toggle
+- [x] Persist theme choice to Hive
+- [x] Update all design tokens for dark palette
+- [x] Settings screen theme selector UI
+
+### Push Notifications for Messages ✅
+- [x] FCM token management per user
+- [x] Cloud Function for message push notifications
+- [x] Notification routing (tap → open conversation)
+- [x] Notification preferences per conversation
+
+### Video Player + Progress Tracking ✅
+- [x] YouTube player integration (youtube_player_flutter)
+- [x] Video progress tracking service
+- [x] Progress indicator on lesson cards
+- [x] Resume playback where student left off
+
+### Content Completion Tracking ✅
+- [x] ContentProgress service enhanced (video progress, resume, completion rate)
+- [x] Mark lesson/material as completed (auto on video >90%)
+- [x] Progress percentage per subject (weighted: lessons 60% + materials 40%)
+- [x] Completion badges and streaks (KlasivoCompletionBadge + KlasivoStreakBadge)
+
+---
+
+## v2.1 — Chat Attachments, Offline Caching, Multi-Tenant 🔲
 
 ### Communication
-- [ ] Push notification for new messages
 - [ ] File/image attachments in chat
 - [ ] Message reactions
+
+### Offline
+- [ ] Offline content caching (lesson downloads)
+
+### Platform
+- [ ] Multi-tenant campus model
+
+---
+
+## v2.2 — RTL, iOS, Web, SSO, Analytics 🔲
+
+### Platform
+- [ ] RTL layout support (Arabic fonts loaded)
+- [ ] iOS support
+- [ ] Web support
+- [ ] SSO integration
 
 ### Analytics
 - [ ] Analytics warehouse (BigQuery integration)
 - [ ] Custom report builder
 - [ ] Student performance prediction
 
-### Platform
-- [ ] iOS support
-- [ ] Web support
-- [ ] Multi-tenant campus model
-- [ ] SSO integration
-- [ ] Dark mode toggle (system tokens ready)
-- [ ] RTL layout support (Arabic fonts loaded)
+### LMS
+- [ ] Lesson plan templates
 
 ---
 
@@ -246,6 +280,7 @@
 ```
 
 ## Key Implementation Principles
+
 
 1. **Use Design Tokens** — All colors, spacing, typography from `lib/core/tokens/`
 2. **Use Enterprise Components** — KlasivoButton, KlasivoCard, KlasivoBadge, etc.

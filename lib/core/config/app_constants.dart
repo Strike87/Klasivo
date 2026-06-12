@@ -411,6 +411,7 @@ class AppConstants {
   /// Firestore cache size in MB
   static const int firestoreCacheSizeMB = 100;
 
+
   // ─── Environment ────────────────────────────────────────────────────────
 
   /// The name of the current environment ("dev", "staging", or "prod").

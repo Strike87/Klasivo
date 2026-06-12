@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../config/app_constants.dart';
+import 'notification_service.dart';
 
 class MessagingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -155,6 +157,7 @@ class MessagingService {
   // ─── Messages ────────────────────────────────────────────────────────────
 
   /// Send a text message in a conversation.
+  /// Also triggers push notifications for all participants (except the sender).
   Future<String> sendMessage({
     required String conversationId,
     required String senderId,
@@ -173,6 +176,19 @@ class MessagingService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      // Get conversation details for notification
+      final conversationDoc = await _firestore
+          .collection(AppConstants.conversationsCollection)
+          .doc(conversationId)
+          .get();
+
+      final conversationData = conversationDoc.data();
+      final participantIds = List<String>.from(
+        conversationData?['participantIds'] ?? [],
+      );
+      final organizationId = conversationData?['organizationId'] as String?;
+      final conversationName = conversationData?['name'] as String?;
+
       // Update the conversation's last message info
       await _firestore
           .collection(AppConstants.conversationsCollection)
@@ -184,9 +200,58 @@ class MessagingService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      // Send push notifications to all participants except the sender
+      await _sendNewMessageNotifications(
+        senderId: senderId,
+        participantIds: participantIds,
+        messageText: text,
+        conversationId: conversationId,
+        conversationName: conversationName,
+        organizationId: organizationId,
+      );
+
       return docRef.id;
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Send in-app + push notifications for new messages to all recipients.
+  Future<void> _sendNewMessageNotifications({
+    required String senderId,
+    required List<String> participantIds,
+    required String messageText,
+    required String conversationId,
+    String? conversationName,
+    String? organizationId,
+  }) async {
+    try {
+      // Get sender's display name
+      final senderDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(senderId)
+          .get();
+      final senderName = senderDoc.data()?['name'] as String? ?? 'Someone';
+
+      // Determine notification title
+      final title = conversationName ?? senderName;
+      final preview = messageText.length > 100
+          ? '${messageText.substring(0, 100)}...'
+          : messageText;
+
+      // Send notification to each recipient (excluding sender)
+      final recipientIds = participantIds.where((id) => id != senderId).toList();
+      for (final recipientId in recipientIds) {
+        await NotificationService.notifyNewMessage(
+          recipientId: recipientId,
+          senderName: title,
+          messagePreview: preview,
+          conversationId: conversationId,
+          organizationId: organizationId,
+        );
+      }
+    } catch (e) {
+      // Non-critical: notification failure shouldn't block message sending
     }
   }
 

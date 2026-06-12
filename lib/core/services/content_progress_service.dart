@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../config/app_constants.dart';
 
 /// Service for tracking student progress through LMS content.
@@ -204,6 +205,152 @@ class ContentProgressService {
       };
     } catch (e) {
       rethrow;
+    }
+  }
+
+  // ─── Video Progress Tracking ─────────────────────────────────────────────
+
+  /// Save video playback progress for resume functionality.
+  /// [positionSeconds] is the current playback position.
+  /// [durationSeconds] is the total video duration.
+  Future<void> saveVideoProgress({
+    required String studentId,
+    required String lessonId,
+    required String subjectId,
+    required String classId,
+    required int positionSeconds,
+    required int durationSeconds,
+    String? organizationId,
+  }) async {
+    try {
+      // Find existing progress record
+      final existing = await _firestore
+          .collection(AppConstants.contentProgressCollection)
+          .where('studentId', isEqualTo: studentId)
+          .where('lessonId', isEqualTo: lessonId)
+          .where('contentType', isEqualTo: 'video')
+          .limit(1)
+          .get();
+
+      final progressPercent = durationSeconds > 0
+          ? (positionSeconds / durationSeconds * 100).round()
+          : 0;
+
+      // Auto-complete if watched > 90%
+      final isCompleted = progressPercent >= 90;
+
+      if (existing.docs.isNotEmpty) {
+        await existing.docs.first.reference.update({
+          'positionSeconds': positionSeconds,
+          'durationSeconds': durationSeconds,
+          'progressPercent': progressPercent,
+          if (isCompleted) 'status': 'completed',
+          if (isCompleted) 'completedAt': FieldValue.serverTimestamp(),
+          'lastViewedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _firestore
+            .collection(AppConstants.contentProgressCollection)
+            .add({
+          'studentId': studentId,
+          'materialId': null,
+          'lessonId': lessonId,
+          'subjectId': subjectId,
+          'classId': classId,
+          'organizationId': organizationId,
+          'contentType': 'video',
+          'status': isCompleted ? 'completed' : 'in_progress',
+          'positionSeconds': positionSeconds,
+          'durationSeconds': durationSeconds,
+          'progressPercent': progressPercent,
+          'viewCount': 1,
+          'completedAt': isCompleted ? FieldValue.serverTimestamp() : null,
+          'lastViewedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // If video completed, also mark the lesson as completed
+      if (isCompleted) {
+        await markLessonCompleted(
+          studentId: studentId,
+          lessonId: lessonId,
+          subjectId: subjectId,
+          classId: classId,
+          organizationId: organizationId,
+        );
+      }
+    } catch (e) {
+      // Non-critical: video progress save failure shouldn't disrupt playback
+      debugPrint('[ContentProgress] Failed to save video progress: $e');
+    }
+  }
+
+  /// Get saved video playback position for resume functionality.
+  /// Returns position in seconds, or 0 if no saved progress.
+  Future<int> getVideoResumePosition({
+    required String studentId,
+    required String lessonId,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.contentProgressCollection)
+          .where('studentId', isEqualTo: studentId)
+          .where('lessonId', isEqualTo: lessonId)
+          .where('contentType', isEqualTo: 'video')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return 0;
+
+      final data = snapshot.docs.first.data();
+      return data['positionSeconds'] as int? ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Get video progress percentage for a lesson.
+  Future<int> getVideoProgressPercent({
+    required String studentId,
+    required String lessonId,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(AppConstants.contentProgressCollection)
+          .where('studentId', isEqualTo: studentId)
+          .where('lessonId', isEqualTo: lessonId)
+          .where('contentType', isEqualTo: 'video')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return 0;
+
+      return snapshot.docs.first.data()['progressPercent'] as int? ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Get overall content completion percentage for a subject.
+  /// Combines lesson completion + material views + video progress.
+  Future<double> getOverallCompletionRate({
+    required String studentId,
+    required String subjectId,
+  }) async {
+    try {
+      final stats = await getSubjectCompletionStats(
+        studentId: studentId,
+        subjectId: subjectId,
+      );
+
+      final lessonRate = stats['lessonCompletionRate'] as double? ?? 0.0;
+      final materialRate = stats['materialViewRate'] as double? ?? 0.0;
+
+      // Weighted average: lessons 60%, materials 40%
+      return (lessonRate * 0.6) + (materialRate * 0.4);
+    } catch (e) {
+      return 0.0;
     }
   }
 }

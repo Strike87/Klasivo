@@ -1,6 +1,8 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import '../config/app_constants.dart';
@@ -102,8 +104,12 @@ class NotificationService {
 
     _fcmToken = await _fcm.getToken();
 
+    // Persist FCM token to Firestore for server-side push
+    await _persistTokenToFirestore(_fcmToken);
+
     _fcm.onTokenRefresh.listen((newToken) {
       _fcmToken = newToken;
+      _persistTokenToFirestore(newToken);
     });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -137,10 +143,48 @@ class NotificationService {
 
   // ─── Handle Message Opened App ───────────────────────────────────────────
 
+  /// Callback type for notification deep-link navigation.
+  /// Set from main.dart or the router provider after GoRouter is ready.
+  static void Function(Map<String, dynamic> data)? onNotificationTap;
+
   static void _handleMessageOpenedApp(RemoteMessage message) {
     final data = message.data;
-    // Will be connected to GoRouter for deep navigation
+    _navigateFromPayload(data);
   }
+
+  /// Navigate based on notification payload data.
+  static void _navigateFromPayload(Map<String, dynamic> data) {
+    if (onNotificationTap != null) {
+      onNotificationTap!(data);
+      return;
+    }
+    // Fallback: log for debugging if no navigator is registered
+    debugPrint('[NotificationService] No navigation handler registered. Payload: $data');
+  }
+
+  // ─── Persist FCM Token to Firestore ──────────────────────────────────────
+
+  static Future<void> _persistTokenToFirestore(String? token) async {
+    if (token == null) return;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .update({
+        'fcmToken': token,
+        'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      // Non-critical: token persistence failure shouldn't block the app
+      debugPrint('[NotificationService] Failed to persist FCM token: $e');
+    }
+  }
+
+  /// Get the current FCM token.
+  static String? get fcmToken => _fcmToken;
 
   // ─── Request Notification Permissions ────────────────────────────────────
 

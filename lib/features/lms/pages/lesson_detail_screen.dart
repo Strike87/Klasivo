@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import '../../../core/config/app_constants.dart';
+import '../../../core/services/content_progress_service.dart';
+import '../../../widgets/klasivo_youtube_player.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../providers/lesson_provider.dart';
@@ -457,9 +462,9 @@ class _VideoPlayerCard extends StatelessWidget {
   }
 }
 
-// ── YouTube Card ──────────────────────────────────────────────────────────────
+// ── YouTube Card — Embedded player with progress tracking ────────────────────
 
-class _YouTubeCard extends StatelessWidget {
+class _YouTubeCard extends StatefulWidget {
   final LessonData lesson;
   final bool isDark;
   final _LessonTypeConfig typeConfig;
@@ -473,105 +478,131 @@ class _YouTubeCard extends StatelessWidget {
   });
 
   @override
+  State<_YouTubeCard> createState() => _YouTubeCardState();
+}
+
+class _YouTubeCardState extends State<_YouTubeCard> {
+  int _videoProgressPercent = 0;
+  final ContentProgressService _progressService = ContentProgressService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    final studentId = _getCurrentStudentId();
+    if (studentId == null) return;
+
+    final percent = await _progressService.getVideoProgressPercent(
+      studentId: studentId,
+      lessonId: widget.lesson.id,
+    );
+
+    if (mounted) {
+      setState(() => _videoProgressPercent = percent);
+    }
+  }
+
+  String? _getCurrentStudentId() {
+    try {
+      final box = Hive.box(AppConstants.authBox);
+      return box.get('userId') as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return KlasivoCard(
-      variant: KlasivoCardVariant.interactive,
-      padding: EdgeInsets.zero,
-      onTap: lesson.videoUrl.isNotEmpty
-          ? () => onLaunchUrl(lesson.videoUrl)
-          : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Thumbnail / play area
-          Container(
-            width: double.infinity,
-            height: 200,
-            decoration: BoxDecoration(
-              color: typeConfig.color.withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(KlasivoRadius.card),
-              ),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // YouTube icon
-                Icon(
-                  Icons.play_circle_filled,
-                  size: 64,
-                  color: typeConfig.color.withValues(alpha: 0.6),
-                ),
-                // Play overlay
-                Container(
-                  padding: const EdgeInsets.all(KlasivoSpacing.lg),
-                  decoration: BoxDecoration(
-                    color: KlasivoColors.error.withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Embedded YouTube Player
+        if (widget.lesson.videoUrl.isNotEmpty)
+          KlasivoYouTubePlayer(
+            videoUrl: widget.lesson.videoUrl,
+            lessonId: widget.lesson.id,
+            subjectId: widget.lesson.subjectId,
+            classId: widget.lesson.classId,
+            organizationId: widget.lesson.organizationId,
           ),
-          // Info bar
+
+        // Progress indicator
+        if (_videoProgressPercent > 0) ...[
+          const SizedBox(height: KlasivoSpacing.sm),
           Padding(
-            padding: const EdgeInsets.all(KlasivoSpacing.lg),
+            padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(KlasivoSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: KlasivoColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(KlasivoRadius.sm),
-                  ),
-                  child: const Icon(
-                    Icons.smart_display,
-                    color: KlasivoColors.error,
-                    size: 20,
+                Icon(
+                  _videoProgressPercent >= 90
+                      ? Icons.check_circle_rounded
+                      : Icons.play_circle_outline_rounded,
+                  size: 16,
+                  color: _videoProgressPercent >= 90
+                      ? KlasivoColors.secondary
+                      : KlasivoColors.accent,
+                ),
+                const SizedBox(width: KlasivoSpacing.xs),
+                Text(
+                  _videoProgressPercent >= 90
+                      ? 'Completed'
+                      : '$_videoProgressPercent% watched',
+                  style: KlasivoTypography.caption.copyWith(
+                    color: _videoProgressPercent >= 90
+                        ? KlasivoColors.secondary
+                        : KlasivoColors.accent,
                   ),
                 ),
-                const SizedBox(width: KlasivoSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                const Spacer(),
+                // Open in YouTube fallback
+                InkWell(
+                  onTap: () => widget.onLaunchUrl(widget.lesson.videoUrl),
+                  child: Row(
                     children: [
-                      Text(
-                        'YouTube Video',
-                        style: KlasivoTypography.titleSmall.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextPrimary
-                              : KlasivoColors.lightTextPrimary,
-                        ),
+                      Icon(
+                        Icons.open_in_new,
+                        size: 14,
+                        color: KlasivoColors.darkTextTertiary,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(width: 4),
                       Text(
-                        'Tap to open in YouTube',
+                        'Open in YouTube',
                         style: KlasivoTypography.caption.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
+                          color: KlasivoColors.darkTextTertiary,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.open_in_new,
-                  size: 18,
-                  color: isDark
-                      ? KlasivoColors.darkTextTertiary
-                      : KlasivoColors.lightTextTertiary,
-                ),
               ],
             ),
           ),
+          const SizedBox(height: KlasivoSpacing.sm),
+          // Linear progress bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(KlasivoRadius.xs),
+              child: LinearProgressIndicator(
+                value: _videoProgressPercent / 100,
+                backgroundColor: widget.isDark
+                    ? KlasivoColors.darkBorder
+                    : KlasivoColors.lightBorder,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  _videoProgressPercent >= 90
+                      ? KlasivoColors.secondary
+                      : KlasivoColors.primary,
+                ),
+                minHeight: 4,
+              ),
+            ),
+          ),
         ],
-      ),
+      ],
     );
   }
 }

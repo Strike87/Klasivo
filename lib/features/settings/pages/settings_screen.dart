@@ -18,6 +18,7 @@ import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
+import '../../../providers/theme_provider.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 
@@ -222,7 +223,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.info_outline_rounded,
                     iconColor: KlasivoColors.primary,
                     title: 'About Klasivo',
-                    subtitle: 'Version 1.7.1',
+                    subtitle: 'Version 2.0.0',
                     onTap: () => _showAbout(context),
                   ),
                 ],

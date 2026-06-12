@@ -115,6 +115,7 @@ import 'core/services/image_cache_service.dart';
 import 'core/services/offline_manager.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/performance_trace_service.dart';
+
 import 'widgets/offline_banner.dart';
 import 'firebase_options.dart';
 import 'core/config/app_environment.dart';
@@ -157,6 +158,13 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
   await Hive.openBox(AppConstants.appSettingsBox);
+
+  // ─── Initialize Image Cache Service ───────────────────────────────
+  try {
+    await ImageCacheService.instance.init();
+  } catch (e) {
+    debugPrint('Image cache initialization failed: $e');
+  }
 
   // ─── Initialize Image Cache Service ───────────────────────────────
   try {
@@ -259,6 +267,11 @@ class _MyAppState extends ConsumerState<MyApp> {
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
       final orgId = box.get('organizationId') as String?;
 
+      // Register notification deep-link handler
+      NotificationService.onNotificationTap = (data) {
+        _handleNotificationNavigation(data);
+      };
+
       if (isLoggedIn && orgId != null) {
         // Load feature flags for the organization
         final flagService = ref.read(featureFlagServiceProvider);
@@ -276,6 +289,45 @@ class _MyAppState extends ConsumerState<MyApp> {
 
     if (mounted) {
       setState(() => _initialized = true);
+    }
+  }
+
+  /// Handle notification tap navigation using GoRouter.
+  void _handleNotificationNavigation(Map<String, dynamic> data) {
+    final router = ref.read(routerProvider);
+    final relatedType = data['relatedType'] as String? ?? '';
+    final relatedId = data['relatedId'] as String? ?? '';
+
+    switch (relatedType) {
+      case 'conversation':
+        if (relatedId.isNotEmpty) {
+          router.go('/inbox/messages/$relatedId');
+        } else {
+          router.go('/inbox/messages');
+        }
+        break;
+      case 'exam':
+        if (relatedId.isNotEmpty) {
+          router.go('/teacher/exams/$relatedId');
+        }
+        break;
+      case 'assignment':
+        if (relatedId.isNotEmpty) {
+          router.go('/teacher/assignments/$relatedId');
+        }
+        break;
+      case 'attendance':
+        router.go('/teacher/attendance');
+        break;
+      case 'announcement':
+        if (relatedId.isNotEmpty) {
+          router.go('/inbox/announcements/$relatedId');
+        } else {
+          router.go('/inbox/announcements');
+        }
+        break;
+      default:
+        router.go('/inbox');
     }
   }
 

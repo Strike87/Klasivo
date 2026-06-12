@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
+
 import '../parent/pages/parent_dashboard.dart';
 import '../parent/pages/parent_assignments_screen.dart';
 import '../parent/pages/parent_progress_screen.dart';
@@ -143,3 +144,4 @@ class _NavDestination {
     required this.route,
   });
 }
+
