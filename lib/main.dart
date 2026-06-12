@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,6 +15,9 @@ import 'core/services/firebase_analytics_service.dart';
 
 import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
+import 'core/config/theme_provider.dart';
+import 'core/config/locale_provider.dart';
+import 'core/utils/rtl_helper.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
@@ -41,6 +45,7 @@ import 'features/exams/pages/exam_detail_screen.dart';
 import 'features/student_exams/pages/student_exam_list_screen.dart';
 import 'features/student_exams/pages/exam_taking_screen.dart';
 import 'features/student_results/pages/student_results_screen.dart';
+import 'features/student/pages/student_result_detail_screen.dart';
 import 'features/teacher_results/pages/exam_results_screen.dart';
 import 'features/stages/pages/stage_list_screen.dart';
 import 'features/groups/pages/group_list_screen.dart';
@@ -58,6 +63,7 @@ import 'features/settings/pages/organization_settings_screen.dart';
 import 'features/settings/pages/profile_settings_screen.dart';
 import 'features/settings/pages/student_settings_screen.dart';
 import 'features/settings/pages/feature_flags_screen.dart';
+import 'features/settings/pages/language_screen.dart';
 import 'features/exam_instances/pages/exam_instances_screen.dart';
 // ─── v1.7 Imports ─────────────────────────────────────────────────────────────
 import 'features/assignments/pages/assignment_list_screen.dart';
@@ -72,6 +78,8 @@ import 'features/parent/pages/parent_dashboard.dart';
 import 'features/parent/pages/parent_assignments_screen.dart';
 import 'features/parent/pages/parent_progress_screen.dart';
 import 'features/parent/pages/parent_announcements_screen.dart';
+import 'features/parent/pages/parent_results_screen.dart';
+import 'features/parent/pages/parent_attendance_screen.dart';
 import 'features/moderation/pages/moderation_queue_screen.dart';
 import 'features/progress/pages/progress_tracking_screen.dart';
 // ─── v1.7 LMS Imports ─────────────────────────────────────────────────────────
@@ -148,6 +156,7 @@ Future<void> main() async {
 
   await Hive.initFlutter();
   await Hive.openBox(AppConstants.authBox);
+  await Hive.openBox(AppConstants.appSettingsBox);
 
   // ─── Initialize Image Cache Service ───────────────────────────────
   try {
@@ -274,13 +283,24 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
 
+    // Current locale from provider
+    final locale = ref.watch(currentLocaleProvider);
+    final isRtl = ref.watch(isRtlProvider);
+
     // Show splash while enterprise services are loading
     if (!_initialized) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
+        themeMode: ref.watch(themeModeProvider),
+        locale: locale,
+        supportedLocales: kSupportedLocales,
+        localizationsDelegates: const [
+          ...GlobalMaterialLocalizations.delegates,
+          ...GlobalCupertinoLocalizations.delegates,
+          ...GlobalWidgetsLocalizations.delegates,
+        ],
         home: Scaffold(
           body: Center(
             child: Column(
@@ -304,9 +324,20 @@ class _MyAppState extends ConsumerState<MyApp> {
     return MaterialApp.router(
       title: 'Klasivo',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      theme: isRtl
+          ? AppTheme.lightTheme.copyWith(textTheme: _rtlTextTheme())
+          : AppTheme.lightTheme,
+      darkTheme: isRtl
+          ? AppTheme.darkTheme.copyWith(textTheme: _rtlTextTheme())
+          : AppTheme.darkTheme,
+      themeMode: ref.watch(themeModeProvider),
+      locale: locale,
+      supportedLocales: kSupportedLocales,
+      localizationsDelegates: const [
+        ...GlobalMaterialLocalizations.delegates,
+        ...GlobalCupertinoLocalizations.delegates,
+        ...GlobalWidgetsLocalizations.delegates,
+      ],
       builder: (context, child) {
         // Wrap with OfflineBanner for connectivity awareness
         return OfflineBanner(child: child!);
@@ -317,9 +348,14 @@ class _MyAppState extends ConsumerState<MyApp> {
       ],
     );
   }
-}
 
-// ─── Auth Change Notifier for GoRouter refresh ──────────────────────────────
+  // ─── RTL-aware TextTheme using NotoSansArabic ────────────────────────────
+  static TextTheme _rtlTextTheme() {
+    return AppTypography.textTheme.apply(
+      fontFamily: AppTypography.fontFamilyArabic,
+    );
+  }
+}
 
 class AuthChangeNotifier extends ChangeNotifier {
   StreamSubscription<User?>? _firebaseSub;
@@ -638,6 +674,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'feature-flags',
                 builder: (context, state) => const FeatureFlagsScreen(),
+              ),
+              GoRoute(
+                path: 'language',
+                builder: (context, state) => const LanguageScreen(),
               ),
             ],
           ),

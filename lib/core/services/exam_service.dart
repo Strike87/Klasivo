@@ -4,8 +4,14 @@ import '../config/app_constants.dart';
 import 'notification_service.dart' as notif_service;
 import 'search_keyword_service.dart';
 import 'performance_trace_service.dart';
+import 'interfaces/i_exam_service.dart';
 
-class ExamService {
+/// Production exam service implementing [IExamService] for testability.
+///
+/// Call-sites that need to be testable should depend on [IExamService];
+/// call-sites that need extra methods (createExamInstance, getExamCounts, etc.)
+/// can import [ExamService] directly.
+class ExamService implements IExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final SearchKeywordService _searchKeywordService = SearchKeywordService();
 
@@ -555,5 +561,57 @@ class ExamService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // IExamService Contract — Adapter Methods
+  // ══════════════════════════════════════════════════════════════════════════
+
+  @override
+  Future<String> createExam({required Map<String, dynamic> examData}) {
+    return createExam(
+      teacherId: examData['teacherId'] as String,
+      title: examData['title'] as String,
+      classId: examData['classId'] as String,
+      subjectId: examData['subjectId'] as String? ?? '',
+      durationMinutes: examData['durationMinutes'] as int? ?? 60,
+      totalMarks: examData['totalMarks'] as double? ?? 0,
+      passMarks: examData['passMarks'] as double? ?? 0,
+      instructions: examData['instructions'] as String? ?? '',
+      organizationId: examData['organizationId'] as String? ?? '',
+      startDate: examData['startDate'] as String? ?? '',
+      endDate: examData['endDate'] as String? ?? '',
+      isLocked: examData['isLocked'] as bool? ?? false,
+      shuffleQuestions: examData['shuffleQuestions'] as bool? ?? false,
+      showResults: examData['showResults'] as String? ?? 'after_submission',
+      allowRetry: examData['allowRetry'] as bool? ?? false,
+      maxRetries: examData['maxRetries'] as int? ?? 0,
+    );
+  }
+
+  @override
+  Future<void> updateExam({
+    required String examId,
+    required Map<String, dynamic> updates,
+  }) async {
+    updates['updatedAt'] = FieldValue.serverTimestamp();
+    await _firestore
+        .collection(AppConstants.examsCollection)
+        .doc(examId)
+        .update(updates);
+  }
+
+  @override
+  Stream<QuerySnapshot> getExamsForClass(String classId) {
+    return _firestore
+        .collection(AppConstants.examsCollection)
+        .where('classId', isEqualTo: classId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  @override
+  Stream<QuerySnapshot> getExamsForTeacher(String teacherId) {
+    return getExamsStream(teacherId);
   }
 }

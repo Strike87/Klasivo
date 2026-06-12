@@ -3,6 +3,7 @@ import 'app_environment.dart';
 class AppConstants {
   // Local Storage
   static const String authBox = 'auth_box';
+  static const String appSettingsBox = 'app_settings';
 
   // ─── Firebase Collections ────────────────────────────────────────────────
 

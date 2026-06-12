@@ -3,10 +3,12 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../config/app_constants.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
 import 'invite_code_service.dart';
+import 'interfaces/i_auth_service.dart';
 
 // ─── Auth Provider Constants ─────────────────────────────────────────────────
 // Tracks which authentication method a user registered with.
@@ -17,7 +19,13 @@ class AuthProviders {
   static const String studentCode = 'student_code';
 }
 
-class AuthService {
+/// Production authentication service.
+///
+/// Implements [IAuthService] for testability via dependency injection.
+/// Call-sites that need to be testable should depend on [IAuthService];
+/// call-sites that need extra methods (Google registration, setup completion)
+/// can import [AuthService] directly.
+class AuthService implements IAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -774,6 +782,141 @@ class AuthService {
       return false;
     } catch (e) {
       return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // IAuthService Contract — Adapter Methods
+  //
+  // These methods satisfy the IAuthService interface by delegating
+  // to the existing concrete methods with compatible signatures.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  @override
+  Future<Map<String, dynamic>> registerTeacher({
+    required String email,
+    required String password,
+    required String fullName,
+    required String inviteCode,
+  }) =>
+      registerTeacherWithInvite(
+        email: email,
+        password: password,
+        fullName: fullName,
+        inviteCode: inviteCode,
+      );
+
+  @override
+  Future<Map<String, dynamic>> registerStudent({
+    required String code,
+    required String password,
+  }) =>
+      loginStudent(code: code, password: password);
+
+  @override
+  Future<Map<String, dynamic>> registerParent({
+    required String email,
+    required String password,
+    required String fullName,
+  }) =>
+      _registerParentWithEmail(email: email, password: password, fullName: fullName);
+
+  @override
+  Future<Map<String, dynamic>> loginOwner({
+    required String email,
+    required String password,
+  }) =>
+      loginWithEmail(email: email, password: password, role: 'owner');
+
+  @override
+  Future<Map<String, dynamic>> loginTeacher({
+    required String email,
+    required String password,
+  }) =>
+      loginWithEmail(email: email, password: password, role: 'teacher');
+
+  @override
+  Future<Map<String, dynamic>> loginParent({
+    required String email,
+    required String password,
+  }) =>
+      loginWithEmail(email: email, password: password, role: 'parent');
+
+  @override
+  Future<void> sendPasswordResetEmail({required String email}) =>
+      sendPasswordReset(email);
+
+  @override
+  bool isEmailVerified() {
+    final user = _auth.currentUser;
+    return user?.emailVerified ?? false;
+  }
+
+  /// Internal: Register parent with email/password (non-Google path)
+  Future<Map<String, dynamic>> _registerParentWithEmail({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    try {
+      final userCredential =
+          await FirebaseService.registerWithEmail(email, password);
+      final user = userCredential.user!;
+
+      await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .set({
+        'organizationId': '',
+        'role': AppConstants.roleParent,
+        'authProvider': AuthProviders.password,
+        'fullName': fullName,
+        'email': email,
+        'isActive': true,
+        'isEmailVerified': user.emailVerified,
+        'hasCompletedSetup': false,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Persist to Hive
+      final box = await Hive.openBox(AppConstants.authBox);
+      await box.put('uid', user.uid);
+      await box.put('email', email);
+      await box.put('fullName', fullName);
+      await box.put('role', AppConstants.roleParent);
+      await box.put('authProvider', AuthProviders.password);
+
+      return {
+        'uid': user.uid,
+        'email': email,
+        'fullName': fullName,
+        'role': AppConstants.roleParent,
+        'authProvider': AuthProviders.password,
+      };
+    } on FirebaseAuthException catch (e) {
+      throw _mapAuthError(e);
+    }
+  }
+
+  String _mapAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'email-already-in-use':
+        return 'This email is already registered. Try logging in instead.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak. Use at least 6 characters.';
+      case 'user-not-found':
+        return 'No account found with this email.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-credential':
+        return 'Invalid credentials. Please check your email and password.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      default:
+        return e.message ?? 'Authentication error. Please try again.';
     }
   }
 }
