@@ -1,8 +1,64 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
+    // Helper: Check if user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: Check if user is a teacher, admin, or owner
+    function isTeacherOrOwner() {
+      return isAuth() &&
+        firetore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'owner', 'admin'];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // User Profile Images — users can manage their own
+    // ═══════════════════════════════════════════════════════════════════════
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isAuth() && request.auth.uid == userId;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Organization Assets — teachers/owners can manage
+    // ═══════════════════════════════════════════════════════════════════════
+    match /organizations/{orgId}/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isTeacherOrOwner();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Exam Attachments — authenticated users read, teachers/owners write
+    // ═══════════════════════════════════════════════════════════════════════
+    match /exams/{examId}/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isTeacherOrOwner();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Materials — authenticated users read, teachers/owners write
+    // ═══════════════════════════════════════════════════════════════════════
+    match /materials/{materialId}/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isTeacherOrOwner();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Submissions — students can write their own, teachers/owners full access
+    // ═══════════════════════════════════════════════════════════════════════
+    match /submissions/{submissionId}/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isTeacherOrOwner() ||
+        (isAuth() && request.auth.uid == submissionId);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Catch-all — deny everything else
+    // ═══════════════════════════════════════════════════════════════════════
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

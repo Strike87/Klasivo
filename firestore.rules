@@ -7,17 +7,44 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Helper: Check if user is a teacher or owner
+    // Helper: Get user's organization ID
+    function getUserOrgId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+    }
+
+    // Helper: Check if user is in the same organization as the resource
+    function isInSameOrg() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        resource.data.organizationId == getUserOrgId();
+    }
+
+    // Helper: Check if user is a teacher, admin, or owner
     function isTeacherOrOwner() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Helper: Check if user is an owner
+    function isOwner() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
 
     // Helper: Get user role
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: Check if user is a student
+    function isStudent() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
     }
 
     // Helper: Check if user is a parent
@@ -32,6 +59,28 @@ service cloud.firestore {
       return isParent() &&
         exists(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)) &&
         get(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)).data.status == 'approved';
+    }
+
+    // Helper: Check if user owns the resource
+    function isResourceOwner() {
+      return isAuth() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Helper: Check if student is creating data for themselves
+    function isCreatingOwnData() {
+      return isAuth() && request.resource.data.studentId == request.auth.uid;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // LOCKED — Internal Queues (no client access)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /emailQueue/{queueId} {
+      allow read, write: if false;
+    }
+
+    match /emailLogs/{logId} {
+      allow read, write: if false;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -107,28 +156,38 @@ service cloud.firestore {
 
     // ====== Submissions Collection ======
     match /submissions/{submissionId} {
-      // Teachers and owners can read all; parents can read their linked student's submissions
+      // Teachers/owners: full read; parents: read linked student's; students: read own
       allow read: if isTeacherOrOwner() ||
         (isParent() && resource.data.studentId != null &&
-         parentHasAccessToStudent(resource.data.studentId));
-      allow create: if isAuth();
-      allow update: if isAuth();
+         parentHasAccessToStudent(resource.data.studentId)) ||
+        (isStudent() && resource.data.studentId == request.auth.uid);
+      // Students can only create submissions for themselves
+      allow create: if isTeacherOrOwner() || isCreatingOwnData();
+      // Students can only update their own submissions
+      allow update: if isTeacherOrOwner() ||
+        (isStudent() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
     // ====== Answers Collection ======
     match /answers/{answerId} {
       allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
+      // Students can only create answers for their own submissions
+      allow create: if isTeacherOrOwner() ||
+        (isAuth() && request.resource.data.studentId == request.auth.uid);
+      allow update: if isTeacherOrOwner() ||
+        (isStudent() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
     // ====== Exam Instances Collection ======
     match /exam_instances/{instanceId} {
       allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
+      // Students can only create instances for themselves
+      allow create: if isTeacherOrOwner() || isCreatingOwnData();
+      // Students can only update their own instances
+      allow update: if isTeacherOrOwner() ||
+        (isStudent() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
@@ -143,7 +202,8 @@ service cloud.firestore {
     // ====== Violations Collection ======
     match /violations/{violationId} {
       allow read: if isAuth();
-      allow create: if isAuth();
+      // Students can only create violations for themselves
+      allow create: if isTeacherOrOwner() || isCreatingOwnData();
       allow update: if isTeacherOrOwner();
       allow delete: if false;
     }
@@ -152,7 +212,8 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isAuth();
       allow create: if isTeacherOrOwner();
-      allow update: if isAuth();
+      // Users can only update their own notifications
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
       allow delete: if false;
     }
 
@@ -207,10 +268,10 @@ service cloud.firestore {
 
     // ====== Messages Collection ======
     match /messages/{messageId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isInSameOrg();
       allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if false;
+      allow update: if isAuth() && resource.data.senderId == request.auth.uid;
+      allow delete: if false; // Messages are never truly deleted — use soft delete
     }
 
     // ====== Analytics Cache Collection ======
@@ -219,6 +280,42 @@ service cloud.firestore {
       allow create: if isTeacherOrOwner();
       allow update: if isTeacherOrOwner();
       allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.9 Enterprise Collections (Feature Flags, Permissions, Audit)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Feature Flags Collection ======
+    match /feature_flags/{flagId} {
+      allow read: if isAuth();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
+    }
+
+    // ====== Permission Overrides Collection ======
+    match /permission_overrides/{overrideId} {
+      allow read: if isAuth();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
+    }
+
+    // ====== Search Keywords Collection ======
+    match /search_keywords/{keywordId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Deep Links Collection ======
+    match /deep_links/{linkId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -236,8 +333,11 @@ service cloud.firestore {
     // ====== Assignment Submissions Collection ======
     match /assignment_submissions/{submissionId} {
       allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
+      // Students can only create their own submissions
+      allow create: if isTeacherOrOwner() ||
+        (isAuth() && request.resource.data.studentId == request.auth.uid);
+      allow update: if isTeacherOrOwner() ||
+        (isStudent() && resource.data.studentId == request.auth.uid);
       allow delete: if isTeacherOrOwner();
     }
 
@@ -326,7 +426,8 @@ service cloud.firestore {
     // ====== Audit Logs Collection ======
     match /audit_logs/{logId} {
       allow read: if isTeacherOrOwner();
-      allow create: if isAuth();
+      // Only teachers/owners can create audit logs
+      allow create: if isTeacherOrOwner();
       allow update: if false;
       allow delete: if false;
     }
@@ -395,7 +496,9 @@ service cloud.firestore {
     // Tracks student progress through LMS content (materials viewed, lessons completed)
     match /content_progress/{progressId} {
       allow read: if isAuth();
-      allow create: if isAuth();
+      // Students can only create their own progress records
+      allow create: if isTeacherOrOwner() ||
+        (isAuth() && request.resource.data.studentId == request.auth.uid);
       allow update: if isAuth();
       allow delete: if isTeacherOrOwner();
     }
