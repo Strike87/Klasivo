@@ -6,8 +6,9 @@
  *
  * Functions:
  *   API Gateway (v2 onRequest):
- *     api — Express app serving api.klasivo.app REST endpoints
- *           (health, livekit/token, livekit/remove, otp/send, otp/verify)
+ *     api — Express app serving api.klasivo.app/v1/* REST endpoints
+ *           (health, livekit/*, storage/upload-url, analytics/event,
+ *            admin/users, admin/schools, admin/reports/summary, docs)
  *
  *   Auth Triggers (v1 — no v2 equivalent for after-events):
  *     onUserCreated  — Queue welcome email when a new user signs up

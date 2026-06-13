@@ -585,5 +585,15 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    // ====== Analytics Events Collection ======
+    // Server-side analytics event recording — NO client write access
+    // Only Cloud Functions (admin SDK) write events
+    match /analytics_events/{eventId} {
+      allow read: if isTeacherOrOwner();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
   }
 }
