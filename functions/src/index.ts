@@ -5,6 +5,10 @@
  * Firebase picks up named exports from the compiled `lib/index.js`.
  *
  * Functions:
+ *   API Gateway (v2 onRequest):
+ *     api — Express app serving api.klasivo.app REST endpoints
+ *           (health, livekit/token, livekit/remove, otp/send, otp/verify)
+ *
  *   Auth Triggers (v1 — no v2 equivalent for after-events):
  *     onUserCreated  — Queue welcome email when a new user signs up
  *     onUserDeleted  — Cascade-delete org data when an owner is removed
@@ -33,6 +37,9 @@ import * as admin from 'firebase-admin';
 
 // Initialise Firebase Admin once — must run before any function invocation
 admin.initializeApp();
+
+// ─── API Gateway (v2 onRequest — serves api.klasivo.app) ─────
+export { api } from './api';
 
 // ─── Auth Triggers (v1) ──────────────────────────────────────
 export { onUserCreated } from './functions/onUserCreated';

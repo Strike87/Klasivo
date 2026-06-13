@@ -584,5 +584,12 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isOwner();
     }
+
+    // ====== OTP Codes Collection ======
+    // Server-side OTP storage for phone verification — NO client access
+    // Only Cloud Functions (admin SDK) read/write these documents
+    match /otp_codes/{phone} {
+      allow read, write: if false;
+    }
   }
 }
