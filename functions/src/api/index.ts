@@ -9,13 +9,15 @@
  *   GET  /health              → Health check
  *   POST /livekit/token       → Generate LiveKit JWT
  *   POST /livekit/remove      → Remove participant from room
- *   POST /otp/send            → Send OTP (placeholder — implement your provider)
- *   POST /otp/verify          → Verify OTP (placeholder)
  *
  * Security:
  *   - All mutation endpoints verify Firebase ID tokens (Authorization: Bearer <token>)
  *   - Rate limiting is handled at Cloudflare level
  *   - Security headers applied via Firebase Hosting headers config
+ *
+ * Note: OTP endpoints are intentionally omitted for launch.
+ *       Firebase Authentication handles phone/SMS verification natively.
+ *       Custom OTP can be added later when a dedicated SMS provider is needed.
  */
 
 import * as admin from 'firebase-admin';
@@ -294,156 +296,6 @@ app.post(
   },
 );
 
-// ─── OTP Routes (Placeholder — implement your SMS provider) ─────
-
-/**
- * POST /otp/send
- *
- * Request body: { "phone": "+201001234567" }
- * Response:     { "success": true, "message": "OTP sent" }
- *
- * Implementation notes:
- *   - Replace the placeholder with your SMS provider (Twilio, Vonage, etc.)
- *   - Store the OTP in Firestore with a TTL for verification
- *   - Rate limiting is handled at Cloudflare level (5 req / 5 min)
- */
-app.post('/otp/send', async (req: Request, res: Response) => {
-  initSentry();
-  Sentry.setTag('service', 'otp');
-  Sentry.setTag('endpoint', '/otp/send');
-
-  const { phone } = req.body ?? {};
-
-  if (!phone || typeof phone !== 'string') {
-    res.status(400).json({ error: 'phone is required and must be a string.' });
-    return;
-  }
-
-  // Validate phone format (E.164)
-  const e164Regex = /^\+[1-9]\d{1,14}$/;
-  if (!e164Regex.test(phone)) {
-    res
-      .status(400)
-      .json({ error: 'Invalid phone number. Use E.164 format: +201001234567' });
-    return;
-  }
-
-  try {
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-    const db = admin.firestore();
-    await db.collection('otp_codes').doc(phone).set({
-      code: otp,
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      attempts: 0,
-      maxAttempts: 3,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // ── TODO: Send OTP via your SMS provider ──
-    // Example with Twilio:
-    //   await twilioClient.messages.create({
-    //     body: `Your Klasivo verification code is: ${otp}`,
-    //     from: '+1234567890',
-    //     to: phone,
-    //   });
-
-    console.log(`OTP generated for ${phone}: ${otp}`); // Remove in production
-
-    res.json({ success: true, message: 'OTP sent' });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`OTP send failed: ${msg}`);
-    Sentry.captureException(err);
-    res.status(500).json({ error: 'Failed to send OTP.' });
-  }
-});
-
-/**
- * POST /otp/verify
- *
- * Request body: { "phone": "+201001234567", "code": "123456" }
- * Response:     { "success": true, "verified": true }
- */
-app.post('/otp/verify', async (req: Request, res: Response) => {
-  initSentry();
-  Sentry.setTag('service', 'otp');
-  Sentry.setTag('endpoint', '/otp/verify');
-
-  const { phone, code } = req.body ?? {};
-
-  if (!phone || typeof phone !== 'string') {
-    res.status(400).json({ error: 'phone is required.' });
-    return;
-  }
-  if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
-    res.status(400).json({ error: 'code must be a 6-digit string.' });
-    return;
-  }
-
-  try {
-    const db = admin.firestore();
-    const otpDoc = await db.collection('otp_codes').doc(phone).get();
-
-    if (!otpDoc.exists) {
-      res
-        .status(400)
-        .json({
-          error: 'No OTP found for this phone number. Request a new one.',
-        });
-      return;
-    }
-
-    const data = otpDoc.data()!;
-    const attempts = (data['attempts'] as number) ?? 0;
-    const maxAttempts = (data['maxAttempts'] as number) ?? 3;
-
-    if (attempts >= maxAttempts) {
-      await otpDoc.ref.delete();
-      res.status(429).json({ error: 'Too many attempts. Request a new OTP.' });
-      return;
-    }
-
-    const expiresAt = (data['expiresAt'] as admin.firestore.Timestamp).toDate();
-    if (new Date() > expiresAt) {
-      await otpDoc.ref.delete();
-      res.status(400).json({ error: 'OTP expired. Request a new one.' });
-      return;
-    }
-
-    await otpDoc.ref.update({ attempts: attempts + 1 });
-
-    // Constant-time comparison to prevent timing attacks
-    const storedCode = data['code'] as string;
-    let mismatch = false;
-    if (storedCode.length !== code.length) {
-      mismatch = true;
-    } else {
-      for (let i = 0; i < storedCode.length; i++) {
-        if (storedCode[i] !== code[i]) {
-          mismatch = true;
-        }
-      }
-    }
-
-    if (mismatch) {
-      res.status(400).json({ error: 'Invalid OTP code.' });
-      return;
-    }
-
-    // OTP verified — clean up
-    await otpDoc.ref.delete();
-
-    res.json({ success: true, verified: true });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`OTP verify failed: ${msg}`);
-    Sentry.captureException(err);
-    res.status(500).json({ error: 'Failed to verify OTP.' });
-  }
-});
-
 // ─── 404 Catch-all ──────────────────────────────────────────────
 
 app.use((_req: Request, res: Response) => {
@@ -453,8 +305,6 @@ app.use((_req: Request, res: Response) => {
       'GET  /health',
       'POST /livekit/token',
       'POST /livekit/remove',
-      'POST /otp/send',
-      'POST /otp/verify',
     ],
   });
 });
