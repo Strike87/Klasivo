@@ -101,6 +101,10 @@ import 'features/calendar/pages/calendar_event_form_screen.dart';
 import 'features/academic_years/pages/academic_year_list_screen.dart';
 import 'features/academic_years/pages/academic_year_form_screen.dart';
 import 'features/audit_log/pages/audit_log_screen.dart';
+// ─── Sprint 3B: User Management Imports ────────────────────────────────────────
+import 'features/user_management/pages/people_hub_screen.dart';
+import 'features/user_management/pages/user_detail_screen.dart';
+import 'features/user_management/pages/role_matrix_screen.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
@@ -715,10 +719,23 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // People
+          // People Hub (Sprint 3B — replaces flat AllStudentsScreen)
           GoRoute(
             path: '/people',
-            builder: (context, state) => const AllStudentsScreen(),
+            builder: (context, state) => const PeopleHubScreen(),
+            routes: [
+              GoRoute(
+                path: 'users/:userId',
+                builder: (context, state) {
+                  final userId = state.pathParameters['userId']!;
+                  return UserDetailScreen(userId: userId);
+                },
+              ),
+              GoRoute(
+                path: 'roles',
+                builder: (context, state) => const RoleMatrixScreen(),
+              ),
+            ],
           ),
 
           // Inbox (Messages + Notifications + Announcements)
