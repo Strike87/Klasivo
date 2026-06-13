@@ -4,13 +4,14 @@ class UserModel {
   final String uid;
   final String email;
   final String fullName;
-  final String role; // owner, teacher, student, parent, admin
+  final String role;
   final String? organizationId;
   final String? organizationName;
   final String? profileImageUrl;
-  final String authProvider; // password, google, student_code
+  final String authProvider;
   final bool isActive;
   final bool isEmailVerified;
+  final bool mustChangePassword;
   final DateTime? createdAt;
 
   const UserModel({
@@ -24,10 +25,10 @@ class UserModel {
     this.authProvider = 'password',
     this.isActive = true,
     this.isEmailVerified = false,
+    this.mustChangePassword = false,
     this.createdAt,
   });
 
-  /// Create from Firestore document data
   factory UserModel.fromFirestore(Map<String, dynamic> data, String uid) {
     return UserModel(
       uid: uid,
@@ -40,13 +41,13 @@ class UserModel {
       authProvider: data['authProvider'] as String? ?? 'password',
       isActive: data['isActive'] as bool? ?? true,
       isEmailVerified: data['isEmailVerified'] as bool? ?? false,
+      mustChangePassword: data['mustChangePassword'] as bool? ?? false,
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as dynamic).toDate() as DateTime?
           : null,
     );
   }
 
-  /// Convert to Firestore document data
   Map<String, dynamic> toFirestore() {
     return {
       'email': email,
@@ -58,10 +59,10 @@ class UserModel {
       'authProvider': authProvider,
       'isActive': isActive,
       'isEmailVerified': isEmailVerified,
+      'mustChangePassword': mustChangePassword,
     };
   }
 
-  /// Create a copy with updated fields
   UserModel copyWith({
     String? fullName,
     String? role,
@@ -70,6 +71,7 @@ class UserModel {
     String? profileImageUrl,
     bool? isActive,
     bool? isEmailVerified,
+    bool? mustChangePassword,
   }) {
     return UserModel(
       uid: uid,
@@ -82,11 +84,11 @@ class UserModel {
       authProvider: authProvider,
       isActive: isActive ?? this.isActive,
       isEmailVerified: isEmailVerified ?? this.isEmailVerified,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       createdAt: createdAt,
     );
   }
 
-  /// Convenience getters
   bool get isOwner => role == 'owner';
   bool get isTeacher => role == 'teacher';
   bool get isStudent => role == 'student';

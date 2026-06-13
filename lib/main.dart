@@ -26,6 +26,7 @@ import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
 import 'features/auth/pages/forgot_password_screen.dart';
 import 'features/auth/pages/owner_register_screen.dart';
+import 'features/auth/pages/change_password_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
 import 'features/shell/parent_shell.dart';
@@ -456,6 +457,24 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
       final userRole = box.get('userRole', defaultValue: '') as String;
       final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
+      final mustChangePassword = box.get('mustChangePassword', defaultValue: false) as bool;
+      final isOnChangePassword = state.matchedLocation == '/change-password';
+
+      // Force redirect to change password if required
+      if (isLoggedIn && mustChangePassword && !isOnChangePassword) {
+        return '/change-password';
+      }
+      // Prevent navigating away from change password if forced
+      if (isLoggedIn && mustChangePassword && isOnChangePassword) {
+        return null; // Allow staying on change password
+      }
+      // If no longer required, redirect away from change password
+      if (isLoggedIn && !mustChangePassword && isOnChangePassword) {
+        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) return '/dashboard';
+        if (userRole == AppConstants.roleStudent) return '/student';
+        if (userRole == AppConstants.roleParent) return '/parent';
+        return '/dashboard';
+      }
 
       final isOnSplash = state.matchedLocation == '/';
       final isOnAuth = state.matchedLocation.startsWith('/auth');
@@ -604,6 +623,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/welcome',
         builder: (context, state) => const WelcomeScreen(),
+      ),
+
+      // ─── Change Password (forced or voluntary) ────────────────────────
+      GoRoute(
+        path: '/change-password',
+        builder: (context, state) => const ChangePasswordScreen(isForced: true),
       ),
 
       // ─── Parent Link Screen ──────────────────────────────────────────

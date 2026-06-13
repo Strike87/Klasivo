@@ -21,6 +21,12 @@
  *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
  *     removeParticipant      — Kick disruptive student from a live class
  *
+ *   RBAC Functions (v1 — callable):
+ *     assignRole           — Assign a role to a user (custom claims + Firestore)
+ *     assignScope          — Assign scope (campus/stage/class) to a user
+ *     syncClaims           — Re-sync custom claims from Firestore user doc
+ *     changeUserPassword   — Change/reset user password (email or student_code)
+ *
  *   Firestore Triggers (v2):
  *     emailWorker            — Process emailQueue documents (send + retry)
  *     onLiveKitRoomCreated   — Push notifications when a live class starts
@@ -52,6 +58,12 @@ export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
 export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
 export { generateLiveKitToken } from './functions/generateLiveKitToken';
 export { removeParticipant } from './functions/removeParticipant';
+
+// ─── RBAC Functions (v1 — callable) ───────────────────────────
+export { assignRole } from './functions/assignRole';
+export { assignScope } from './functions/assignScope';
+export { syncClaims } from './functions/syncClaims';
+export { changeUserPassword } from './functions/changeUserPassword';
 
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';

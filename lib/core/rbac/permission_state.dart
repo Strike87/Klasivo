@@ -19,6 +19,7 @@ class PermissionState {
   final String organizationId;
   final int roleVersion;
   final String userId;
+  final bool mustChangePassword;
 
   const PermissionState({
     this.role = '',
@@ -27,6 +28,7 @@ class PermissionState {
     this.organizationId = '',
     this.roleVersion = 0,
     this.userId = '',
+    this.mustChangePassword = false,
   });
 
   /// Initial/unauthenticated state.
@@ -34,6 +36,9 @@ class PermissionState {
 
   /// Whether a user is authenticated and has a role assigned.
   bool get isAuthenticated => role.isNotEmpty && userId.isNotEmpty;
+
+  /// Whether the user must change their password on next login.
+  bool get needsPasswordChange => mustChangePassword;
 
   /// Create a copy with modified fields.
   PermissionState copyWith({
@@ -43,6 +48,7 @@ class PermissionState {
     String? organizationId,
     int? roleVersion,
     String? userId,
+    bool? mustChangePassword,
   }) {
     return PermissionState(
       role: role ?? this.role,
@@ -51,6 +57,7 @@ class PermissionState {
       organizationId: organizationId ?? this.organizationId,
       roleVersion: roleVersion ?? this.roleVersion,
       userId: userId ?? this.userId,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
     );
   }
 
@@ -63,7 +70,8 @@ class PermissionState {
           _mapEquals(permissionOverrides, other.permissionOverrides) &&
           organizationId == other.organizationId &&
           roleVersion == other.roleVersion &&
-          userId == other.userId;
+          userId == other.userId &&
+          mustChangePassword == other.mustChangePassword;
 
   @override
   int get hashCode => Object.hash(
@@ -73,6 +81,7 @@ class PermissionState {
         organizationId,
         roleVersion,
         userId,
+        mustChangePassword,
       );
 
   static bool _mapEquals(Map<String, bool> a, Map<String, bool> b) {
@@ -90,6 +99,7 @@ class PermissionState {
         'role: $role, '
         'orgId: $organizationId, '
         'roleVersion: $roleVersion, '
+        'mustChangePassword: $mustChangePassword, '
         'scope: $scope, '
         'overrides: ${permissionOverrides.length})';
   }

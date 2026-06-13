@@ -77,6 +77,13 @@ final hasCompletedSetupProvider = StateProvider<bool>((ref) {
   return box.get('hasCompletedSetup', defaultValue: true) as bool;
 });
 
+// ─── Must Change Password Provider ──────────────────────────────────────────
+
+final mustChangePasswordProvider = StateProvider<bool>((ref) {
+  final box = Hive.box(AppConstants.authBox);
+  return box.get('mustChangePassword', defaultValue: false) as bool;
+});
+
 // ─── Student Class ID Provider (persisted with Hive) ─────────────────────────
 
 final studentClassIdProvider = StateProvider<String?>((ref) {
@@ -135,6 +142,7 @@ Future<void> saveTeacherAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
+  await box.put('mustChangePassword', false);
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
@@ -167,6 +175,7 @@ Future<void> saveStudentAuthData({
   if (organizationId != null) await box.put('organizationId', organizationId);
   await box.put('authMethod', 'student_code');
   await box.put('hasCompletedSetup', true);
+  await box.put('mustChangePassword', true); // Students must change password on first login
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
@@ -197,6 +206,7 @@ Future<void> saveParentAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
+  await box.put('mustChangePassword', false);
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
@@ -229,6 +239,7 @@ Future<void> clearAuthData() async {
   await box.delete('authMethod');
   await box.delete('organizationId');
   await box.delete('hasCompletedSetup');
+  await box.delete('mustChangePassword');
   // Also sign out Firebase Auth + Google Sign-In
   try {
     await FirebaseAuth.instance.signOut();

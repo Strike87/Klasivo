@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../config/app_constants.dart';
+import '../rbac/rbac.dart';
 
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -110,6 +111,7 @@ class StudentService {
         'email': email,         // User's real email (optional)
         'phone': phone,
         'passwordHash': passwordHash,
+        'mustChangePassword': true,
         'classId': classId,
         'photoUrl': null,
         'isActive': true,
@@ -272,7 +274,9 @@ class StudentService {
       for (final student in students) {
         final studentCode = await generateStudentCode(organizationId);
         final password =
-            student['password'] ?? AppConstants.defaultStudentPassword;
+            student['password']?.isNotEmpty == true
+                ? student['password']!
+                : PasswordGenerator.generateTempPassword();
         final passwordHash = hashPassword(password);
         final authEmail = _generateAuthEmail(studentCode);
         final docRef =
@@ -287,6 +291,7 @@ class StudentService {
           'email': student['email'],
           'phone': student['phone'],
           'passwordHash': passwordHash,
+          'mustChangePassword': true,
           'classId': classId,
           'photoUrl': null,
           'isActive': true,

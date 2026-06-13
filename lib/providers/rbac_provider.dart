@@ -10,11 +10,13 @@
 //   3. Update all screens to use new API
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/rbac/rbac.dart';
+import '../core/services/claims_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE NOTIFIER
@@ -35,6 +37,7 @@ class RbacNotifier extends StateNotifier<PermissionState> {
     final role = box.get('userRole', defaultValue: '') as String;
     final userId = box.get('userId', defaultValue: '') as String;
     final orgId = box.get('organizationId', defaultValue: '') as String;
+    final mustChangePassword = box.get('mustChangePassword', defaultValue: false) as bool;
 
     if (role.isNotEmpty && userId.isNotEmpty) {
       state = PermissionState(
@@ -42,6 +45,7 @@ class RbacNotifier extends StateNotifier<PermissionState> {
         userId: userId,
         organizationId: orgId ?? '',
         scope: UserScope.empty, // Will be populated from Firestore in Sprint 2
+        mustChangePassword: mustChangePassword,
       );
     }
   }
@@ -314,5 +318,55 @@ final rbacScopeValidatorProvider =
   return service.validateScope(
     scopeType: check.scopeType,
     scopeId: check.scopeId,
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAIMS SERVICE & RBAC INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// ClaimsService provider — manages custom claims syncing and roleVersion monitoring.
+final claimsServiceProvider = Provider<ClaimsService>((ref) {
+  final service = ClaimsService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+/// Initialize RBAC state from Firebase Auth + Firestore.
+/// Call this after successful login.
+final rbacInitProvider = FutureProvider<void>((ref) async {
+  final claimsService = ref.read(claimsServiceProvider);
+  final claims = await claimsService.getCurrentClaims();
+
+  if (!claims.isValid) return;
+
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final scope = await claimsService.getUserScope(user.uid);
+  final mustChangePassword = await claimsService.getMustChangePassword(user.uid);
+  final roleVersion = await claimsService.getRoleVersion(user.uid);
+
+  ref.read(rbacProvider.notifier).updateState(PermissionState(
+    role: claims.role,
+    userId: user.uid,
+    organizationId: claims.organizationId,
+    scope: scope,
+    mustChangePassword: mustChangePassword,
+    roleVersion: roleVersion,
+  ));
+
+  // Start roleVersion listener
+  claimsService.startRoleVersionListener(
+    userId: user.uid,
+    onRoleVersionChanged: (newClaims, newScope, newVersion) {
+      ref.read(rbacProvider.notifier).updateState(PermissionState(
+        role: newClaims.role,
+        userId: user.uid,
+        organizationId: newClaims.organizationId,
+        scope: newScope,
+        roleVersion: newVersion,
+      ));
+    },
   );
 });

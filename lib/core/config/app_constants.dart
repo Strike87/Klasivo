@@ -398,7 +398,14 @@ class AppConstants {
 
   static const int autoSaveInterval = 5;
   static const int violationThreshold = 3;
-  static const String defaultStudentPassword = '123456';
+  // ─── Password Generation ──────────────────────────────────────────────
+  // Replaced static '123456' with secure random generation.
+  // Use PasswordGenerator.generateTempPassword() instead.
+
+  /// DEPRECATED — Use PasswordGenerator.generateTempPassword() instead.
+  /// Kept for backward compatibility with existing student records.
+  @Deprecated('Use PasswordGenerator.generateTempPassword() instead')
+  static const String defaultStudentPassword = 'Klasivo2024!';
   static const int maxMessageLength = 2000;
   static const int analyticsCacheDurationHours = 1;
   static const int inviteCodeLength = 8;

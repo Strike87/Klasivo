@@ -2,56 +2,111 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // v2.0 RBAC Helpers — Claims-First with Firestore Fallback
+    // ═══════════════════════════════════════════════════════════════════════
+
     // Helper: Check if user is authenticated
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: Get user's organization ID
+    // Helper: Get role from custom claims (fast — no Firestore read)
+    function claimsRole() {
+      return request.auth.token.role;
+    }
+
+    // Helper: Get organizationId from custom claims
+    function claimsOrgId() {
+      return request.auth.token.organizationId;
+    }
+
+    // Helper: Get scopeAccessLevel from custom claims
+    function claimsScope() {
+      return request.auth.token.scopeAccessLevel;
+    }
+
+    // Helper: Check if user has custom claims set (migrated)
+    function hasClaims() {
+      return request.auth != null &&
+        request.auth.token.role != null &&
+        request.auth.token.organizationId != null;
+    }
+
+    // Helper: Get user role — claims first, Firestore fallback
+    function getUserRole() {
+      if (hasClaims()) {
+        return claimsRole();
+      }
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: Get user organizationId — claims first, Firestore fallback
     function getUserOrgId() {
+      if (hasClaims()) {
+        return claimsOrgId();
+      }
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
     }
 
-    // Helper: Check if user is in the same organization as the resource
+    // Helper: Check if user is in the same organization as a resource
     function isInSameOrg() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        resource.data.organizationId == getUserOrgId();
+      return isAuth() && resource.data.organizationId == getUserOrgId();
     }
 
-    // Helper: Check if user is a teacher, admin, or owner
+    // Helper: Check if a new document being created is in the user's org
+    function isCreatingInSameOrg() {
+      return isAuth() && request.resource.data.organizationId == getUserOrgId();
+    }
+
+    // Helper: Check if user has one of the specified roles
+    function hasAnyRole(roles) {
+      if (hasClaims()) {
+        return claimsRole() in roles;
+      }
+      return getUserRole() in roles;
+    }
+
+    // Helper: Check if user is a teacher, admin, campus_manager, stage_manager, academic_supervisor, or owner
+    function isStaffOrAbove() {
+      return hasAnyRole(['super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager', 'academic_supervisor', 'teacher', 'assistant_teacher']);
+    }
+
+    // Helper: Legacy compat — same as isStaffOrAbove
     function isTeacherOrOwner() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      return isStaffOrAbove();
+    }
+
+    // Helper: Check if user is an owner or admin
+    function isOwnerOrAdmin() {
+      return hasAnyRole(['super_admin', 'owner', 'admin']);
     }
 
     // Helper: Check if user is an owner
     function isOwner() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+      return hasAnyRole(['super_admin', 'owner']);
     }
 
-    // Helper: Get user role
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    // Helper: Check if user is admin or above
+    function isAdmin() {
+      return hasAnyRole(['super_admin', 'owner', 'admin']);
     }
 
     // Helper: Check if user is a student
     function isStudent() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+      return hasAnyRole(['student']);
     }
 
     // Helper: Check if user is a parent
     function isParent() {
+      return hasAnyRole(['parent']);
+    }
+
+    // Helper: Check if user is active (always checks Firestore — claims don't store isActive)
+    function isActiveUser() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
     }
 
     // Helper: Check if parent has approved link to a student
@@ -71,6 +126,36 @@ service cloud.firestore {
       return isAuth() && request.resource.data.studentId == request.auth.uid;
     }
 
+    // Helper: User can read/write their own user document
+    function isOwnUserDoc(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Helper: Check if student owns the user doc (for cases where doc ID != auth UID)
+    // Students imported in bulk may have a different Firestore doc ID than their auth UID
+    function isStudentOwnDoc() {
+      return isStudent() && isAuth() && resource.data.authUid == request.auth.uid;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Org Isolation Helpers
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Read: user's org must match resource's org
+    function canReadInOrg() {
+      return isAuth() && resource.data.organizationId == getUserOrgId();
+    }
+
+    // Write: user's org must match resource's org + user must be active (for existing docs)
+    function canWriteInOrg() {
+      return isActiveUser() && resource.data.organizationId == getUserOrgId();
+    }
+
+    // Create: new doc's org must match user's org + user must be active
+    function canCreateInOrg() {
+      return isActiveUser() && request.resource.data.organizationId == getUserOrgId();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // LOCKED — Internal Queues (no client access)
     // ═══════════════════════════════════════════════════════════════════════
@@ -84,442 +169,450 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // v1.6 Core Collections
+    // v2.0 Core Collections — Org-Isolated
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Users Collection ======
+    // Users can read their own doc; staff can read any user in their org
+    // Users can update their own doc (including mustChangePassword for password flow)
+    // Students can update their own doc even if doc ID != auth UID (via authUid field)
     match /users/{userId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (isOwnUserDoc(userId) || canReadInOrg());
       allow create: if isAuth() && request.auth.uid == userId;
-      allow update: if isAuth() && request.auth.uid == userId;
+      allow update: if isAuth() && (isOwnUserDoc(userId) || isStudentOwnDoc());
       allow delete: if false;
     }
 
-    // ====== Students (stored in users with role='student') ======
-    // No separate students collection — students ARE users
+    // ====== Organizations Collection ======
+    // Only users in the same org can read; owner/admin can update
+    match /organizations/{orgId} {
+      allow read: if isAuth() && getUserOrgId() == orgId;
+      allow create: if isAuth();
+      allow update: if isOwnerOrAdmin() && isActiveUser() && getUserOrgId() == orgId;
+      allow delete: if false;
+    }
 
     // ====== Classes Collection ======
     match /classes/{classId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Stages Collection ======
     match /stages/{stageId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Grades Collection ======
     match /grades/{gradeId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Groups Collection ======
     match /groups/{groupId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Exams Collection ======
     match /exams/{examId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Questions Collection ======
     match /questions/{questionId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Question Bank Collection ======
     match /question_banks/{questionId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Submissions Collection ======
+    // Staff: full org-scoped access; Students: own submissions in own org; Parents: linked students
     match /submissions/{submissionId} {
-      // Teachers/owners: full read; parents: read linked student's; students: read own
-      allow read: if isTeacherOrOwner() ||
-        (isParent() && resource.data.studentId != null &&
+      allow read: if (isStaffOrAbove() && canReadInOrg()) ||
+        (isParent() && canReadInOrg() && resource.data.studentId != null &&
          parentHasAccessToStudent(resource.data.studentId)) ||
-        (isStudent() && resource.data.studentId == request.auth.uid);
-      // Students can only create submissions for themselves
-      allow create: if isTeacherOrOwner() || isCreatingOwnData();
-      // Students can only update their own submissions
-      allow update: if isTeacherOrOwner() ||
-        (isStudent() && resource.data.studentId == request.auth.uid);
+        (isStudent() && canReadInOrg() && resource.data.studentId == request.auth.uid);
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isStudent() && canCreateInOrg() && isCreatingOwnData());
+      allow update: if (isStaffOrAbove() && canWriteInOrg()) ||
+        (isStudent() && canWriteInOrg() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
     // ====== Answers Collection ======
+    // Staff: full org-scoped access; Students: own answers in own org
     match /answers/{answerId} {
-      allow read: if isAuth();
-      // Students can only create answers for their own submissions
-      allow create: if isTeacherOrOwner() ||
-        (isAuth() && request.resource.data.studentId == request.auth.uid);
-      allow update: if isTeacherOrOwner() ||
-        (isStudent() && resource.data.studentId == request.auth.uid);
+      allow read: if (isStaffOrAbove() && canReadInOrg()) ||
+        (isStudent() && canReadInOrg() && resource.data.studentId == request.auth.uid);
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isAuth() && canCreateInOrg() && request.resource.data.studentId == request.auth.uid);
+      allow update: if (isStaffOrAbove() && canWriteInOrg()) ||
+        (isStudent() && canWriteInOrg() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
     // ====== Exam Instances Collection ======
+    // Staff: full org-scoped access; Students: own instances in own org
     match /exam_instances/{instanceId} {
-      allow read: if isAuth();
-      // Students can only create instances for themselves
-      allow create: if isTeacherOrOwner() || isCreatingOwnData();
-      // Students can only update their own instances
-      allow update: if isTeacherOrOwner() ||
-        (isStudent() && resource.data.studentId == request.auth.uid);
+      allow read: if (isStaffOrAbove() && canReadInOrg()) ||
+        (isStudent() && canReadInOrg() && resource.data.studentId == request.auth.uid);
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isStudent() && canCreateInOrg() && isCreatingOwnData());
+      allow update: if (isStaffOrAbove() && canWriteInOrg()) ||
+        (isStudent() && canWriteInOrg() && resource.data.studentId == request.auth.uid);
       allow delete: if false;
     }
 
     // ====== Exam Stats Collection ======
     match /exam_stats/{statId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       allow delete: if false;
     }
 
     // ====== Violations Collection ======
+    // Staff: full org-scoped access; Students: can create own violations (proctoring)
     match /violations/{violationId} {
-      allow read: if isAuth();
-      // Students can only create violations for themselves
-      allow create: if isTeacherOrOwner() || isCreatingOwnData();
-      allow update: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isStudent() && canCreateInOrg() && isCreatingOwnData());
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       allow delete: if false;
     }
 
     // ====== Notifications Collection ======
+    // Users can read/update own notifications within their org
     match /notifications/{notificationId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      // Users can only update their own notifications
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
-      allow delete: if false;
-    }
-
-    // ====== Organizations Collection ======
-    match /organizations/{orgId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      // Allow update if user is teacher/owner OR if they are the org owner (fixes chicken-egg during signup)
-      allow update: if isTeacherOrOwner() || (isAuth() && resource.data.ownerId == request.auth.uid);
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isAuth() && canWriteInOrg() && resource.data.userId == request.auth.uid;
       allow delete: if false;
     }
 
     // ====== Invite Codes Collection ======
     match /invite_codes/{codeId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Subjects Collection ======
     match /subjects/{subjectId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Group Members Collection ======
     match /group_members/{memberId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Teacher Assignments Collection ======
     match /teacher_assignments/{assignmentId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Conversations Collection ======
     match /conversations/{conversationId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isAuth() && canCreateInOrg();
+      allow update: if isAuth() && canWriteInOrg();
       allow delete: if false;
     }
 
-    // ====== Messages Collection ======
+    // ====== Messages Collection (top-level) ======
     match /messages/{messageId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth();
-      allow update: if isAuth() && resource.data.senderId == request.auth.uid;
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isAuth() && canCreateInOrg();
+      allow update: if isAuth() && canWriteInOrg() && resource.data.senderId == request.auth.uid;
       allow delete: if false; // Messages are never truly deleted — use soft delete
     }
 
     // ====== Analytics Cache Collection ======
     match /analytics_cache/{cacheId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       allow delete: if false;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // v1.9 Enterprise Collections (Feature Flags, Permissions, Audit)
+    // v1.9 Enterprise Collections (Feature Flags, Permissions, Audit) — Org-Isolated
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Feature Flags Collection ======
+    // Org-scoped reads; owner/admin only for writes
     match /feature_flags/{flagId} {
-      allow read: if isAuth();
-      allow create: if isOwner();
-      allow update: if isOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isOwnerOrAdmin() && canCreateInOrg();
+      allow update: if isOwnerOrAdmin() && canWriteInOrg();
       allow delete: if isOwner();
     }
 
     // ====== Permission Overrides Collection ======
+    // Org-scoped reads; owner/admin only for writes
     match /permission_overrides/{overrideId} {
-      allow read: if isAuth();
-      allow create: if isOwner();
-      allow update: if isOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isOwnerOrAdmin() && canCreateInOrg();
+      allow update: if isOwnerOrAdmin() && canWriteInOrg();
       allow delete: if isOwner();
     }
 
     // ====== Search Keywords Collection ======
     match /search_keywords/{keywordId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Deep Links Collection ======
     match /deep_links/{linkId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Campuses Collection ======
     match /campuses/{campusId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       allow delete: if isOwner();
     }
 
-
     // ═══════════════════════════════════════════════════════════════════════
-    // v1.7 New Collections
+    // v1.7 Collections — Org-Isolated
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Assignments Collection ======
     match /assignments/{assignmentId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Assignment Submissions Collection ======
+    // Staff: full org-scoped access; Students: own submissions in own org
     match /assignment_submissions/{submissionId} {
-      allow read: if isAuth();
-      // Students can only create their own submissions
-      allow create: if isTeacherOrOwner() ||
-        (isAuth() && request.resource.data.studentId == request.auth.uid);
-      allow update: if isTeacherOrOwner() ||
-        (isStudent() && resource.data.studentId == request.auth.uid);
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isAuth() && canCreateInOrg() && request.resource.data.studentId == request.auth.uid);
+      allow update: if (isStaffOrAbove() && canWriteInOrg()) ||
+        (isStudent() && canWriteInOrg() && resource.data.studentId == request.auth.uid);
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Attendance Collection ======
+    // Staff: full org-scoped access; Parents: read linked student's records in own org
     match /attendance/{attendanceId} {
-      // Teachers/owners: full access; Parents: read own linked student's records
-      allow read: if isTeacherOrOwner() ||
-        (isParent() && resource.data.studentId != null &&
+      allow read: if (isStaffOrAbove() && canReadInOrg()) ||
+        (isParent() && canReadInOrg() && resource.data.studentId != null &&
          parentHasAccessToStudent(resource.data.studentId));
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Gradebook Collection ======
     match /gradebook/{gradebookId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Gradebook Categories Collection ======
     match /gradebook_categories/{categoryId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Gradebook Entries Collection ======
     match /gradebook_entries/{entryId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Parent Links Collection ======
+    // Org-scoped reads; parents can update own links
     match /parent_links/{linkId} {
-      // Anyone authenticated can read (for code lookup); only teachers create; parents update on link
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isAuth() &&
-        (isTeacherOrOwner() ||
-         (isParent() && resource.data.parentId == request.auth.uid));
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isAuth() && canWriteInOrg() &&
+        (isStaffOrAbove() || (isParent() && resource.data.parentId == request.auth.uid));
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Exam Templates Collection ======
     match /exam_templates/{templateId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // v1.7 Feature-Complete Collections
+    // v1.7 Feature-Complete Collections — Org-Isolated
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Calendar Events Collection ======
     match /calendar_events/{eventId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Announcements Collection ======
     match /announcements/{announcementId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Academic Years Collection ======
     match /academic_years/{yearId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Audit Logs Collection ======
+    // Org-scoped reads for staff; anyone authenticated can create (Cloud Functions + client)
     match /audit_logs/{logId} {
-      allow read: if isTeacherOrOwner();
-      // Only teachers/owners can create audit logs
-      allow create: if isTeacherOrOwner();
+      allow read: if isStaffOrAbove() && canReadInOrg();
+      allow create: if isAuth(); // Cloud Functions + client
       allow update: if false;
       allow delete: if false;
     }
 
     // ====== Resources Collection ======
     match /resources/{resourceId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Materials Collection ======
     match /materials/{materialId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Lessons Collection ======
     match /lessons/{lessonId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Lesson Plans Collection ======
     match /lesson_plans/{planId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Progress Tracking Collection ======
     match /progress_tracking/{progressId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Moderation Queue Collection ======
+    // Staff can read/manage; anyone authenticated can create reports
     match /moderation_queue/{itemId} {
-      allow read: if isTeacherOrOwner();
-      allow create: if isAuth();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isStaffOrAbove() && canReadInOrg();
+      allow create: if isAuth() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // v1.7 Ecosystem — Units & Content Progress
+    // v1.7 Ecosystem — Units & Content Progress — Org-Isolated
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Units Collection ======
     match /units/{unitId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Content Progress Collection ======
     // Tracks student progress through LMS content (materials viewed, lessons completed)
+    // Staff: full org-scoped access; Students: own progress in own org
     match /content_progress/{progressId} {
-      allow read: if isAuth();
-      // Students can only create their own progress records
-      allow create: if isTeacherOrOwner() ||
-        (isAuth() && request.resource.data.studentId == request.auth.uid);
-      allow update: if isAuth();
-      allow delete: if isTeacherOrOwner();
+      allow read: if (isStaffOrAbove() && canReadInOrg()) ||
+        (isStudent() && canReadInOrg() && resource.data.studentId == request.auth.uid);
+      allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
+        (isAuth() && canCreateInOrg() && request.resource.data.studentId == request.auth.uid);
+      allow update: if isAuth() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // v1.7 LiveKit — Virtual Classrooms & Proctored Exams — Org-Isolated
+    // ═══════════════════════════════════════════════════════════════════════
 
     // ====== LiveKit Rooms Collection ======
     // Stores room metadata for virtual classrooms and proctored exams
     match /livekit_rooms/{roomId} {
-      allow read: if isAuth() && isInSameOrg();
+      allow read: if isAuth() && canReadInOrg();
       // Only teachers can create rooms; students cannot start rooms
-      allow create: if isTeacherOrOwner();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
       // Only the room creator or another teacher can update (end, record, etc.)
-      allow update: if isTeacherOrOwner();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       // Only owners can permanently delete room records
       allow delete: if isOwner();
 
@@ -527,58 +620,58 @@ service cloud.firestore {
 
       // Attendance — students create/update own record on join/leave; teachers can update any
       match /attendance/{uid} {
-        allow read: if isAuth();
-        allow create: if isAuth() && request.auth.uid == uid;
+        allow read: if isAuth() && canReadInOrg();
+        allow create: if isAuth() && request.auth.uid == uid && canCreateInOrg();
         // Students can only update their own leftAt; teachers can update any
-        allow update: if isAuth() &&
-          (isTeacherOrOwner() ||
+        allow update: if canWriteInOrg() &&
+          (isStaffOrAbove() ||
            (request.auth.uid == uid &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['leftAt', 'updatedAt'])));
-        allow delete: if isTeacherOrOwner();
+        allow delete: if isStaffOrAbove() && canWriteInOrg();
       }
 
       // Chat messages — anyone in org can send; only teachers can delete/moderate
       match /messages/{messageId} {
-        allow read: if isAuth();
-        allow create: if isAuth();
+        allow read: if isAuth() && canReadInOrg();
+        allow create: if isAuth() && canCreateInOrg();
         // Only teachers can update (pin, edit); students cannot edit sent messages
-        allow update: if isTeacherOrOwner();
+        allow update: if isStaffOrAbove() && canWriteInOrg();
         // Only teachers can delete messages (moderation)
-        allow delete: if isTeacherOrOwner();
+        allow delete: if isStaffOrAbove() && canWriteInOrg();
       }
 
       // Raised hands — students toggle own; teachers can lower any
       match /raised_hands/{uid} {
-        allow read: if isAuth();
-        allow create: if isAuth() && request.auth.uid == uid;
-        allow update: if isAuth() && (isTeacherOrOwner() || request.auth.uid == uid);
-        allow delete: if isTeacherOrOwner();
+        allow read: if isAuth() && canReadInOrg();
+        allow create: if isAuth() && request.auth.uid == uid && canCreateInOrg();
+        allow update: if isAuth() && (isStaffOrAbove() || request.auth.uid == uid) && canWriteInOrg();
+        allow delete: if isStaffOrAbove() && canWriteInOrg();
       }
     }
 
     // ====== Recordings Collection ======
     // Metadata for session recordings (playback URLs, storage refs)
     match /recordings/{recordingId} {
-      allow read: if isAuth();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
       allow delete: if isOwner();
     }
 
     // ====== Scheduled Classes Collection ======
     // Upcoming live classes with start times and room references
     match /scheduled_classes/{classId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner();
-      allow update: if isTeacherOrOwner();
-      allow delete: if isTeacherOrOwner();
+      allow read: if isAuth() && canReadInOrg();
+      allow create: if isStaffOrAbove() && canCreateInOrg();
+      allow update: if isStaffOrAbove() && canWriteInOrg();
+      allow delete: if isStaffOrAbove() && canWriteInOrg();
     }
 
     // ====== Session Analytics Collection ======
     // Post-class analytics: attendance, duration, engagement metrics
     match /session_analytics/{analyticsId} {
-      allow read: if isAuth() && isInSameOrg();
+      allow read: if isAuth() && canReadInOrg();
       // Only Cloud Functions write analytics (clients cannot create/update)
       allow create: if false;
       allow update: if false;
@@ -589,7 +682,7 @@ service cloud.firestore {
     // Server-side analytics event recording — NO client write access
     // Only Cloud Functions (admin SDK) write events
     match /analytics_events/{eventId} {
-      allow read: if isTeacherOrOwner();
+      allow read: if isStaffOrAbove() && canReadInOrg();
       allow create: if false;
       allow update: if false;
       allow delete: if false;

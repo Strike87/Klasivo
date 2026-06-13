@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import '../config/app_constants.dart';
+import '../rbac/rbac.dart';
 
 class ExcelImportService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -155,7 +156,7 @@ class ExcelImportService {
 
             final password = student.password.isNotEmpty
                 ? student.password
-                : AppConstants.defaultStudentPassword;
+                : PasswordGenerator.generateTempPassword();
             final passwordHash = hashPassword(password);
 
             batch.set(docRef, {
@@ -165,7 +166,7 @@ class ExcelImportService {
               'fullName': student.name,
               'studentCode': studentCode,
               'passwordHash': passwordHash,
-              'password': password,
+              'mustChangePassword': true,
               'phone': student.phone,
               'email': student.email,
               'isActive': true,

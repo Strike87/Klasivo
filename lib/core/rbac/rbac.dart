@@ -29,5 +29,11 @@ export 'scope_validator.dart';
 // Permission service
 export 'permission_service.dart';
 
+// Custom claims model
+export 'custom_claims.dart';
+
+// Password generator
+export 'password_generator.dart';
+
 // Permission state (Riverpod)
 export 'permission_state.dart';
