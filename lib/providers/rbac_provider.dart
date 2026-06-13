@@ -115,6 +115,23 @@ final rbacOrgIdProvider = Provider<String>((ref) {
   return ref.watch(rbacProvider).organizationId;
 });
 
+/// Current user's ID.
+final rbacUserIdProvider = Provider<String>((ref) {
+  return ref.watch(rbacProvider).userId;
+});
+
+/// Whether scope has been loaded from Firestore.
+final rbacScopeLoadedProvider = Provider<bool>((ref) {
+  return ref.watch(rbacProvider).scopeLoaded;
+});
+
+/// Whether the current user's scope is missing (fail-closed state).
+/// Returns true for scoped roles with empty scope arrays.
+final rbacScopeMissingProvider = Provider<bool>((ref) {
+  final service = ref.watch(rbacPermissionServiceProvider);
+  return service.isScopeMissing;
+});
+
 /// Current user's scope.
 final rbacScopeProvider = Provider<UserScope>((ref) {
   return ref.watch(rbacProvider).scope;
@@ -321,6 +338,27 @@ final rbacScopeValidatorProvider =
   );
 });
 
+/// RBAC Health Monitor — diagnoses issues with the RBAC system.
+///
+/// Usage:
+/// ```dart
+/// final health = ref.watch(rbacHealthProvider);
+/// if (!health.isHealthy) {
+///   debugPrint('RBAC issues: ${health.issues}');
+/// }
+/// ```
+final rbacHealthProvider = Provider<RbacHealthState>((ref) {
+  final state = ref.watch(rbacProvider);
+  final service = ref.watch(rbacPermissionServiceProvider);
+  return checkRbacHealth(
+    role: state.role,
+    organizationId: state.organizationId,
+    scope: state.scope,
+    scopeLoaded: state.scopeLoaded,
+    effectivePermissions: service.getEffectivePermissions(),
+  );
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLAIMS SERVICE & RBAC INIT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -334,6 +372,10 @@ final claimsServiceProvider = Provider<ClaimsService>((ref) {
 
 /// Initialize RBAC state from Firebase Auth + Firestore.
 /// Call this after successful login.
+///
+/// This is the replacement for the old `permissionServiceProvider.loadPermissions()`.
+/// It loads claims, scope, overrides, and roleVersion from Firestore,
+/// then starts the roleVersion listener for real-time claim sync.
 final rbacInitProvider = FutureProvider<void>((ref) async {
   final claimsService = ref.read(claimsServiceProvider);
   final claims = await claimsService.getCurrentClaims();
@@ -343,9 +385,11 @@ final rbacInitProvider = FutureProvider<void>((ref) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
 
+  // Load scope, overrides, and roleVersion from Firestore
   final scope = await claimsService.getUserScope(user.uid);
   final mustChangePassword = await claimsService.getMustChangePassword(user.uid);
   final roleVersion = await claimsService.getRoleVersion(user.uid);
+  final overrides = await claimsService.getPermissionOverrides(user.uid);
 
   ref.read(rbacProvider.notifier).updateState(PermissionState(
     role: claims.role,
@@ -354,9 +398,11 @@ final rbacInitProvider = FutureProvider<void>((ref) async {
     scope: scope,
     mustChangePassword: mustChangePassword,
     roleVersion: roleVersion,
+    permissionOverrides: overrides,
+    scopeLoaded: true, // ← FAIL-CLOSED: Only true after successful Firestore load
   ));
 
-  // Start roleVersion listener
+  // Start roleVersion listener for real-time claim sync
   claimsService.startRoleVersionListener(
     userId: user.uid,
     onRoleVersionChanged: (newClaims, newScope, newVersion) {
@@ -366,6 +412,7 @@ final rbacInitProvider = FutureProvider<void>((ref) async {
         organizationId: newClaims.organizationId,
         scope: newScope,
         roleVersion: newVersion,
+        scopeLoaded: true, // Re-confirmed after version change
       ));
     },
   );

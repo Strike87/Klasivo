@@ -230,6 +230,14 @@ class ScopeValidator {
   }
 
   /// Check if this scope is effectively "all access" for the role.
+  ///
+  /// For roles with ScopeAccessLevel.all (super_admin, owner, admin, observer),
+  /// this is always true — they don't need scope arrays.
+  ///
+  /// For scoped roles (campus, stage, class_), empty arrays traditionally
+  /// meant "all access" for backward compatibility. This is now
+  /// **SECURITY-CRITICAL**: use [isFailSafeDeny] instead for access decisions.
+  /// Empty scope + scoped role = potential misconfiguration.
   bool get isAllAccess {
     if (accessLevel == ScopeAccessLevel.all) return true;
     if (accessLevel == ScopeAccessLevel.campus) return scope.campusIds.isEmpty;
@@ -238,5 +246,80 @@ class ScopeValidator {
       return scope.classIds.isEmpty && scope.subjectIds.isEmpty;
     }
     return false;
+  }
+
+  /// **Fail-closed** access check for scoped roles.
+  ///
+  /// Returns true ONLY if the user's scope is properly configured
+  /// and grants access to the specified resource.
+  ///
+  /// Security rule: If scope loading fails or scope arrays are empty
+  /// for a scoped role, DENY access. Never allow by default.
+  ///
+  /// - ScopeAccessLevel.all roles (owner, admin, observer) → always ALLOW
+  /// - ScopeAccessLevel.self (student) → delegate to service layer
+  /// - ScopeAccessLevel.linked (parent) → requires studentIds to be set
+  /// - Scoped roles with empty arrays → DENY (misconfiguration risk)
+  bool validateFailClosed({
+    required String scopeType,
+    required String scopeId,
+  }) {
+    switch (accessLevel) {
+      case ScopeAccessLevel.all:
+        // Non-scoped roles: always allow (they don't need scope arrays)
+        return true;
+
+      case ScopeAccessLevel.campus:
+        // FAIL CLOSED: campus_manager with no campusIds = DENY
+        if (scope.campusIds.isEmpty) return false;
+        return _validateCampus(scopeType, scopeId);
+
+      case ScopeAccessLevel.stage:
+        // FAIL CLOSED: stage_manager/academic_supervisor with no stageIds = DENY
+        if (scope.stageIds.isEmpty) return false;
+        return _validateStage(scopeType, scopeId);
+
+      case ScopeAccessLevel.class_:
+        // FAIL CLOSED: teacher/assistant_teacher with no classIds = DENY
+        if (scope.classIds.isEmpty) return false;
+        return _validateClass(scopeType, scopeId);
+
+      case ScopeAccessLevel.self:
+        // Students: classIds populated from enrollment; empty = not enrolled = DENY
+        // For non-class scope types, delegate to service layer
+        if (scopeType == 'class') {
+          if (scope.classIds.isEmpty) return false;
+          return scope.classIds.contains(scopeId);
+        }
+        return _validateSelf(scopeType, scopeId);
+
+      case ScopeAccessLevel.linked:
+        // FAIL CLOSED: parent with no studentIds = DENY
+        if (scope.studentIds.isEmpty) return false;
+        return _validateLinked(scopeType, scopeId);
+    }
+  }
+
+  /// Whether this scope is in a fail-closed state (empty scope for a scoped role).
+  ///
+  /// Returns true when the user has a scoped role but their scope arrays
+  /// are empty — meaning scope loading failed or hasn't happened yet.
+  /// This is a security risk: the user should be denied access until
+  /// scope is properly loaded.
+  bool get isScopeMissing {
+    switch (accessLevel) {
+      case ScopeAccessLevel.all:
+        return false; // Not a scoped role
+      case ScopeAccessLevel.campus:
+        return scope.campusIds.isEmpty;
+      case ScopeAccessLevel.stage:
+        return scope.stageIds.isEmpty;
+      case ScopeAccessLevel.class_:
+        return scope.classIds.isEmpty && scope.subjectIds.isEmpty;
+      case ScopeAccessLevel.self:
+        return scope.classIds.isEmpty; // Student not enrolled in any class
+      case ScopeAccessLevel.linked:
+        return scope.studentIds.isEmpty; // Parent has no linked children
+    }
   }
 }

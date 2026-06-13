@@ -136,6 +136,10 @@ class PermissionService {
 
   /// Validate that the user's scope includes a resource.
   ///
+  /// Uses **fail-closed** semantics: if scope is empty for a scoped role,
+  /// access is DENIED. This prevents accidental data exposure when scope
+  /// loading fails or hasn't completed yet.
+  ///
   /// [scopeType] — 'campus', 'stage', 'class', 'subject',
   ///               'academic_year', 'student'
   /// [scopeId] — The resource ID to check
@@ -147,7 +151,20 @@ class PermissionService {
       scope: _scope,
       accessLevel: scopeAccessLevelForRole(_role),
     );
-    return validator.validate(scopeType: scopeType, scopeId: scopeId);
+    return validator.validateFailClosed(scopeType: scopeType, scopeId: scopeId);
+  }
+
+  /// Check if the current scope is missing (fail-closed state).
+  ///
+  /// Returns true when the user has a scoped role but their scope arrays
+  /// are empty — scope loading failed or hasn't happened yet.
+  /// The UI should show a warning and deny scoped operations.
+  bool get isScopeMissing {
+    final validator = ScopeValidator(
+      scope: _scope,
+      accessLevel: scopeAccessLevelForRole(_role),
+    );
+    return validator.isScopeMissing;
   }
 
   /// Get all effective permissions for the current user.

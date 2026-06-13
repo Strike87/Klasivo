@@ -21,6 +21,11 @@ class PermissionState {
   final String userId;
   final bool mustChangePassword;
 
+  /// Whether scope has been successfully loaded from Firestore.
+  /// Before scope is loaded, scoped roles must DENY access (fail-closed).
+  /// Non-scoped roles (owner, admin, observer, super_admin) are unaffected.
+  final bool scopeLoaded;
+
   const PermissionState({
     this.role = '',
     this.scope = UserScope.empty,
@@ -29,6 +34,7 @@ class PermissionState {
     this.roleVersion = 0,
     this.userId = '',
     this.mustChangePassword = false,
+    this.scopeLoaded = false,
   });
 
   /// Initial/unauthenticated state.
@@ -49,6 +55,7 @@ class PermissionState {
     int? roleVersion,
     String? userId,
     bool? mustChangePassword,
+    bool? scopeLoaded,
   }) {
     return PermissionState(
       role: role ?? this.role,
@@ -58,6 +65,7 @@ class PermissionState {
       roleVersion: roleVersion ?? this.roleVersion,
       userId: userId ?? this.userId,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      scopeLoaded: scopeLoaded ?? this.scopeLoaded,
     );
   }
 
@@ -71,7 +79,8 @@ class PermissionState {
           organizationId == other.organizationId &&
           roleVersion == other.roleVersion &&
           userId == other.userId &&
-          mustChangePassword == other.mustChangePassword;
+          mustChangePassword == other.mustChangePassword &&
+          scopeLoaded == other.scopeLoaded;
 
   @override
   int get hashCode => Object.hash(
@@ -82,6 +91,7 @@ class PermissionState {
         roleVersion,
         userId,
         mustChangePassword,
+        scopeLoaded,
       );
 
   static bool _mapEquals(Map<String, bool> a, Map<String, bool> b) {
@@ -100,6 +110,7 @@ class PermissionState {
         'orgId: $organizationId, '
         'roleVersion: $roleVersion, '
         'mustChangePassword: $mustChangePassword, '
+        'scopeLoaded: $scopeLoaded, '
         'scope: $scope, '
         'overrides: ${permissionOverrides.length})';
   }

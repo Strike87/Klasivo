@@ -37,3 +37,9 @@ export 'password_generator.dart';
 
 // Permission state (Riverpod)
 export 'permission_state.dart';
+
+// RBAC health monitor
+export 'rbac_health.dart';
+
+// Scoped query builder
+export 'scoped_query_builder.dart';

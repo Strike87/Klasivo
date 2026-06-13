@@ -107,10 +107,10 @@ import 'providers/exam_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/feature_flag_provider.dart';
 import 'providers/event_bus_provider.dart';
-import 'providers/permission_provider.dart';
+import 'providers/rbac_provider.dart';
+import 'core/rbac/roles.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/feature_flag_service.dart';
-import 'core/services/permission_service.dart';
 import 'core/services/event_bus.dart';
 import 'core/services/image_cache_service.dart';
 import 'core/services/offline_manager.dart';
@@ -278,9 +278,15 @@ class _MyAppState extends ConsumerState<MyApp> {
         final flagService = ref.read(featureFlagServiceProvider);
         await flagService.loadFlags(orgId);
 
-        // Load custom permissions for the organization
-        final permService = ref.read(permissionServiceProvider);
-        await permService.loadPermissions(orgId);
+        // Initialize RBAC from Firebase Auth + Firestore
+        // Replaces old permissionServiceProvider.loadPermissions()
+        // Loads claims, scope, overrides, and starts roleVersion listener
+        try {
+          await ref.read(rbacInitProvider.future);
+          debugPrint('[MyApp] RBAC initialized from Firestore');
+        } catch (e) {
+          debugPrint('[MyApp] RBAC initialization failed — scope will be denied: $e');
+        }
 
         debugPrint('[MyApp] Enterprise services initialized for org: $orgId');
       }
@@ -470,21 +476,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // If no longer required, redirect away from change password
       if (isLoggedIn && !mustChangePassword && isOnChangePassword) {
-        // Staff roles → /dashboard; student → /student; parent → /parent
-        final staffRoles = [
-          AppConstants.roleSuperAdmin,
-          AppConstants.roleOwner,
-          AppConstants.roleAdmin,
-          AppConstants.roleCampusManager,
-          AppConstants.roleStageManager,
-          AppConstants.roleAcademicSupervisor,
-          AppConstants.roleTeacher,
-          AppConstants.roleAssistantTeacher,
-          AppConstants.roleObserver,
-        ];
-        if (staffRoles.contains(userRole)) return '/dashboard';
-        if (userRole == AppConstants.roleStudent) return '/student';
-        if (userRole == AppConstants.roleParent) return '/parent';
+        // Management roles → /dashboard; student → /student; parent → /parent
+        if (KlasivoRole.managementRoles.contains(userRole)) return '/dashboard';
+        if (userRole == KlasivoRole.student) return '/student';
+        if (userRole == KlasivoRole.parent) return '/parent';
         return '/dashboard'; // Fallback for unknown roles
       }
 
@@ -505,14 +500,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Splash → redirect based on auth state
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+          if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+          if (KlasivoRole.managementRoles.contains(userRole)) {
             return '/dashboard';
           }
-          if (userRole == AppConstants.roleStudent) return '/student';
-          if (userRole == AppConstants.roleParent) return '/parent';
+          if (userRole == KlasivoRole.student) return '/student';
+          if (userRole == KlasivoRole.parent) return '/parent';
         }
         return '/auth';
       }
@@ -520,7 +515,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Welcome screen — only accessible to logged-in owners who haven't completed setup
       if (isOnWelcome) {
         if (!isLoggedIn) return '/auth';
-        if (userRole != AppConstants.roleOwner) return '/dashboard';
+        if (userRole != KlasivoRole.owner) return '/dashboard';
         if (hasCompletedSetup) return '/dashboard';
         return null;
       }
@@ -528,14 +523,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Auth screens → redirect if already logged in
       if (isOnAuth) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+          if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+          if (KlasivoRole.managementRoles.contains(userRole)) {
             return '/dashboard';
           }
-          if (userRole == AppConstants.roleStudent) return '/student';
-          if (userRole == AppConstants.roleParent) return '/parent';
+          if (userRole == KlasivoRole.student) return '/student';
+          if (userRole == KlasivoRole.parent) return '/parent';
         }
         return null;
       }
@@ -545,7 +540,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
 
-        if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+        if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
           return '/welcome';
         }
 
@@ -563,27 +558,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             state.matchedLocation.startsWith('/auth/parent')) {
           final flagService = ref.read(featureFlagServiceProvider);
           if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
-            if (userRole == AppConstants.roleParent) return '/auth';
+            if (userRole == KlasivoRole.parent) return '/auth';
             return '/dashboard';
           }
         }
 
-        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
-            isOnDashboard) {
+        // All management roles can access dashboard
+        if (KlasivoRole.managementRoles.contains(userRole) && isOnDashboard) {
           return null;
         }
-        if (userRole == AppConstants.roleStudent && isOnStudent) {
+        if (userRole == KlasivoRole.student && isOnStudent) {
           return null;
         }
-        if (userRole == AppConstants.roleParent && isOnParent) {
+        if (userRole == KlasivoRole.parent && isOnParent) {
           return null;
         }
 
-        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+        // Redirect to correct area based on role
+        if (KlasivoRole.managementRoles.contains(userRole)) {
           return '/dashboard';
         }
-        if (userRole == AppConstants.roleStudent) return '/student';
-        if (userRole == AppConstants.roleParent) return '/parent';
+        if (userRole == KlasivoRole.student) return '/student';
+        if (userRole == KlasivoRole.parent) return '/parent';
       }
 
       return null;
@@ -654,7 +650,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) {
           final box = Hive.box(AppConstants.authBox);
           final userRole = box.get('userRole', defaultValue: '') as String;
-          if (userRole == AppConstants.roleOwner) {
+          if (userRole == KlasivoRole.owner) {
             return OwnerShell(child: child);
           }
           return TeacherShell(child: child);

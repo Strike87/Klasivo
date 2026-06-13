@@ -74,6 +74,23 @@ class ClaimsService {
     }
   }
 
+  /// Read permissionOverrides from user doc.
+  /// Returns an empty map if no overrides are set or on error.
+  Future<Map<String, bool>> getPermissionOverrides(String userId) async {
+    try {
+      final doc = await _firestore.collection(AppConstants.usersCollection).doc(userId).get();
+      if (!doc.exists) return {};
+      final raw = doc.data()?['permissionOverrides'];
+      if (raw == null) return {};
+      if (raw is Map<String, dynamic>) {
+        return raw.map((key, value) => MapEntry(key, value as bool));
+      }
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   /// Start listening to roleVersion changes on the user doc.
   /// When roleVersion changes, call [onRoleVersionChanged] callback.
   void startRoleVersionListener({
