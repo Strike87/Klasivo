@@ -18,8 +18,10 @@
       "rewrites": [
         {
           "source": "/**",
-          "function": "api",
-          "region": "us-central1"
+          "run": {
+            "serviceId": "api",
+            "region": "us-central1"
+          }
         }
       ],
       "headers": [
