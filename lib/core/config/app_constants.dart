@@ -85,7 +85,11 @@ class AppConstants {
   static const String payrollCollection = 'payroll';
   static const String inventoryCollection = 'inventory';
 
-  // ─── User Roles (v2.0: 11 roles with hierarchical RBAC) ───────────────────────
+  // ─── User Roles ────────────────────────────────────────────────────────
+  //
+  // DEPRECATED: Use KlasivoRole constants from core/rbac/roles.dart instead.
+  // These constants are kept for backward compatibility during migration.
+  // All new code should use KlasivoRole.owner, KlasivoRole.teacher, etc.
   //
   // Hierarchy:
   //   super_admin
@@ -101,16 +105,27 @@ class AppConstants {
   //   student (standalone)
   //   parent  (standalone)
 
+  @Deprecated('Use KlasivoRole.superAdmin instead')
   static const String roleSuperAdmin = 'super_admin';
+  @Deprecated('Use KlasivoRole.owner instead')
   static const String roleOwner = 'owner';
+  @Deprecated('Use KlasivoRole.admin instead')
   static const String roleAdmin = 'admin';
+  @Deprecated('Use KlasivoRole.campusManager instead')
   static const String roleCampusManager = 'campus_manager';
-  static const String roleStageManager = 'stage_manager';          // v2.0
-  static const String roleAcademicSupervisor = 'academic_supervisor'; // v2.0
+  @Deprecated('Use KlasivoRole.stageManager instead')
+  static const String roleStageManager = 'stage_manager';
+  @Deprecated('Use KlasivoRole.academicSupervisor instead')
+  static const String roleAcademicSupervisor = 'academic_supervisor';
+  @Deprecated('Use KlasivoRole.teacher instead')
   static const String roleTeacher = 'teacher';
-  static const String roleAssistantTeacher = 'assistant_teacher';  // v2.0
+  @Deprecated('Use KlasivoRole.assistantTeacher instead')
+  static const String roleAssistantTeacher = 'assistant_teacher';
+  @Deprecated('Use KlasivoRole.observer instead')
   static const String roleObserver = 'observer';
+  @Deprecated('Use KlasivoRole.student instead')
   static const String roleStudent = 'student';
+  @Deprecated('Use KlasivoRole.parent instead')
   static const String roleParent = 'parent';
 
   // ─── Navigation Tabs ─────────────────────────────────────────────────────

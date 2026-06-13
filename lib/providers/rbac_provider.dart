@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO RBAC v2.0 — Riverpod Providers
 //
-// New providers for the RBAC system. These coexist with the existing
-// permission_provider.dart during the migration period.
-//
-// Migration path (Sprint 2):
-//   1. Replace old permission_provider.dart imports with this file
-//   2. Remove old PermissionCheck / hasPermissionProvider
-//   3. Update all screens to use new API
+// Central providers for the RBAC system:
+//   - Permission checks (rbacCanProvider, rbacCanScopedProvider)
+//   - Role checks (rbacHasRoleProvider, is*Provider)
+//   - Scope validation (rbacScopeValidatorProvider)
+//   - Health monitoring (rbacHealthProvider)
+//   - Claims sync (claimsServiceProvider, rbacInitProvider)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import 'package:firebase_auth/firebase_auth.dart';
