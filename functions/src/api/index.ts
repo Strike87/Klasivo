@@ -36,6 +36,7 @@ import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 
 import { initSentry } from '../config/sentry';
+import { verifyOrgBoundary, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -232,22 +233,51 @@ app.post(
       return;
     }
 
-    const { roomName, displayName, isTeacher } = req.body ?? {};
+    const { roomId, displayName } = req.body ?? {};
+    // roomName/isTeacher: REMOVED — derived from room document and caller claims
 
-    if (!roomName || typeof roomName !== 'string') {
-      res.status(400).json({ error: 'roomName is required and must be a string.' });
-      return;
-    }
-
-    const sanitizedRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '');
-    if (sanitizedRoomName !== roomName || roomName.length === 0 || roomName.length > 128) {
-      res.status(400).json({
-        error: 'Invalid roomName. Use 1-128 chars: letters, digits, hyphens, underscores.',
-      });
+    if (!roomId || typeof roomId !== 'string') {
+      res.status(400).json({ error: 'roomId is required and must be a string.' });
       return;
     }
 
     try {
+      // ── Load room document ──────────────────────────────────
+      const roomDoc = await admin.firestore().collection('livekit_rooms').doc(roomId).get();
+
+      if (!roomDoc.exists) {
+        res.status(404).json({ error: 'Room not found.' });
+        return;
+      }
+
+      const roomData = roomDoc.data()!;
+      const roomName = roomData['name'] as string;
+      if (!roomName) {
+        res.status(500).json({ error: 'Room document is missing a name field.' });
+        return;
+      }
+
+      // Room name sanitization
+      const sanitizedRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '');
+      if (sanitizedRoomName.length === 0 || sanitizedRoomName.length > 128) {
+        res.status(500).json({ error: 'Invalid room name in document.' });
+        return;
+      }
+
+      // ── Org boundary check ──────────────────────────────────
+      const roomOrgId = roomData['organizationId'] as string;
+      if (!verifyOrgBoundary(req.userOrgId ?? '', roomOrgId, req.userRole ?? '')) {
+        Sentry.captureMessage(`Cross-org LiveKit token attempt (API): caller=${req.userOrgId} room=${roomOrgId}`);
+        res.status(403).json({ error: 'You can only join rooms in your organization.' });
+        return;
+      }
+
+      // ── Server-side role determination ──────────────────────
+      const isTeacherOrAbove = LIVEKIT_ADMIN_ROLES.includes(req.userRole as any);
+
+      // TODO(Phase-2A-cont): Add scope-level authorization here
+      // (same as generateLiveKitToken callable)
+
       const { AccessToken } = await import('livekit-server-sdk');
 
       const token = new AccessToken(
@@ -255,12 +285,6 @@ app.post(
         LIVEKIT_API_SECRET.value(),
         { identity: req.user.uid, name: displayName || req.user.uid },
       );
-
-      const isTeacherOrAbove =
-        isTeacher === true ||
-        req.userRole === 'teacher' ||
-        req.userRole === 'owner' ||
-        req.userRole === 'admin';
 
       token.addGrant({
         room: sanitizedRoomName,
@@ -275,7 +299,7 @@ app.post(
 
       Sentry.addBreadcrumb({
         category: 'livekit',
-        message: `Token generated for room ${sanitizedRoomName}`,
+        message: `Token generated for room ${sanitizedRoomName}, roomAdmin=${isTeacherOrAbove}`,
         level: 'info',
       });
 
@@ -944,14 +968,16 @@ const OPENAPI_SPEC = {
     '/v1/livekit/token': {
       post: {
         summary: 'Generate LiveKit token',
-        description: 'Creates a JWT access token for joining a LiveKit room. Teachers get roomAdmin grant.',
+        description: 'Creates a JWT access token for joining a LiveKit room. roomId is required; roomName and isTeacher are determined server-side. Staff roles (LIVEKIT_ADMIN_ROLES) get roomAdmin grant.',
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['roomName'], properties: { roomName: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' }, displayName: { type: 'string' }, isTeacher: { type: 'boolean' } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string', description: 'Firestore document ID of the livekit_rooms entry' }, displayName: { type: 'string' } } } } },
         },
         responses: {
           '200': { description: 'Token generated', content: { 'application/json': { schema: { type: 'object', properties: { token: { type: 'string' } } } } } },
           '401': { description: 'Missing or invalid auth token' },
+          '403': { description: 'Not authorized — cross-org access denied' },
+          '404': { description: 'Room not found' },
         },
       },
     },
