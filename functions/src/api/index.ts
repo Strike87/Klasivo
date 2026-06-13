@@ -135,9 +135,12 @@ async function auditLog(
   try {
     const db = admin.firestore();
     await db.collection('audit_logs').add({
-      actorId: req.user.uid,
-      actorName: req.userName ?? req.user.email ?? req.user.uid,
-      actorRole: req.userRole ?? 'unknown',
+      actorId: req.user.uid,                                             // legacy — remove in Phase 3
+      actorName: req.userName ?? req.user.email ?? req.user.uid,         // legacy — remove in Phase 3
+      actorRole: req.userRole ?? 'unknown',                              // legacy — keep for backward compat
+      performedBy: req.user.uid,                                         // canonical actor field
+      performedByRole: req.userRole ?? 'unknown',                        // Phase 1: add
+      performedByOrgId: req.userOrgId ?? null,                           // Phase 1: add
       organizationId: req.userOrgId ?? null,
       action: `${req.method} ${req.path}`,
       resource: req.path,

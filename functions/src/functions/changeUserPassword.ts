@@ -73,9 +73,14 @@ export const changeUserPassword = functions
       });
 
       // Audit log
+      const callerRole = (context.auth.token.role as string) || 'unknown';
+      const callerOrgId = (context.auth.token.organizationId as string) || userData.organizationId || '';
       await db.collection('audit_logs').add({
         organizationId: userData.organizationId || '',
-        userId: callerUid,
+        performedBy: callerUid,                       // canonical actor field
+        performedByRole: callerRole,                  // Phase 1: add
+        performedByOrgId: callerOrgId,                // Phase 1: add
+        userId: callerUid,                            // legacy — remove in Phase 3
         action: 'change_password',
         targetType: 'user',
         targetId: effectiveTargetId,
@@ -107,9 +112,14 @@ export const changeUserPassword = functions
       }
 
       // Audit log
+      const callerRole = (context.auth.token.role as string) || 'unknown';
+      const callerOrgId = (context.auth.token.organizationId as string) || userData.organizationId || '';
       await db.collection('audit_logs').add({
         organizationId: userData.organizationId || '',
-        userId: callerUid,
+        performedBy: callerUid,                       // canonical actor field
+        performedByRole: callerRole,                  // Phase 1: add
+        performedByOrgId: callerOrgId,                // Phase 1: add
+        userId: callerUid,                            // legacy — remove in Phase 3
         action: isAdminReset ? 'reset_password' : 'change_password',
         targetType: 'user',
         targetId: effectiveTargetId,

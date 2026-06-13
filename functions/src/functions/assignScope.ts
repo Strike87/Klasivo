@@ -109,7 +109,10 @@ export const assignScope = functions
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
-      userId: callerUid,
+      performedBy: callerUid,                                            // canonical actor field
+      performedByRole: callerRole,                                       // Phase 1: add
+      performedByOrgId: (callerClaims.organizationId as string) || organizationId,  // Phase 1: add
+      userId: callerUid,                                                 // legacy — remove in Phase 3
       action: 'assign_scope',
       targetType: 'user',
       targetId: targetUserId,

@@ -102,6 +102,11 @@ service cloud.firestore {
       return hasAnyRole(['parent']);
     }
 
+    // Helper: Check if user is an observer (read-only role)
+    function isObserver() {
+      return hasClaims() && claimsRole() == 'observer';
+    }
+
     // Helper: Check if user is active (always checks Firestore — claims don't store isActive)
     function isActiveUser() {
       return isAuth() &&
@@ -185,9 +190,10 @@ service cloud.firestore {
 
     // ====== Organizations Collection ======
     // Only users in the same org can read; owner/admin can update
+    // Observers cannot create organizations (read-only role)
     match /organizations/{orgId} {
       allow read: if isAuth() && getUserOrgId() == orgId;
-      allow create: if isAuth();
+      allow create: if isAuth() && !isObserver();
       allow update: if isOwnerOrAdmin() && isActiveUser() && getUserOrgId() == orgId;
       allow delete: if false;
     }
@@ -429,10 +435,11 @@ service cloud.firestore {
 
     // ====== Assignment Submissions Collection ======
     // Staff: full org-scoped access; Students: own submissions in own org
+    // Observers cannot create submissions (read-only role)
     match /assignment_submissions/{submissionId} {
       allow read: if isAuth() && canReadInOrg();
       allow create: if (isStaffOrAbove() && canCreateInOrg()) ||
-        (isAuth() && canCreateInOrg() && request.resource.data.studentId == request.auth.uid);
+        (isAuth() && !isObserver() && canCreateInOrg() && request.resource.data.studentId == request.auth.uid);
       allow update: if (isStaffOrAbove() && canWriteInOrg()) ||
         (isStudent() && canWriteInOrg() && resource.data.studentId == request.auth.uid);
       allow delete: if isStaffOrAbove() && canWriteInOrg();
@@ -520,10 +527,14 @@ service cloud.firestore {
     }
 
     // ====== Audit Logs Collection ======
-    // Org-scoped reads for staff; anyone authenticated can create (Cloud Functions + client)
+    // Append-only: Cloud Functions (admin SDK) write, clients cannot.
+    // Read: isStaffOrAbove() — evaluate admin+ restriction in Phase 2.
+    // Target schema (Phase 3 canonical):
+    //   { organizationId, performedBy, performedByRole, performedByOrgId,
+    //     action, targetType, targetId, metadata, timestamp }
     match /audit_logs/{logId} {
       allow read: if isStaffOrAbove() && canReadInOrg();
-      allow create: if isAuth(); // Cloud Functions + client
+      allow create: if false;  // CF-only (admin SDK bypasses rules)
       allow update: if false;
       allow delete: if false;
     }
