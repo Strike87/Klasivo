@@ -85,16 +85,33 @@ class AppConstants {
   static const String payrollCollection = 'payroll';
   static const String inventoryCollection = 'inventory';
 
-  // ─── User Roles (v1.7+: 8 roles for granular RBAC) ─────────────────────────
+  // ─── User Roles (v2.0: 11 roles with hierarchical RBAC) ───────────────────────
+  //
+  // Hierarchy:
+  //   super_admin
+  //    └─ owner
+  //         └─ admin
+  //              ├─ campus_manager
+  //              ├─ stage_manager
+  //              │    └─ academic_supervisor
+  //              │         └─ teacher
+  //              │              └─ assistant_teacher
+  //              └─ observer
+  //
+  //   student (standalone)
+  //   parent  (standalone)
 
+  static const String roleSuperAdmin = 'super_admin';
   static const String roleOwner = 'owner';
   static const String roleAdmin = 'admin';
+  static const String roleCampusManager = 'campus_manager';
+  static const String roleStageManager = 'stage_manager';          // v2.0
+  static const String roleAcademicSupervisor = 'academic_supervisor'; // v2.0
   static const String roleTeacher = 'teacher';
+  static const String roleAssistantTeacher = 'assistant_teacher';  // v2.0
+  static const String roleObserver = 'observer';
   static const String roleStudent = 'student';
   static const String roleParent = 'parent';
-  static const String roleCampusManager = 'campus_manager';
-  static const String roleObserver = 'observer';
-  static const String roleSuperAdmin = 'super_admin';
 
   // ─── Navigation Tabs ─────────────────────────────────────────────────────
   // Dashboard / Academic / People / Inbox / Settings
