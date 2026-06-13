@@ -470,10 +470,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // If no longer required, redirect away from change password
       if (isLoggedIn && !mustChangePassword && isOnChangePassword) {
-        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) return '/dashboard';
+        // Staff roles → /dashboard; student → /student; parent → /parent
+        final staffRoles = [
+          AppConstants.roleSuperAdmin,
+          AppConstants.roleOwner,
+          AppConstants.roleAdmin,
+          AppConstants.roleCampusManager,
+          AppConstants.roleStageManager,
+          AppConstants.roleAcademicSupervisor,
+          AppConstants.roleTeacher,
+          AppConstants.roleAssistantTeacher,
+          AppConstants.roleObserver,
+        ];
+        if (staffRoles.contains(userRole)) return '/dashboard';
         if (userRole == AppConstants.roleStudent) return '/student';
         if (userRole == AppConstants.roleParent) return '/parent';
-        return '/dashboard';
+        return '/dashboard'; // Fallback for unknown roles
       }
 
       final isOnSplash = state.matchedLocation == '/';

@@ -76,3 +76,49 @@ const Map<String, ScopeAccessLevel> roleScopeAccessLevel = {
 ScopeAccessLevel scopeAccessLevelForRole(String role) {
   return roleScopeAccessLevel[role] ?? ScopeAccessLevel.self;
 }
+
+/// Convert a claim string value to a ScopeAccessLevel enum.
+///
+/// Custom claims store scopeAccessLevel as a plain string (e.g., "class"),
+/// but Dart uses `class_` because `class` is a reserved keyword.
+/// This function handles the mapping so claim values remain
+/// platform/language-agnostic.
+ScopeAccessLevel scopeAccessLevelFromClaim(String value) {
+  switch (value) {
+    case 'all':
+      return ScopeAccessLevel.all;
+    case 'campus':
+      return ScopeAccessLevel.campus;
+    case 'stage':
+      return ScopeAccessLevel.stage;
+    case 'class':
+      return ScopeAccessLevel.class_;
+    case 'self':
+      return ScopeAccessLevel.self;
+    case 'linked':
+      return ScopeAccessLevel.linked;
+    default:
+      return ScopeAccessLevel.self;
+  }
+}
+
+/// Convert a ScopeAccessLevel enum to a claim string value.
+///
+/// Outputs platform-agnostic strings suitable for custom claims,
+/// Firestore rules, Cloud Functions, and future APIs.
+String scopeAccessLevelToClaim(ScopeAccessLevel level) {
+  switch (level) {
+    case ScopeAccessLevel.all:
+      return 'all';
+    case ScopeAccessLevel.campus:
+      return 'campus';
+    case ScopeAccessLevel.stage:
+      return 'stage';
+    case ScopeAccessLevel.class_:
+      return 'class';
+    case ScopeAccessLevel.self:
+      return 'self';
+    case ScopeAccessLevel.linked:
+      return 'linked';
+  }
+}

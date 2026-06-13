@@ -76,6 +76,35 @@ export const assignRole = functions
     }
     const oldRole = userDoc.data()?.role || 'unknown';
 
+    // ─── Owner Self-Demotion Protection ────────────────────────────────
+    // An owner cannot remove their own owner role. This prevents accidental
+    // lockout where the last owner demotes themselves, leaving the
+    // organization without any owner.
+    if (callerUid === targetUserId && oldRole === 'owner' && newRole !== 'owner') {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'You cannot remove your own owner role. Assign another owner first.',
+      );
+    }
+
+    // ─── Last-Owner Protection ─────────────────────────────────────────
+    // If demoting an owner (not self — that was caught above), ensure the
+    // organization will still have at least one remaining owner.
+    if (oldRole === 'owner' && newRole !== 'owner' && callerRole !== 'super_admin') {
+      const ownersSnapshot = await db.collection('users')
+        .where('organizationId', '==', organizationId)
+        .where('role', '==', 'owner')
+        .get();
+
+      const ownerCount = ownersSnapshot.size;
+      if (ownerCount <= 1) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'Cannot demote the last owner. Assign another owner first.',
+        );
+      }
+    }
+
     // ─── Set Custom Claims ──────────────────────────────────────────────
     const scopeAccessLevel = SCOPE_ACCESS_LEVELS[newRole] || 'self';
     await admin.auth().setCustomUserClaims(targetUserId, {
@@ -85,10 +114,12 @@ export const assignRole = functions
     });
 
     // ─── Update User Document ───────────────────────────────────────────
-    const currentVersion = userDoc.data()?.roleVersion || 0;
+    // Use atomic increment for roleVersion — avoids race conditions under
+    // concurrent calls. roleVersion is a refresh trigger, not business data,
+    // so the exact value in the response is informational only.
     await db.collection('users').doc(targetUserId).update({
       role: newRole,
-      roleVersion: currentVersion + 1,
+      roleVersion: admin.firestore.FieldValue.increment(1),
       scopeAccessLevel: scopeAccessLevel,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -114,6 +145,5 @@ export const assignRole = functions
       oldRole,
       newRole,
       scopeAccessLevel,
-      roleVersion: currentVersion + 1,
     };
   });

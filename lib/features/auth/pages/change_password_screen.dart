@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/config/app_constants.dart';
@@ -45,6 +46,31 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     });
 
     try {
+      // For email/password users: re-authenticate before changing password.
+      // This ensures the current password is verified server-side,
+      // preventing a stolen session token from enabling password changes.
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && !user.isAnonymous) {
+        final authMethod = Hive.box(AppConstants.authBox)
+            .get('authMethod', defaultValue: 'password') as String;
+        if (authMethod != 'student_code') {
+          // Email/password user — verify current password via re-authentication
+          final currentPassword = _currentPasswordController.text;
+          if (currentPassword.isEmpty) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = 'Current password is required';
+            });
+            return;
+          }
+          final credential = EmailAuthProvider.emailPassword(
+            email: user.email!,
+            password: currentPassword,
+          );
+          await user.reauthenticateWithCredential(credential);
+        }
+      }
+
       final callable = FirebaseFunctions.instance.httpsCallable('changeUserPassword');
       await callable.call({
         'newPassword': _newPasswordController.text,
@@ -72,6 +98,15 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
           Navigator.of(context).pop();
         }
       }
+    } on FirebaseAuthException catch (e) {
+      // Re-authentication failed — current password was wrong
+      setState(() {
+        if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          _errorMessage = 'Current password is incorrect';
+        } else {
+          _errorMessage = e.message ?? 'Authentication failed';
+        }
+      });
     } on FirebaseFunctionsException catch (e) {
       setState(() => _errorMessage = e.message ?? 'Password change failed');
     } catch (e) {
