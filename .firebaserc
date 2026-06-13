@@ -6,7 +6,7 @@
     "klasivo-prod": {
       "hosting": {
         "api": [
-          "api.klasivo.app"
+          "api-klasivo-app"
         ]
       }
     }
