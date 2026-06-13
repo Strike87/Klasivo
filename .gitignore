@@ -99,3 +99,10 @@ pubspec.lock
 functions/node_modules/
 functions/lib/
 functions/.runtimeconfig.json
+
+# AI agent artifacts
+upload/
+fixes/
+skills/
+*.py
+worklog.md
