@@ -43,3 +43,6 @@ export 'rbac_health.dart';
 
 // Scoped query builder
 export 'scoped_query_builder.dart';
+
+// Permission overrides utility
+export 'permission_overrides.dart';

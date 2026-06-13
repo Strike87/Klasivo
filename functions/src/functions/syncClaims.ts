@@ -1,19 +1,27 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
-const SCOPE_ACCESS_LEVELS: Record<string, string> = {
-  super_admin: 'all',
-  owner: 'all',
-  admin: 'all',
-  campus_manager: 'campus',
-  stage_manager: 'stage',
-  academic_supervisor: 'stage',
-  teacher: 'class',
-  assistant_teacher: 'class',
-  observer: 'all',
-  student: 'self',
-  parent: 'linked',
-};
+import {
+  ROLE_ASSIGNMENT_ROLES,
+  buildCustomClaims,
+  verifyOrgBoundary,
+  type KlasivoRole,
+} from '../utils/rbac';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KLASIVO RBAC v2.0 — syncClaims
+//
+// Re-syncs custom claims from the Firestore user doc.
+//
+// Called when:
+//   - Client detects roleVersion mismatch (via ClaimsService listener)
+//   - Admin manually triggers a claims refresh for a user
+//
+// Security:
+//   - Users can sync their own claims
+//   - super_admin, owner, admin can sync anyone in their org
+//   - Cross-org sync requires super_admin
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface SyncClaimsData {
   targetUserId?: string;
@@ -35,7 +43,8 @@ export const syncClaims = functions
     const targetUserId = data.targetUserId || callerUid;
 
     // Users can sync their own claims; admins can sync anyone in their org
-    if (targetUserId !== callerUid && !['super_admin', 'owner', 'admin'].includes(callerRole)) {
+    if (targetUserId !== callerUid &&
+        !ROLE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
       throw new functions.https.HttpsError('permission-denied', 'Can only sync your own claims.');
     }
 
@@ -48,24 +57,23 @@ export const syncClaims = functions
     const userData = userDoc.data()!;
     const role = userData.role || 'student';
     const organizationId = userData.organizationId || '';
-    const scopeAccessLevel = SCOPE_ACCESS_LEVELS[role] || 'self';
 
-    // If admin syncing another user, verify same org
+    // ─── Org Boundary ───────────────────────────────────────────────────
     if (targetUserId !== callerUid && callerRole !== 'super_admin') {
       const callerOrgId = (context.auth.token.organizationId as string) || '';
-      if (callerOrgId !== organizationId) {
-        throw new functions.https.HttpsError('permission-denied', 'Cannot sync claims for users in a different organization.');
+      if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
+        throw new functions.https.HttpsError(
+          'permission-denied',
+          'Cannot sync claims for users in a different organization.',
+        );
       }
     }
 
-    // Set custom claims
-    await admin.auth().setCustomUserClaims(targetUserId, {
-      role: role,
-      organizationId: organizationId,
-      scopeAccessLevel: scopeAccessLevel,
-    });
+    // ─── Set Custom Claims ──────────────────────────────────────────────
+    const customClaims = buildCustomClaims(role, organizationId);
+    await admin.auth().setCustomUserClaims(targetUserId, customClaims);
 
-    // Audit log
+    // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
       userId: callerUid,
@@ -74,7 +82,7 @@ export const syncClaims = functions
       targetId: targetUserId,
       metadata: {
         role: role,
-        scopeAccessLevel: scopeAccessLevel,
+        scopeAccessLevel: customClaims.scopeAccessLevel,
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -84,6 +92,6 @@ export const syncClaims = functions
       targetUserId,
       role,
       organizationId,
-      scopeAccessLevel,
+      scopeAccessLevel: customClaims.scopeAccessLevel,
     };
   });

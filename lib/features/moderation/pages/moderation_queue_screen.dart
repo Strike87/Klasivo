@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/rbac/rbac.dart';
 import '../../../core/services/moderation_service.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/rbac_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_card.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 // ─── Moderation Service Provider ──────────────────────────────────────────────
@@ -52,7 +55,24 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
   Widget build(BuildContext context) {
     final orgId = ref.watch(currentOrganizationIdProvider) ?? '';
 
-    return Scaffold(
+    return KlasivoRoleGate(
+      allowedRoles: [KlasivoRole.owner, KlasivoRole.admin, KlasivoRole.superAdmin],
+      fallback: Scaffold(
+        appBar: AppBar(title: const Text('Moderation Queue'), centerTitle: true),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 64, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text('Access Denied', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey)),
+              const SizedBox(height: 8),
+              Text('Only admins can access the moderation queue', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+            ],
+          ),
+        ),
+      ),
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Moderation Queue'),
         centerTitle: true,
@@ -71,6 +91,7 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
           _buildAllList(orgId),
         ],
       ),
+    ),
     );
   }
 

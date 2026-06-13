@@ -109,6 +109,7 @@ import 'providers/feature_flag_provider.dart';
 import 'providers/event_bus_provider.dart';
 import 'providers/rbac_provider.dart';
 import 'core/rbac/roles.dart';
+import 'core/rbac/permissions.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/feature_flag_service.dart';
 import 'core/services/event_bus.dart';
@@ -563,6 +564,27 @@ final routerProvider = Provider<GoRouter>((ref) {
           }
         }
 
+        // ─── Permission-Based Route Guards ───────────────────────────────
+        // Sensitive routes require specific permissions beyond just role.
+        final rbacService = ref.read(rbacPermissionServiceProvider);
+        final location = state.matchedLocation;
+
+        // Audit log — org:audit required
+        if (location.startsWith('/audit') && !rbacService.can(Permission.orgAudit)) {
+          return '/dashboard';
+        }
+
+        // Organization settings — org:settings required
+        if (location == '/settings/organization' && !rbacService.can(Permission.orgSettings)) {
+          return '/settings';
+        }
+
+        // Feature flags — owner+admin only (no specific permission yet)
+        if (location == '/settings/feature-flags' &&
+            ![KlasivoRole.superAdmin, KlasivoRole.owner, KlasivoRole.admin].contains(userRole)) {
+          return '/settings';
+        }
+
         // All management roles can access dashboard
         if (KlasivoRole.managementRoles.contains(userRole) && isOnDashboard) {
           return null;
@@ -650,7 +672,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) {
           final box = Hive.box(AppConstants.authBox);
           final userRole = box.get('userRole', defaultValue: '') as String;
-          if (userRole == KlasivoRole.owner) {
+          // Admin-level roles (owner, admin, super_admin) get the themed
+          // OwnerShell with admin-specific navigation items. All other
+          // management roles get TeacherShell.
+          if ([KlasivoRole.owner, KlasivoRole.admin, KlasivoRole.superAdmin].contains(userRole)) {
             return OwnerShell(child: child);
           }
           return TeacherShell(child: child);

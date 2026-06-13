@@ -22,10 +22,11 @@
  *     removeParticipant      — Kick disruptive student from a live class
  *
  *   RBAC Functions (v1 — callable):
- *     assignRole           — Assign a role to a user (custom claims + Firestore)
- *     assignScope          — Assign scope (campus/stage/class) to a user
- *     syncClaims           — Re-sync custom claims from Firestore user doc
- *     changeUserPassword   — Change/reset user password (email or student_code)
+ *     assignRole              — Assign a role to a user (custom claims + Firestore)
+ *     assignScope             — Assign scope (campus/stage/class) to a user + refresh claims
+ *     syncClaims              — Re-sync custom claims from Firestore user doc
+ *     changeUserPassword      — Change/reset user password (email or student_code)
+ *     setPermissionOverrides  — Set/clear permission overrides for a user
  *
  *   Firestore Triggers (v2):
  *     emailWorker            — Process emailQueue documents (send + retry)
@@ -64,6 +65,7 @@ export { assignRole } from './functions/assignRole';
 export { assignScope } from './functions/assignScope';
 export { syncClaims } from './functions/syncClaims';
 export { changeUserPassword } from './functions/changeUserPassword';
+export { setPermissionOverrides } from './functions/setPermissionOverrides';
 
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';

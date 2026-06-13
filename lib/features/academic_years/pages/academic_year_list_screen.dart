@@ -25,7 +25,7 @@ class AcademicYearListScreen extends ConsumerWidget {
         title: const Text('Academic Years'),
       ),
       floatingActionButton: KlasivoRoleGate(
-        allowedRoles: [KlasivoRole.owner],
+        allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
         child: FloatingActionButton(
           onPressed: () {
             Navigator.of(context).push(
@@ -48,7 +48,7 @@ class AcademicYearListScreen extends ConsumerWidget {
                   Text('Create your first academic year to get started',
                       style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
                   KlasivoRoleGate(
-                    allowedRoles: [KlasivoRole.owner],
+                    allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
                     child: Column(
                       children: [
                         const SizedBox(height: 24),
@@ -152,7 +152,7 @@ class _YearCard extends ConsumerWidget {
           ),
           if (!year.isArchived)
             KlasivoRoleGate(
-              allowedRoles: [KlasivoRole.owner],
+              allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
               child: Column(
                 children: [
                   const SizedBox(height: 12),

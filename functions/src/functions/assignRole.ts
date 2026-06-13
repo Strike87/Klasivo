@@ -1,25 +1,26 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
-const VALID_ROLES = [
-  'super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager',
-  'academic_supervisor', 'teacher', 'assistant_teacher', 'observer',
-  'student', 'parent',
-];
+import {
+  VALID_ROLES,
+  ROLE_ASSIGNMENT_ROLES,
+  buildCustomClaims,
+  verifyOrgBoundary,
+  type KlasivoRole,
+} from '../utils/rbac';
 
-const SCOPE_ACCESS_LEVELS: Record<string, string> = {
-  super_admin: 'all',
-  owner: 'all',
-  admin: 'all',
-  campus_manager: 'campus',
-  stage_manager: 'stage',
-  academic_supervisor: 'stage',
-  teacher: 'class',
-  assistant_teacher: 'class',
-  observer: 'all',
-  student: 'self',
-  parent: 'linked',
-};
+// ═══════════════════════════════════════════════════════════════════════════════
+// KLASIVO RBAC v2.0 — assignRole
+//
+// Assigns a role to a user. Updates both custom claims and Firestore.
+//
+// Security:
+//   - Only super_admin, owner, admin can assign roles
+//   - Admin cannot assign super_admin or owner
+//   - Caller must be in the same org (unless super_admin)
+//   - Last-owner protection: cannot demote the last owner
+//   - Self-demotion protection: owner cannot remove own owner role
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface AssignRoleData {
   targetUserId: string;
@@ -41,10 +42,9 @@ export const assignRole = functions
 
     const callerUid = context.auth.uid;
     const callerClaims = context.auth.token;
-
-    // Only super_admin, owner, admin can assign roles
     const callerRole = (callerClaims.role as string) || '';
-    if (!['super_admin', 'owner', 'admin'].includes(callerRole)) {
+
+    if (!ROLE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
       throw new functions.https.HttpsError('permission-denied', 'Only admins can assign roles.');
     }
 
@@ -53,7 +53,7 @@ export const assignRole = functions
     if (!targetUserId || !newRole || !organizationId) {
       throw new functions.https.HttpsError('invalid-argument', 'targetUserId, newRole, and organizationId are required.');
     }
-    if (!VALID_ROLES.includes(newRole)) {
+    if (!VALID_ROLES.includes(newRole as KlasivoRole)) {
       throw new functions.https.HttpsError('invalid-argument', `Invalid role: ${newRole}. Valid roles: ${VALID_ROLES.join(', ')}`);
     }
 
@@ -63,8 +63,11 @@ export const assignRole = functions
     }
 
     // Caller must be in the same organization
-    const callerOrgId = (callerClaims.organizationId as string) || '';
-    if (callerOrgId !== organizationId && callerRole !== 'super_admin') {
+    if (!verifyOrgBoundary(
+      (callerClaims.organizationId as string) || '',
+      organizationId,
+      callerRole,
+    )) {
       throw new functions.https.HttpsError('permission-denied', 'Cannot assign roles in a different organization.');
     }
 
@@ -77,9 +80,6 @@ export const assignRole = functions
     const oldRole = userDoc.data()?.role || 'unknown';
 
     // ─── Owner Self-Demotion Protection ────────────────────────────────
-    // An owner cannot remove their own owner role. This prevents accidental
-    // lockout where the last owner demotes themselves, leaving the
-    // organization without any owner.
     if (callerUid === targetUserId && oldRole === 'owner' && newRole !== 'owner') {
       throw new functions.https.HttpsError(
         'failed-precondition',
@@ -88,16 +88,13 @@ export const assignRole = functions
     }
 
     // ─── Last-Owner Protection ─────────────────────────────────────────
-    // If demoting an owner (not self — that was caught above), ensure the
-    // organization will still have at least one remaining owner.
     if (oldRole === 'owner' && newRole !== 'owner' && callerRole !== 'super_admin') {
       const ownersSnapshot = await db.collection('users')
         .where('organizationId', '==', organizationId)
         .where('role', '==', 'owner')
         .get();
 
-      const ownerCount = ownersSnapshot.size;
-      if (ownerCount <= 1) {
+      if (ownersSnapshot.size <= 1) {
         throw new functions.https.HttpsError(
           'failed-precondition',
           'Cannot demote the last owner. Assign another owner first.',
@@ -106,21 +103,14 @@ export const assignRole = functions
     }
 
     // ─── Set Custom Claims ──────────────────────────────────────────────
-    const scopeAccessLevel = SCOPE_ACCESS_LEVELS[newRole] || 'self';
-    await admin.auth().setCustomUserClaims(targetUserId, {
-      role: newRole,
-      organizationId: organizationId,
-      scopeAccessLevel: scopeAccessLevel,
-    });
+    const customClaims = buildCustomClaims(newRole, organizationId);
+    await admin.auth().setCustomUserClaims(targetUserId, customClaims);
 
     // ─── Update User Document ───────────────────────────────────────────
-    // Use atomic increment for roleVersion — avoids race conditions under
-    // concurrent calls. roleVersion is a refresh trigger, not business data,
-    // so the exact value in the response is informational only.
     await db.collection('users').doc(targetUserId).update({
       role: newRole,
       roleVersion: admin.firestore.FieldValue.increment(1),
-      scopeAccessLevel: scopeAccessLevel,
+      scopeAccessLevel: customClaims.scopeAccessLevel,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -134,7 +124,7 @@ export const assignRole = functions
       metadata: {
         oldRole: oldRole,
         newRole: newRole,
-        scopeAccessLevel: scopeAccessLevel,
+        scopeAccessLevel: customClaims.scopeAccessLevel,
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -144,6 +134,6 @@ export const assignRole = functions
       targetUserId,
       oldRole,
       newRole,
-      scopeAccessLevel,
+      scopeAccessLevel: customClaims.scopeAccessLevel,
     };
   });

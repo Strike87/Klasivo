@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/rbac/roles.dart';
+import '../../../core/rbac/permissions.dart';
 import '../../../core/config/theme_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
@@ -105,9 +106,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── Organization Section (Owner/Admin only) ──
-            KlasivoRoleGate(
-              allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
+            // ── Organization Section (org:settings permission) ──
+            KlasivoPermissionGate(
+              permission: Permission.orgSettings,
               fallback: const SizedBox.shrink(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

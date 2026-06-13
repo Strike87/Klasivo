@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../providers/audit_log_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/rbac_provider.dart';
+import '../../../core/rbac/rbac.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../widgets/klasivo_permission_gate.dart';
 
 class AuditLogScreen extends ConsumerWidget {
   const AuditLogScreen({Key? key}) : super(key: key);
@@ -13,7 +16,24 @@ class AuditLogScreen extends ConsumerWidget {
     final logs = ref.watch(auditLogsListProvider);
     final theme = Theme.of(context);
 
-    return Scaffold(
+    return KlasivoPermissionGate(
+      permission: Permission.orgAudit,
+      fallback: Scaffold(
+        appBar: AppBar(title: const Text('Activity Log')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 64, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text('Access Denied', style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey)),
+              const SizedBox(height: 8),
+              Text('You need audit access to view this page', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+            ],
+          ),
+        ),
+      ),
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Activity Log'),
       ),
@@ -41,6 +61,7 @@ class AuditLogScreen extends ConsumerWidget {
                 return _AuditLogTile(log: log);
               },
             ),
+    ),
     );
   }
 }
