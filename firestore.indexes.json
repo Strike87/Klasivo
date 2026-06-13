@@ -177,7 +177,11 @@
 
     { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "roomType", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
-    { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "createdBy", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] }
+    { "collectionGroup": "livekit_rooms", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "createdBy", "order": "ASCENDING" }, { "fieldPath": "isActive", "order": "ASCENDING" }] },
+
+    { "collectionGroup": "attendance", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "leftAt", "order": "ASCENDING" }, { "fieldPath": "joinedAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "raised_hands", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "isRaised", "order": "ASCENDING" }, { "fieldPath": "raisedAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "sentAt", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

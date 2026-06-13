@@ -12,6 +12,7 @@ class LiveKitRoom {
   final String roomType; // 'classroom' | 'exam_proctoring' | 'meeting'
   final int? maxParticipants;
   final bool isActive;
+  final bool isRecording;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final DateTime createdAt;
@@ -27,12 +28,23 @@ class LiveKitRoom {
     required this.roomType,
     this.maxParticipants,
     this.isActive = true,
+    this.isRecording = false,
     this.startedAt,
     this.endedAt,
     required this.createdAt,
     required this.updatedAt,
     this.metadata = const {},
   });
+
+  /// The LiveKit server URL for this room.
+  /// Derived from metadata or uses a default.
+  String get livekitUrl => metadata['livekitUrl'] as String? ?? 'wss://klasivo.livekit.cloud';
+
+  /// Subject name for this room (if set).
+  String? get subjectName => metadata['subjectName'] as String?;
+
+  /// Class/grade name for this room (if set).
+  String? get className => metadata['className'] as String?;
 
   /// Construct from a Firestore document snapshot.
   factory LiveKitRoom.fromFirestore(Map<String, dynamic> data, String id) {
@@ -45,6 +57,7 @@ class LiveKitRoom {
       roomType: data['roomType'] as String? ?? 'classroom',
       maxParticipants: data['maxParticipants'] as int?,
       isActive: data['isActive'] as bool? ?? true,
+      isRecording: data['isRecording'] as bool? ?? false,
       startedAt: data['startedAt'] != null
           ? DateTime.tryParse(data['startedAt'].toString())
           : null,
@@ -71,6 +84,7 @@ class LiveKitRoom {
       'roomType': roomType,
       'maxParticipants': maxParticipants,
       'isActive': isActive,
+      'isRecording': isRecording,
       'startedAt': startedAt?.toIso8601String(),
       'endedAt': endedAt?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
@@ -82,6 +96,7 @@ class LiveKitRoom {
   LiveKitRoom copyWith({
     String? name,
     bool? isActive,
+    bool? isRecording,
     int? maxParticipants,
     DateTime? startedAt,
     DateTime? endedAt,
@@ -97,6 +112,7 @@ class LiveKitRoom {
       roomType: roomType,
       maxParticipants: maxParticipants ?? this.maxParticipants,
       isActive: isActive ?? this.isActive,
+      isRecording: isRecording ?? this.isRecording,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
       createdAt: createdAt,

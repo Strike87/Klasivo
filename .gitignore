@@ -97,4 +97,5 @@ pubspec.lock
 
 # Cloud Functions
 functions/node_modules/
+functions/lib/
 functions/.runtimeconfig.json

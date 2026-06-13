@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/service_providers.dart';
 import '../data/livekit_repository.dart';
 import '../domain/livekit_room_model.dart';
+import '../domain/livekit_chat_message.dart';
+import '../domain/livekit_raised_hand.dart';
+import '../domain/livekit_attendance.dart';
 
 // ══════════════════════════════════════════════════════════════════════════
 // Repository Provider
@@ -18,7 +21,6 @@ final liveKitRepositoryProvider = Provider<LiveKitRepository>((ref) {
 // ══════════════════════════════════════════════════════════════════════════
 
 /// Async notifier for generating a LiveKit token.
-/// Call [generateToken] to request a new token from the callable function.
 final liveKitTokenProvider = StateNotifierProvider<LiveKitTokenNotifier, AsyncValue<String>>((ref) {
   return LiveKitTokenNotifier(ref.watch(liveKitRepositoryProvider));
 });
@@ -28,7 +30,6 @@ class LiveKitTokenNotifier extends StateNotifier<AsyncValue<String>> {
 
   LiveKitTokenNotifier(this._repo) : super(const AsyncData(''));
 
-  /// Request a LiveKit token from the backend.
   Future<String?> generateToken({
     required String roomName,
     String? displayName,
@@ -51,7 +52,7 @@ class LiveKitTokenNotifier extends StateNotifier<AsyncValue<String>> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Active Rooms Stream
+// Room Streams
 // ══════════════════════════════════════════════════════════════════════════
 
 /// Stream of active LiveKit rooms for the current organization.
@@ -64,4 +65,34 @@ final activeLiveKitRoomsProvider = StreamProvider.family<List<LiveKitRoom>, Stri
 final liveKitRoomProvider = StreamProvider.family<LiveKitRoom?, String>((ref, roomId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchRoom(roomId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// In-Class Chat
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Stream of chat messages for a specific room.
+final chatMessagesProvider = StreamProvider.family<List<LiveKitChatMessage>, String>((ref, roomId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchChatMessages(roomId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Raise Hand
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Stream of currently raised hands for a specific room.
+final raisedHandsProvider = StreamProvider.family<List<LiveKitRaisedHand>, String>((ref, roomId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchRaisedHands(roomId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Attendance
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Stream of attendance records for a specific room.
+final attendanceProvider = StreamProvider.family<List<LiveKitAttendance>, String>((ref, roomId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchAttendance(roomId);
 });

@@ -519,6 +519,32 @@ service cloud.firestore {
       allow create: if isTeacherOrOwner();
       allow update: if isTeacherOrOwner();
       allow delete: if isOwner();
+
+      // ─── LiveKit Room Sub-Collections ───────────────────────
+
+      // Attendance — students create own, teachers read all
+      match /attendance/{uid} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.auth.uid == uid;
+        allow update: if isAuth() && (isTeacherOrOwner() || request.auth.uid == uid);
+        allow delete: if isTeacherOrOwner();
+      }
+
+      // Chat messages — any authenticated user in the room
+      match /messages/{messageId} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+        allow update: if isTeacherOrOwner();
+        allow delete: if isTeacherOrOwner();
+      }
+
+      // Raised hands — students toggle own, teachers manage all
+      match /raised_hands/{uid} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.auth.uid == uid;
+        allow update: if isAuth() && (isTeacherOrOwner() || request.auth.uid == uid);
+        allow delete: if isTeacherOrOwner();
+      }
     }
   }
 }

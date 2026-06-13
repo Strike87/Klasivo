@@ -2,12 +2,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_functions/firebase_functions.dart';
 
 import 'domain/livekit_room_model.dart';
+import 'domain/livekit_chat_message.dart';
+import 'domain/livekit_raised_hand.dart';
+import 'domain/livekit_attendance.dart';
 
-/// Repository for LiveKit room management.
+/// Full-featured repository for LiveKit room management.
 ///
 /// Handles:
 ///   - Firestore CRUD for `livekit_rooms` collection
 ///   - Callable function invocation for token generation
+///   - In-class chat (livekit_room_messages sub-collection)
+///   - Raise-hand system (livekit_room_raised_hands sub-collection)
+///   - Attendance tracking (livekit_room_attendance sub-collection)
+///   - Session recording metadata
 class LiveKitRepository {
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
@@ -21,10 +28,6 @@ class LiveKitRepository {
   // ─── Token Generation ────────────────────────────────────────
 
   /// Generate a LiveKit access token via the `generateLiveKitToken` callable.
-  ///
-  /// [roomName] — the LiveKit room identifier (must match server-side)
-  /// [displayName] — the user's display name in the room
-  /// [isTeacher] — whether the user should get roomAdmin privileges
   Future<String> generateToken({
     required String roomName,
     String? displayName,
@@ -75,18 +78,150 @@ class LiveKitRepository {
             .toList());
   }
 
-  /// Update room status (e.g., mark as ended).
-  Future<void> updateRoomStatus(String roomId, {bool? isActive, DateTime? endedAt}) async {
-    final updates = <String, dynamic>{
-      'updatedAt': DateTime.now().toIso8601String(),
-    };
-    if (isActive != null) updates['isActive'] = isActive;
-    if (endedAt != null) updates['endedAt'] = endedAt.toIso8601String();
+  /// Update room status (e.g., mark as ended, start recording).
+  Future<void> updateRoom(String roomId, Map<String, dynamic> updates) async {
+    updates['updatedAt'] = DateTime.now().toIso8601String();
     await _firestore.collection('livekit_rooms').doc(roomId).update(updates);
   }
 
   /// Delete a room (owner only).
   Future<void> deleteRoom(String roomId) async {
     await _firestore.collection('livekit_rooms').doc(roomId).delete();
+  }
+
+  // ─── Attendance ──────────────────────────────────────────────
+
+  /// Mark a participant as joined (creates or updates attendance record).
+  Future<void> markAttendance({
+    required String roomId,
+    required LiveKitAttendance attendance,
+  }) async {
+    await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('attendance')
+        .doc(attendance.uid)
+        .set(attendance.toFirestore(), SetOptions(merge: true));
+  }
+
+  /// Mark a participant as left.
+  Future<void> markLeft({
+    required String roomId,
+    required String uid,
+  }) async {
+    await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('attendance')
+        .doc(uid)
+        .update({
+      'leftAt': DateTime.now().toIso8601String(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Stream attendance for a room.
+  Stream<List<LiveKitAttendance>> watchAttendance(String roomId) {
+    return _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('attendance')
+        .orderBy('joinedAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => LiveKitAttendance.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // ─── In-Class Chat ───────────────────────────────────────────
+
+  /// Send a chat message in a room.
+  Future<void> sendChatMessage({
+    required String roomId,
+    required LiveKitChatMessage message,
+  }) async {
+    await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('messages')
+        .add(message.toFirestore());
+  }
+
+  /// Stream chat messages for a room (last 200).
+  Stream<List<LiveKitChatMessage>> watchChatMessages(String roomId) {
+    return _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('messages')
+        .orderBy('sentAt', descending: false)
+        .limitToLast(200)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => LiveKitChatMessage.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // ─── Raise Hand ──────────────────────────────────────────────
+
+  /// Toggle raised hand for a participant.
+  Future<void> toggleRaisedHand({
+    required String roomId,
+    required LiveKitRaisedHand hand,
+  }) async {
+    await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('raised_hands')
+        .doc(hand.uid)
+        .set(hand.toFirestore(), SetOptions(merge: true));
+  }
+
+  /// Lower a specific raised hand (teacher action).
+  Future<void> lowerHand({
+    required String roomId,
+    required String uid,
+  }) async {
+    await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('raised_hands')
+        .doc(uid)
+        .update({
+      'isRaised': false,
+      'loweredAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Lower all raised hands (teacher action).
+  Future<void> lowerAllHands(String roomId) async {
+    final snapshot = await _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('raised_hands')
+        .where('isRaised', isEqualTo: true)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in snapshot.docs) {
+      batch.update(doc.reference, {
+        'isRaised': false,
+        'loweredAt': DateTime.now().toIso8601String(),
+      });
+    }
+    await batch.commit();
+  }
+
+  /// Stream raised hands for a room.
+  Stream<List<LiveKitRaisedHand>> watchRaisedHands(String roomId) {
+    return _firestore
+        .collection('livekit_rooms')
+        .doc(roomId)
+        .collection('raised_hands')
+        .where('isRaised', isEqualTo: true)
+        .orderBy('raisedAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => LiveKitRaisedHand.fromFirestore(doc.data(), doc.id))
+            .toList());
   }
 }

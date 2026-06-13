@@ -16,7 +16,9 @@
  *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
  *
  *   Firestore Triggers (v2):
- *     emailWorker — Process emailQueue documents (send + retry)
+ *     emailWorker            — Process emailQueue documents (send + retry)
+ *     onLiveKitRoomCreated   — Push notifications when a live class starts
+ *     onLiveKitRoomUpdated   — Recording/end notifications + attendance summary
  *
  *   Note: Auth triggers use firebase-functions/v1 because v2 only
  *   provides blocking functions (beforeUserCreated), not after-event
@@ -40,3 +42,4 @@ export { generateLiveKitToken } from './functions/generateLiveKitToken';
 
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';
+export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKitRoomEvents';
