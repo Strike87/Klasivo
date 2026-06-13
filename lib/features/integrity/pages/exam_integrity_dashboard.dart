@@ -302,6 +302,7 @@ class _ExamIntegrityContent extends ConsumerWidget {
                     );
                   }).toList(),
                 ),
+              ),
             const SizedBox(height: 24),
 
             // ── Top Violators ──
@@ -353,6 +354,7 @@ class _ExamIntegrityContent extends ConsumerWidget {
                     );
                   }).toList(),
                 ),
+              ),
             const SizedBox(height: 24),
 
             // ── Violation Timeline ──

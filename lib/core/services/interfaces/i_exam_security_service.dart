@@ -5,7 +5,7 @@
 /// - [MockExamSecurityService] — testing (no-ops with recorded violations)
 ///
 /// Usage: Inject [IExamSecurityService] via Riverpod provider.
-/// Legacy static call-sites (`ExamSecurityService.enableAll()`) still work.
+/// Legacy singleton call-sites (`ExamSecurityService().enableAll()`) still work.
 abstract class IExamSecurityService {
   bool get isLockdownActive;
 

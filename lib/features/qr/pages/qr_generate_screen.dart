@@ -66,7 +66,8 @@ class QrGenerateScreen extends ConsumerWidget {
                 ),
               ],
             ),
-      ),
+          ),
+        ),
     );
   }
 }

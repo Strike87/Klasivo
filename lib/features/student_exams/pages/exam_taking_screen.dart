@@ -57,7 +57,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
     _countdownTimer?.cancel();
     _autoSaveTimer?.cancel();
     WakelockPlus.disable();
-    ExamSecurityService.disableAll();
+    ExamSecurityService().disableAll();
     super.dispose();
   }
 
@@ -155,7 +155,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       await WakelockPlus.enable();
 
       // Enable exam security
-      await ExamSecurityService.enableAll();
+      await ExamSecurityService().enableAll();
 
       // Start countdown timer
       _startCountdownTimer();
@@ -315,7 +315,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       setState(() => _hasSubmitted = true);
 
       await WakelockPlus.disable();
-      await ExamSecurityService.disableAll();
+      await ExamSecurityService().disableAll();
 
       if (mounted) {
         KlasivoToast.success(context, message: 'Exam submitted successfully!');

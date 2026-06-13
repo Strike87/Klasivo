@@ -217,14 +217,14 @@ class AuthService implements IAuthService {
   /// Internally maps to Firebase Auth for push notifications,
   /// multi-device, password reset, security rules, and analytics.
   Future<Map<String, dynamic>> loginStudent({
-    required String studentCode,
+    required String code,
     required String password,
   }) async {
     try {
       // Step 1: Find user by studentCode
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
-          .where('studentCode', isEqualTo: studentCode)
+          .where('studentCode', isEqualTo: code)
           .where('role', isEqualTo: KlasivoRole.student)
           .limit(1)
           .get();
@@ -480,6 +480,7 @@ class AuthService implements IAuthService {
   // ─── Parent Registration (Email + Password) ───────────────────────────────
 
   /// Register a parent with email, password, and an invite code to link child.
+  @override
   Future<Map<String, dynamic>> registerParent({
     required String email,
     required String password,
@@ -815,14 +816,6 @@ class AuthService implements IAuthService {
       loginStudent(code: code, password: password);
 
   @override
-  Future<Map<String, dynamic>> registerParent({
-    required String email,
-    required String password,
-    required String fullName,
-  }) =>
-      _registerParentWithEmail(email: email, password: password, fullName: fullName);
-
-  @override
   Future<Map<String, dynamic>> loginOwner({
     required String email,
     required String password,
@@ -851,53 +844,6 @@ class AuthService implements IAuthService {
   bool isEmailVerified() {
     final user = _auth.currentUser;
     return user?.emailVerified ?? false;
-  }
-
-  /// Internal: Register parent with email/password (non-Google path)
-  Future<Map<String, dynamic>> _registerParentWithEmail({
-    required String email,
-    required String password,
-    required String fullName,
-  }) async {
-    try {
-      final userCredential =
-          await FirebaseService.registerWithEmail(email, password);
-      final user = userCredential.user!;
-
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(user.uid)
-          .set({
-        'organizationId': '',
-        'role': KlasivoRole.parent,
-        'authProvider': AuthProviders.password,
-        'fullName': fullName,
-        'email': email,
-        'isActive': true,
-        'isEmailVerified': user.emailVerified,
-        'hasCompletedSetup': false,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Persist to Hive
-      final box = await Hive.openBox(AppConstants.authBox);
-      await box.put('uid', user.uid);
-      await box.put('email', email);
-      await box.put('fullName', fullName);
-      await box.put('role', KlasivoRole.parent);
-      await box.put('authProvider', AuthProviders.password);
-
-      return {
-        'uid': user.uid,
-        'email': email,
-        'fullName': fullName,
-        'role': KlasivoRole.parent,
-        'authProvider': AuthProviders.password,
-      };
-    } on FirebaseAuthException catch (e) {
-      throw _mapAuthError(e);
-    }
   }
 
   String _mapAuthError(FirebaseAuthException e) {

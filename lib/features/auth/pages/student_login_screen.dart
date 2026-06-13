@@ -37,7 +37,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
     try {
       final authService = ref.read(authServiceProvider);
       final result = await authService.loginStudent(
-        studentCode: _codeController.text.trim(),
+        code: _codeController.text.trim(),
         password: _passwordController.text,
       );
 

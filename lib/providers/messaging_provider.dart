@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/messaging_service.dart';
 import 'auth_provider.dart';
+import 'organization_provider.dart';
 
 // ─── Service Provider ────────────────────────────────────────────────────────
 

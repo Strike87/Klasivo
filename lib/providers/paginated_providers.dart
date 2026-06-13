@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/services/pagination_service.dart';
 import 'pagination_provider.dart';
 import 'auth_provider.dart';
+import 'organization_provider.dart';
 import 'student_provider.dart';
 import 'exam_provider.dart';
 import 'announcement_provider.dart';

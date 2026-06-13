@@ -183,9 +183,6 @@ class NotificationService {
     }
   }
 
-  /// Get the current FCM token.
-  static String? get fcmToken => _fcmToken;
-
   // ─── Request Notification Permissions ────────────────────────────────────
 
   static Future<bool> requestPermissions() async {

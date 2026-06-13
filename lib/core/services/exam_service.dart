@@ -15,90 +15,53 @@ class ExamService implements IExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final SearchKeywordService _searchKeywordService = SearchKeywordService();
 
-  Future<String> createExam({
-    required String teacherId,
-    required String title,
-    required String classId,
-    String? description,
-    required int durationMinutes,
-    required DateTime startDate,
-    required DateTime endDate,
-    required int passingScore,
-    bool isRandomized = false,
-    bool allowRetake = false,
-    String organizationId = AppConstants.defaultInstitutionId,
-  }) async {
+  @override
+  Future<String> createExam({required Map<String, dynamic> examData}) async {
     try {
+      final title = examData['title'] as String? ?? '';
       final keywords = _searchKeywordService.generateKeywords(title);
 
-      final docRef =
-          await _firestore.collection(AppConstants.examsCollection).add({
-        'teacherId': teacherId,
-        'title': title,
-        'description': description,
-        'classId': classId,
-        'durationMinutes': durationMinutes,
-        'startDate': startDate,
-        'endDate': endDate,
-        'totalMarks': 0,
-        'passingScore': passingScore,
-        'status': AppConstants.statusDraft,
-        'questionCount': 0,
-        'isRandomized': isRandomized,
-        'allowRetake': allowRetake,
-        'organizationId': organizationId,
-        'version': 1,
-        'isArchived': false,
+      final data = <String, dynamic>{
+        ...examData,
+        'version': examData['version'] ?? 1,
+        'isArchived': examData['isArchived'] ?? false,
         'archivedAt': null,
         'archivedBy': null,
         'searchKeywords': keywords,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      final docRef =
+          await _firestore.collection(AppConstants.examsCollection).add(data);
       return docRef.id;
     } catch (e) {
       rethrow;
     }
   }
 
+  @override
   Future<void> updateExam({
     required String examId,
-    required String title,
-    required String classId,
-    String? description,
-    required int durationMinutes,
-    required DateTime startDate,
-    required DateTime endDate,
-    required int passingScore,
-    bool? isRandomized,
-    bool? allowRetake,
+    required Map<String, dynamic> updates,
   }) async {
     try {
-      final keywords = _searchKeywordService.generateKeywords(title);
-
-      final data = <String, dynamic>{
-        'title': title,
-        'description': description,
-        'classId': classId,
-        'durationMinutes': durationMinutes,
-        'startDate': startDate,
-        'endDate': endDate,
-        'passingScore': passingScore,
-        'searchKeywords': keywords,
-      };
-      if (isRandomized != null) data['isRandomized'] = isRandomized;
-      if (allowRetake != null) data['allowRetake'] = allowRetake;
-
+      if (updates.containsKey('title')) {
+        updates['searchKeywords'] =
+            _searchKeywordService.generateKeywords(updates['title'] as String);
+      }
+      updates['updatedAt'] = FieldValue.serverTimestamp();
       await _firestore
           .collection(AppConstants.examsCollection)
           .doc(examId)
-          .update(data);
+          .update(updates);
     } catch (e) {
       rethrow;
     }
   }
 
   /// Archive an exam (soft delete)
-  Future<void> archiveExam(String examId, {String archivedBy = ''}) async {
+  @override
+  Future<void> archiveExam({required String examId}) async {
     try {
       await _firestore
           .collection(AppConstants.examsCollection)
@@ -106,7 +69,6 @@ class ExamService implements IExamService {
           .update({
         'isArchived': true,
         'archivedAt': FieldValue.serverTimestamp(),
-        'archivedBy': archivedBy,
       });
     } catch (e) {
       rethrow;
@@ -127,7 +89,8 @@ class ExamService implements IExamService {
     }
   }
 
-  Future<void> publishExam(String examId) async {
+  @override
+  Future<void> publishExam({required String examId}) async {
     try {
       final questionsSnapshot = await _firestore
           .collection(AppConstants.questionsCollection)
@@ -178,7 +141,8 @@ class ExamService implements IExamService {
     }
   }
 
-  Future<void> unpublishExam(String examId) async {
+  @override
+  Future<void> unpublishExam({required String examId}) async {
     try {
       await _firestore
           .collection(AppConstants.examsCollection)
@@ -194,7 +158,8 @@ class ExamService implements IExamService {
     }
   }
 
-  Future<void> deleteExam(String examId) async {
+  @override
+  Future<void> deleteExam({required String examId}) async {
     await PerformanceTraceService.instance.traceOperation(
       PerformanceTraces.examDelete,
       () => _deleteExamImpl(examId),
@@ -285,6 +250,7 @@ class ExamService implements IExamService {
     }
   }
 
+  @override
   Future<void> recalculateTotalMarks(String examId) async {
     try {
       final questionsSnapshot = await _firestore
@@ -513,6 +479,7 @@ class ExamService implements IExamService {
         .snapshots();
   }
 
+  @override
   Future<Map<String, dynamic>?> getExam(String examId) async {
     try {
       final doc = await _firestore
@@ -561,44 +528,6 @@ class ExamService implements IExamService {
     } catch (e) {
       rethrow;
     }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // IExamService Contract — Adapter Methods
-  // ══════════════════════════════════════════════════════════════════════════
-
-  @override
-  Future<String> createExam({required Map<String, dynamic> examData}) {
-    return createExam(
-      teacherId: examData['teacherId'] as String,
-      title: examData['title'] as String,
-      classId: examData['classId'] as String,
-      subjectId: examData['subjectId'] as String? ?? '',
-      durationMinutes: examData['durationMinutes'] as int? ?? 60,
-      totalMarks: examData['totalMarks'] as double? ?? 0,
-      passMarks: examData['passMarks'] as double? ?? 0,
-      instructions: examData['instructions'] as String? ?? '',
-      organizationId: examData['organizationId'] as String? ?? '',
-      startDate: examData['startDate'] as String? ?? '',
-      endDate: examData['endDate'] as String? ?? '',
-      isLocked: examData['isLocked'] as bool? ?? false,
-      shuffleQuestions: examData['shuffleQuestions'] as bool? ?? false,
-      showResults: examData['showResults'] as String? ?? 'after_submission',
-      allowRetry: examData['allowRetry'] as bool? ?? false,
-      maxRetries: examData['maxRetries'] as int? ?? 0,
-    );
-  }
-
-  @override
-  Future<void> updateExam({
-    required String examId,
-    required Map<String, dynamic> updates,
-  }) async {
-    updates['updatedAt'] = FieldValue.serverTimestamp();
-    await _firestore
-        .collection(AppConstants.examsCollection)
-        .doc(examId)
-        .update(updates);
   }
 
   @override

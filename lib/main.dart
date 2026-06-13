@@ -45,7 +45,7 @@ import 'features/exams/pages/question_builder_screen.dart';
 import 'features/exams/pages/exam_detail_screen.dart';
 import 'features/student_exams/pages/student_exam_list_screen.dart';
 import 'features/student_exams/pages/exam_taking_screen.dart';
-import 'features/student_results/pages/student_results_screen.dart';
+import 'features/student_results/pages/student_results_screen.dart' hide StudentResultDetailScreen;
 import 'features/student/pages/student_result_detail_screen.dart';
 import 'features/teacher_results/pages/exam_results_screen.dart';
 import 'features/stages/pages/stage_list_screen.dart';
