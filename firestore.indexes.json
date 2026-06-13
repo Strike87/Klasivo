@@ -181,7 +181,17 @@
 
     { "collectionGroup": "attendance", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "leftAt", "order": "ASCENDING" }, { "fieldPath": "joinedAt", "order": "ASCENDING" }] },
     { "collectionGroup": "raised_hands", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "isRaised", "order": "ASCENDING" }, { "fieldPath": "raisedAt", "order": "ASCENDING" }] },
-    { "collectionGroup": "messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "sentAt", "order": "ASCENDING" }] }
+    { "collectionGroup": "messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "sentAt", "order": "ASCENDING" }] },
+
+    { "collectionGroup": "recordings", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "recordings", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "roomId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+
+    { "collectionGroup": "scheduled_classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isStarted", "order": "ASCENDING" }, { "fieldPath": "startsAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "scheduled_classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "startsAt", "order": "ASCENDING" }] },
+
+    { "collectionGroup": "session_analytics", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "session_analytics", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "roomId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "session_analytics", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }

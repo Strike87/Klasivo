@@ -221,7 +221,7 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
         'live_class_ended',
       );
 
-      // Write attendance summary to room metadata
+      // Finalize attendance and write session analytics
       try {
         const attendanceSnapshot = await db
           .collection('livekit_rooms')
@@ -246,10 +246,62 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
         }
         await batch.commit();
 
-        console.log(`Attendance summary for room ${roomId}: ${totalJoined} joined, ${stillPresent} were still present at end`);
+        // Count chat messages
+        const messagesSnapshot = await db
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('messages')
+          .get();
+        const messagesCount = messagesSnapshot.size;
+
+        // Count raised hands
+        const handsSnapshot = await db
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('raised_hands')
+          .where('isRaised', '==', true)
+          .get();
+        const raisedHandsCount = handsSnapshot.size;
+
+        // Calculate duration
+        const startedAt = afterData['startedAt'] != null
+          ? new Date(afterData['startedAt'] as string)
+          : null;
+        const endedAt = afterData['endedAt'] != null
+          ? new Date(afterData['endedAt'] as string)
+          : new Date();
+        const durationMinutes = startedAt != null
+          ? Math.round((endedAt.getTime() - startedAt.getTime()) / 60000)
+          : 0;
+
+        // Calculate peak participants (from attendance, find max simultaneous)
+        // Simple approach: use totalJoined as peak (accurate for small rooms)
+        // A more precise approach would track periodic snapshots
+        const peakParticipants = totalJoined;
+
+        // Write session analytics document
+        await db.collection('session_analytics').add({
+          roomId,
+          roomName: roomName ?? '',
+          organizationId: orgId ?? '',
+          campusId: afterData['campusId'] ?? null,
+          teacherId: afterData['createdBy'] ?? '',
+          roomType: afterData['roomType'] ?? 'classroom',
+          startedAt: startedAt ?? null,
+          endedAt,
+          durationMinutes,
+          attendanceCount: totalJoined,
+          peakParticipants,
+          messagesCount,
+          raisedHandsCount,
+          wasRecorded: afterData['isRecording'] === true || beforeData['isRecording'] === true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        console.log(`Session analytics written for room ${roomId}: ${totalJoined} attended, ${durationMinutes} min, ${messagesCount} messages, ${raisedHandsCount} hands`);
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to finalize attendance for room ${roomId}: ${msg}`);
+        console.error(`Failed to finalize attendance/analytics for room ${roomId}: ${msg}`);
       }
     }
   },

@@ -5,6 +5,9 @@ import 'domain/livekit_room_model.dart';
 import 'domain/livekit_chat_message.dart';
 import 'domain/livekit_raised_hand.dart';
 import 'domain/livekit_attendance.dart';
+import 'domain/recording_model.dart';
+import 'domain/scheduled_class_model.dart';
+import 'domain/session_analytics_model.dart';
 
 /// Full-featured repository for LiveKit room management.
 ///
@@ -222,6 +225,135 @@ class LiveKitRepository {
         .snapshots()
         .map((snap) => snap.docs
             .map((doc) => LiveKitRaisedHand.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // ─── Participant Removal ────────────────────────────────────
+
+  /// Remove a participant from a room via the `removeParticipant` callable.
+  Future<bool> removeParticipant({
+    required String roomName,
+    required String participantIdentity,
+    required String roomId,
+  }) async {
+    final callable = _functions.httpsCallable('removeParticipant');
+    final result = await callable.call<Map<String, dynamic>>({
+      'roomName': roomName,
+      'participantIdentity': participantIdentity,
+      'roomId': roomId,
+    });
+    return result.data['success'] as bool? ?? false;
+  }
+
+  // ─── Recordings ─────────────────────────────────────────────
+
+  /// Get recordings for an organization.
+  Stream<List<Recording>> watchRecordings(String orgId) {
+    return _firestore
+        .collection('recordings')
+        .where('organizationId', isEqualTo: orgId)
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => Recording.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  /// Get recordings for a specific room.
+  Stream<List<Recording>> watchRoomRecordings(String roomId) {
+    return _firestore
+        .collection('recordings')
+        .where('roomId', isEqualTo: roomId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => Recording.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // ─── Scheduled Classes ──────────────────────────────────────
+
+  /// Create a scheduled class.
+  Future<String> createScheduledClass(ScheduledClass scheduledClass) async {
+    final docRef = await _firestore.collection('scheduled_classes').add(scheduledClass.toFirestore());
+    return docRef.id;
+  }
+
+  /// Update a scheduled class.
+  Future<void> updateScheduledClass(String classId, Map<String, dynamic> updates) async {
+    updates['updatedAt'] = DateTime.now().toIso8601String();
+    await _firestore.collection('scheduled_classes').doc(classId).update(updates);
+  }
+
+  /// Delete a scheduled class.
+  Future<void> deleteScheduledClass(String classId) async {
+    await _firestore.collection('scheduled_classes').doc(classId).delete();
+  }
+
+  /// Watch upcoming classes for an organization.
+  Stream<List<ScheduledClass>> watchUpcomingClasses(String orgId) {
+    return _firestore
+        .collection('scheduled_classes')
+        .where('organizationId', isEqualTo: orgId)
+        .where('isStarted', isEqualTo: false)
+        .orderBy('startsAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => ScheduledClass.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  /// Watch a teacher's scheduled classes.
+  Stream<List<ScheduledClass>> watchTeacherClasses(String teacherId) {
+    return _firestore
+        .collection('scheduled_classes')
+        .where('teacherId', isEqualTo: teacherId)
+        .orderBy('startsAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => ScheduledClass.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // ─── Session Analytics ──────────────────────────────────────
+
+  /// Get analytics for a specific room.
+  Stream<List<SessionAnalytics>> watchRoomAnalytics(String roomId) {
+    return _firestore
+        .collection('session_analytics')
+        .where('roomId', isEqualTo: roomId)
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => SessionAnalytics.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  /// Get analytics for an organization (teacher dashboard).
+  Stream<List<SessionAnalytics>> watchOrgAnalytics(String orgId) {
+    return _firestore
+        .collection('session_analytics')
+        .where('organizationId', isEqualTo: orgId)
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => SessionAnalytics.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  /// Get analytics for a specific teacher.
+  Stream<List<SessionAnalytics>> watchTeacherAnalytics(String teacherId) {
+    return _firestore
+        .collection('session_analytics')
+        .where('teacherId', isEqualTo: teacherId)
+        .orderBy('createdAt', descending: true)
+        .limit(30)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => SessionAnalytics.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 }

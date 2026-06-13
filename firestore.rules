@@ -515,36 +515,74 @@ service cloud.firestore {
     // ====== LiveKit Rooms Collection ======
     // Stores room metadata for virtual classrooms and proctored exams
     match /livekit_rooms/{roomId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isInSameOrg();
+      // Only teachers can create rooms; students cannot start rooms
       allow create: if isTeacherOrOwner();
+      // Only the room creator or another teacher can update (end, record, etc.)
       allow update: if isTeacherOrOwner();
+      // Only owners can permanently delete room records
       allow delete: if isOwner();
 
       // ─── LiveKit Room Sub-Collections ───────────────────────
 
-      // Attendance — students create own, teachers read all
+      // Attendance — students create/update own record on join/leave; teachers can update any
       match /attendance/{uid} {
         allow read: if isAuth();
         allow create: if isAuth() && request.auth.uid == uid;
-        allow update: if isAuth() && (isTeacherOrOwner() || request.auth.uid == uid);
+        // Students can only update their own leftAt; teachers can update any
+        allow update: if isAuth() &&
+          (isTeacherOrOwner() ||
+           (request.auth.uid == uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['leftAt', 'updatedAt'])));
         allow delete: if isTeacherOrOwner();
       }
 
-      // Chat messages — any authenticated user in the room
+      // Chat messages — anyone in org can send; only teachers can delete/moderate
       match /messages/{messageId} {
         allow read: if isAuth();
         allow create: if isAuth();
+        // Only teachers can update (pin, edit); students cannot edit sent messages
         allow update: if isTeacherOrOwner();
+        // Only teachers can delete messages (moderation)
         allow delete: if isTeacherOrOwner();
       }
 
-      // Raised hands — students toggle own, teachers manage all
+      // Raised hands — students toggle own; teachers can lower any
       match /raised_hands/{uid} {
         allow read: if isAuth();
         allow create: if isAuth() && request.auth.uid == uid;
         allow update: if isAuth() && (isTeacherOrOwner() || request.auth.uid == uid);
         allow delete: if isTeacherOrOwner();
       }
+    }
+
+    // ====== Recordings Collection ======
+    // Metadata for session recordings (playback URLs, storage refs)
+    match /recordings/{recordingId} {
+      allow read: if isAuth();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isOwner();
+    }
+
+    // ====== Scheduled Classes Collection ======
+    // Upcoming live classes with start times and room references
+    match /scheduled_classes/{classId} {
+      allow read: if isAuth() && isInSameOrg();
+      allow create: if isTeacherOrOwner();
+      allow update: if isTeacherOrOwner();
+      allow delete: if isTeacherOrOwner();
+    }
+
+    // ====== Session Analytics Collection ======
+    // Post-class analytics: attendance, duration, engagement metrics
+    match /session_analytics/{analyticsId} {
+      allow read: if isAuth() && isInSameOrg();
+      // Only Cloud Functions write analytics (clients cannot create/update)
+      allow create: if false;
+      allow update: if false;
+      allow delete: if isOwner();
     }
   }
 }

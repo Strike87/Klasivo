@@ -6,12 +6,14 @@ import '../domain/livekit_room_model.dart';
 import '../domain/livekit_chat_message.dart';
 import '../domain/livekit_raised_hand.dart';
 import '../domain/livekit_attendance.dart';
+import '../domain/recording_model.dart';
+import '../domain/scheduled_class_model.dart';
+import '../domain/session_analytics_model.dart';
 
 // ══════════════════════════════════════════════════════════════════════════
 // Repository Provider
 // ══════════════════════════════════════════════════════════════════════════
 
-/// [LiveKitRepository] provider — uses FirebaseFunctions + FirebaseFirestore
 final liveKitRepositoryProvider = Provider<LiveKitRepository>((ref) {
   return LiveKitRepository();
 });
@@ -20,7 +22,6 @@ final liveKitRepositoryProvider = Provider<LiveKitRepository>((ref) {
 // Token Generation
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Async notifier for generating a LiveKit token.
 final liveKitTokenProvider = StateNotifierProvider<LiveKitTokenNotifier, AsyncValue<String>>((ref) {
   return LiveKitTokenNotifier(ref.watch(liveKitRepositoryProvider));
 });
@@ -55,13 +56,11 @@ class LiveKitTokenNotifier extends StateNotifier<AsyncValue<String>> {
 // Room Streams
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Stream of active LiveKit rooms for the current organization.
 final activeLiveKitRoomsProvider = StreamProvider.family<List<LiveKitRoom>, String>((ref, orgId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchActiveRooms(orgId);
 });
 
-/// Stream of a single LiveKit room.
 final liveKitRoomProvider = StreamProvider.family<LiveKitRoom?, String>((ref, roomId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchRoom(roomId);
@@ -71,7 +70,6 @@ final liveKitRoomProvider = StreamProvider.family<LiveKitRoom?, String>((ref, ro
 // In-Class Chat
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Stream of chat messages for a specific room.
 final chatMessagesProvider = StreamProvider.family<List<LiveKitChatMessage>, String>((ref, roomId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchChatMessages(roomId);
@@ -81,7 +79,6 @@ final chatMessagesProvider = StreamProvider.family<List<LiveKitChatMessage>, Str
 // Raise Hand
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Stream of currently raised hands for a specific room.
 final raisedHandsProvider = StreamProvider.family<List<LiveKitRaisedHand>, String>((ref, roomId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchRaisedHands(roomId);
@@ -91,8 +88,54 @@ final raisedHandsProvider = StreamProvider.family<List<LiveKitRaisedHand>, Strin
 // Attendance
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Stream of attendance records for a specific room.
 final attendanceProvider = StreamProvider.family<List<LiveKitAttendance>, String>((ref, roomId) {
   final repo = ref.watch(liveKitRepositoryProvider);
   return repo.watchAttendance(roomId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Recordings
+// ══════════════════════════════════════════════════════════════════════════
+
+final orgRecordingsProvider = StreamProvider.family<List<Recording>, String>((ref, orgId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchRecordings(orgId);
+});
+
+final roomRecordingsProvider = StreamProvider.family<List<Recording>, String>((ref, roomId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchRoomRecordings(roomId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Scheduled Classes
+// ══════════════════════════════════════════════════════════════════════════
+
+final upcomingClassesProvider = StreamProvider.family<List<ScheduledClass>, String>((ref, orgId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchUpcomingClasses(orgId);
+});
+
+final teacherClassesProvider = StreamProvider.family<List<ScheduledClass>, String>((ref, teacherId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchTeacherClasses(teacherId);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Session Analytics
+// ══════════════════════════════════════════════════════════════════════════
+
+final roomAnalyticsProvider = StreamProvider.family<List<SessionAnalytics>, String>((ref, roomId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchRoomAnalytics(roomId);
+});
+
+final orgAnalyticsProvider = StreamProvider.family<List<SessionAnalytics>, String>((ref, orgId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchOrgAnalytics(orgId);
+});
+
+final teacherAnalyticsProvider = StreamProvider.family<List<SessionAnalytics>, String>((ref, teacherId) {
+  final repo = ref.watch(liveKitRepositoryProvider);
+  return repo.watchTeacherAnalytics(teacherId);
 });

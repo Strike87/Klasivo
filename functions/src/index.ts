@@ -14,11 +14,15 @@
  *     sendTeacherInvitation  — Queue teacher invitation email
  *     sendSchoolAnnouncement — Queue school announcement email
  *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
+ *     removeParticipant      — Kick disruptive student from a live class
  *
  *   Firestore Triggers (v2):
  *     emailWorker            — Process emailQueue documents (send + retry)
  *     onLiveKitRoomCreated   — Push notifications when a live class starts
- *     onLiveKitRoomUpdated   — Recording/end notifications + attendance summary
+ *     onLiveKitRoomUpdated   — Recording/end notifications + session analytics
+ *
+ *   Scheduled (v2):
+ *     scheduledClassReminder — Send reminders for classes starting in 10 min
  *
  *   Note: Auth triggers use firebase-functions/v1 because v2 only
  *   provides blocking functions (beforeUserCreated), not after-event
@@ -39,7 +43,11 @@ export { sendContactForm } from './functions/sendContactForm';
 export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
 export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
 export { generateLiveKitToken } from './functions/generateLiveKitToken';
+export { removeParticipant } from './functions/removeParticipant';
 
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';
 export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKitRoomEvents';
+
+// ─── Scheduled Functions (v2) ────────────────────────────────
+export { scheduledClassReminder } from './functions/scheduledClassReminder';
