@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
+import '../../../core/rbac/roles.dart';
 import '../../../core/config/theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -49,11 +50,11 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (isLoggedIn && userRole.isNotEmpty) {
       // Owner hasn't named their workspace yet → Welcome screen
-      if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+      if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
         context.go('/welcome');
-      } else if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+      } else if (userRole == KlasivoRole.teacher || userRole == KlasivoRole.owner) {
         context.go('/dashboard');
-      } else if (userRole == AppConstants.roleStudent) {
+      } else if (userRole == KlasivoRole.student) {
         context.go('/student');
       } else {
         context.go('/auth');

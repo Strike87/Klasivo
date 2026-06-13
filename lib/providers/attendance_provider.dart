@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/config/app_constants.dart';
+import '../core/rbac/roles.dart';
 import '../core/services/attendance_service.dart';
 import 'auth_provider.dart';
 import 'organization_provider.dart';
@@ -65,7 +66,7 @@ final studentAttendanceProvider = StreamProvider<QuerySnapshot>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   final role = ref.watch(userRoleProvider);
 
-  if (orgId == null || userId == null || role != AppConstants.roleStudent) {
+  if (orgId == null || userId == null || role != KlasivoRole.student) {
     return const Stream.empty();
   }
 
@@ -82,7 +83,7 @@ final studentAttendanceStatsProvider = FutureProvider<Map<String, dynamic>>((ref
   final userId = ref.watch(currentUserIdProvider);
   final role = ref.watch(userRoleProvider);
 
-  if (orgId == null || userId == null || role != AppConstants.roleStudent) {
+  if (orgId == null || userId == null || role != KlasivoRole.student) {
     return {
       'total': 0,
       'present': 0,

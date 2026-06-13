@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/rbac/roles.dart';
 import '../../../core/config/theme_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
@@ -76,15 +77,15 @@ class SettingsScreen extends ConsumerWidget {
                             vertical: KlasivoSpacing.xs,
                           ),
                           decoration: BoxDecoration(
-                            color: userRole == AppConstants.roleOwner
+                            color: userRole == KlasivoRole.owner
                                 ? KlasivoColors.primary.withValues(alpha: 0.1)
                                 : KlasivoColors.secondary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                           ),
                           child: Text(
-                            userRole == AppConstants.roleOwner ? 'Owner' : 'Teacher',
+                            userRole == KlasivoRole.owner ? 'Owner' : 'Teacher',
                             style: KlasivoTypography.labelSmall.copyWith(
-                              color: userRole == AppConstants.roleOwner
+                              color: userRole == KlasivoRole.owner
                                   ? KlasivoColors.primary
                                   : KlasivoColors.secondary,
                             ),
@@ -106,7 +107,7 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Organization Section (Owner/Admin only) ──
             KlasivoRoleGate(
-              allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
+              allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
               fallback: const SizedBox.shrink(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -878,7 +879,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
       final snapshot = await FirebaseFirestore.instance
           .collection(AppConstants.usersCollection)
           .where('organizationId', isEqualTo: widget.orgId)
-          .where('role', whereIn: [AppConstants.roleTeacher, AppConstants.roleOwner])
+          .where('role', whereIn: [KlasivoRole.teacher, KlasivoRole.owner])
           .orderBy('createdAt', descending: true)
           .get();
       setState(() {
@@ -927,7 +928,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
           ),
         ),
         ..._teachers.map((teacher) {
-          final isOwner = teacher['role'] == AppConstants.roleOwner;
+          final isOwner = teacher['role'] == KlasivoRole.owner;
           final name = teacher['fullName'] ?? 'Unknown';
           return KlasivoCard(
             margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),

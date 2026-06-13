@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -72,7 +73,7 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
     try {
       final authService = ref.read(authServiceProvider);
       final result = await authService.loginWithGoogle(
-        expectedRole: AppConstants.roleParent,
+        expectedRole: KlasivoRole.parent,
       );
 
       await saveParentAuthData(

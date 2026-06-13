@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 
 class OrganizationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -136,7 +137,7 @@ class OrganizationService {
     return _firestore
         .collection(AppConstants.usersCollection)
         .where('organizationId', isEqualTo: organizationId)
-        .where('role', isEqualTo: AppConstants.roleTeacher)
+        .where('role', isEqualTo: KlasivoRole.teacher)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }

@@ -9,7 +9,7 @@ import '../../../providers/organization_provider.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/student_provider.dart';
-import '../../../providers/permission_provider.dart';
+import '../../../core/rbac/roles.dart';
 import '../../../providers/feature_flag_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
@@ -203,7 +203,7 @@ class OwnerDashboard extends ConsumerWidget {
 
                     // ── Permission-Gated Admin Section (Owner/Admin only) ──
                     KlasivoRoleGate(
-                      allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
+                      allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
                       fallback: const SizedBox.shrink(),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

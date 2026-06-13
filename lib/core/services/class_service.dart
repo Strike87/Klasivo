@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 import 'search_keyword_service.dart';
 
 class ClassService {
@@ -101,7 +102,7 @@ class ClassService {
       final studentsSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .get();
 
       // Delete subjects in this class
@@ -178,7 +179,7 @@ class ClassService {
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .count()
           .get();
       return snapshot.count ?? 0;

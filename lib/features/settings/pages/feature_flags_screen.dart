@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/services/feature_flag_service.dart';
 import '../../../providers/feature_flag_provider.dart';
-import '../../../providers/permission_provider.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';

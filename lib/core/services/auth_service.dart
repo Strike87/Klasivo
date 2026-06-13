@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
 import 'invite_code_service.dart';
@@ -63,7 +64,7 @@ class AuthService implements IAuthService {
           .doc(user.uid)
           .set({
         'organizationId': '', // Placeholder — updated below after org creation
-        'role': AppConstants.roleOwner,
+        'role': KlasivoRole.owner,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -95,7 +96,7 @@ class AuthService implements IAuthService {
       return {
         'id': user.uid,
         'organizationId': orgId,
-        'role': AppConstants.roleOwner,
+        'role': KlasivoRole.owner,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -113,7 +114,7 @@ class AuthService implements IAuthService {
   /// If user already exists, logs them in instead.
   Future<Map<String, dynamic>> registerOwnerWithGoogle() async {
     return _signInWithGoogle(
-      expectedRole: AppConstants.roleOwner,
+      expectedRole: KlasivoRole.owner,
       isNewUser: true,
     );
   }
@@ -190,7 +191,7 @@ class AuthService implements IAuthService {
       }
 
       // Students should NOT use email login — they use student code login
-      if (role == AppConstants.roleStudent) {
+      if (role == KlasivoRole.student) {
         await _auth.signOut();
         throw Exception('Students must login with their student code.');
       }
@@ -198,7 +199,7 @@ class AuthService implements IAuthService {
       return {
         'id': user.uid,
         'organizationId': userData['organizationId'] ?? '',
-        'role': role ?? AppConstants.roleTeacher,
+        'role': role ?? KlasivoRole.teacher,
         'authProvider': AuthProviders.password,
         'fullName': userData['fullName'] ?? 'User',
         'email': userData['email'] ?? email,
@@ -224,7 +225,7 @@ class AuthService implements IAuthService {
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: studentCode)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .limit(1)
           .get();
 
@@ -279,7 +280,7 @@ class AuthService implements IAuthService {
       return {
         'id': userDoc.id,
         'organizationId': student['organizationId'] ?? '',
-        'role': AppConstants.roleStudent,
+        'role': KlasivoRole.student,
         'authProvider': AuthProviders.studentCode,
         'fullName': student['fullName'] ?? 'Student',
         'studentCode': student['studentCode'],
@@ -327,7 +328,7 @@ class AuthService implements IAuthService {
           .doc(user.uid)
           .set({
         'organizationId': organizationId,
-        'role': AppConstants.roleTeacher,
+        'role': KlasivoRole.teacher,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -354,7 +355,7 @@ class AuthService implements IAuthService {
       return {
         'id': user.uid,
         'organizationId': organizationId,
-        'role': AppConstants.roleTeacher,
+        'role': KlasivoRole.teacher,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -419,7 +420,7 @@ class AuthService implements IAuthService {
         return {
           'id': user.uid,
           'organizationId': userData['organizationId'] ?? organizationId,
-          'role': userData['role'] ?? AppConstants.roleTeacher,
+          'role': userData['role'] ?? KlasivoRole.teacher,
           'authProvider': AuthProviders.google,
           'fullName': userData['fullName'] ?? user.displayName ?? 'Teacher',
           'email': userData['email'] ?? user.email ?? '',
@@ -438,7 +439,7 @@ class AuthService implements IAuthService {
           .doc(user.uid)
           .set({
         'organizationId': organizationId,
-        'role': AppConstants.roleTeacher,
+        'role': KlasivoRole.teacher,
         'authProvider': AuthProviders.google,
         'fullName': fullName,
         'email': email,
@@ -465,7 +466,7 @@ class AuthService implements IAuthService {
       return {
         'id': user.uid,
         'organizationId': organizationId,
-        'role': AppConstants.roleTeacher,
+        'role': KlasivoRole.teacher,
         'authProvider': AuthProviders.google,
         'fullName': fullName,
         'email': email,
@@ -498,7 +499,7 @@ class AuthService implements IAuthService {
           .doc(user.uid)
           .set({
         'organizationId': null, // Set when parent links a child
-        'role': AppConstants.roleParent,
+        'role': KlasivoRole.parent,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -514,7 +515,7 @@ class AuthService implements IAuthService {
       return {
         'id': user.uid,
         'organizationId': null,
-        'role': AppConstants.roleParent,
+        'role': KlasivoRole.parent,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -531,7 +532,7 @@ class AuthService implements IAuthService {
   /// Register a parent via Google Sign-In.
   Future<Map<String, dynamic>> registerParentWithGoogle() async {
     return _signInWithGoogle(
-      expectedRole: AppConstants.roleParent,
+      expectedRole: KlasivoRole.parent,
       isNewUser: true,
     );
   }
@@ -590,7 +591,7 @@ class AuthService implements IAuthService {
         }
 
         // Students cannot use Google Sign-In
-        if (role == AppConstants.roleStudent) {
+        if (role == KlasivoRole.student) {
           await _auth.signOut();
           throw Exception('Students must login with their student code.');
         }
@@ -598,7 +599,7 @@ class AuthService implements IAuthService {
         return {
           'id': user.uid,
           'organizationId': userData['organizationId'] ?? '',
-          'role': role ?? expectedRole ?? AppConstants.roleOwner,
+          'role': role ?? expectedRole ?? KlasivoRole.owner,
           'authProvider': AuthProviders.google,
           'fullName': userData['fullName'] ?? user.displayName ?? 'User',
           'email': userData['email'] ?? user.email ?? '',
@@ -610,20 +611,20 @@ class AuthService implements IAuthService {
       // New user — create account based on expected role
       final fullName = user.displayName ?? 'User';
       final email = user.email ?? '';
-      final role = expectedRole ?? AppConstants.roleOwner;
+      final role = expectedRole ?? KlasivoRole.owner;
       final isEmailVerified = user.emailVerified; // Google emails are pre-verified
 
       String? organizationId;
       bool hasCompletedSetup = true;
 
-      if (role == AppConstants.roleOwner) {
+      if (role == KlasivoRole.owner) {
         // Create user doc FIRST with placeholder orgId so isTeacherOrOwner() resolves
         await _firestore
             .collection(AppConstants.usersCollection)
             .doc(user.uid)
             .set({
           'organizationId': '', // Placeholder — updated below
-          'role': AppConstants.roleOwner,
+          'role': KlasivoRole.owner,
           'authProvider': AuthProviders.google,
           'fullName': fullName,
           'email': email,
@@ -653,13 +654,13 @@ class AuthService implements IAuthService {
         });
 
         hasCompletedSetup = false; // Needs to name workspace
-      } else if (role == AppConstants.roleParent) {
+      } else if (role == KlasivoRole.parent) {
         organizationId = null; // Set when parent links a child
         hasCompletedSetup = false; // Needs to link child
       }
 
       // For non-owner roles, write the user doc normally (owner doc already created above)
-      if (role != AppConstants.roleOwner) {
+      if (role != KlasivoRole.owner) {
         await _firestore
             .collection(AppConstants.usersCollection)
             .doc(user.uid)
@@ -774,7 +775,7 @@ class AuthService implements IAuthService {
       final hasCompletedSetup = data['hasCompletedSetup'] as bool? ?? true;
 
       // Owners need workspace naming, parents need child linking
-      if ((role == AppConstants.roleOwner || role == AppConstants.roleParent) &&
+      if ((role == KlasivoRole.owner || role == KlasivoRole.parent) &&
           !hasCompletedSetup) {
         return true;
       }
@@ -868,7 +869,7 @@ class AuthService implements IAuthService {
           .doc(user.uid)
           .set({
         'organizationId': '',
-        'role': AppConstants.roleParent,
+        'role': KlasivoRole.parent,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
@@ -884,14 +885,14 @@ class AuthService implements IAuthService {
       await box.put('uid', user.uid);
       await box.put('email', email);
       await box.put('fullName', fullName);
-      await box.put('role', AppConstants.roleParent);
+      await box.put('role', KlasivoRole.parent);
       await box.put('authProvider', AuthProviders.password);
 
       return {
         'uid': user.uid,
         'email': email,
         'fullName': fullName,
-        'role': AppConstants.roleParent,
+        'role': KlasivoRole.parent,
         'authProvider': AuthProviders.password,
       };
     } on FirebaseAuthException catch (e) {

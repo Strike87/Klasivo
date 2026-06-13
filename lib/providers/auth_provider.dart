@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
+import '../core/rbac/roles.dart';
 import '../core/services/auth_service.dart';
 import '../core/services/event_bus.dart';
 
@@ -165,7 +166,7 @@ Future<void> saveStudentAuthData({
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
-  await box.put('userRole', AppConstants.roleStudent);
+  await box.put('userRole', KlasivoRole.student);
   await box.put('userName', name);
   await box.put('userId', userId);
   if (classId != null) await box.put('studentClassId', classId);
@@ -180,7 +181,7 @@ Future<void> saveStudentAuthData({
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
     userId: userId,
-    role: AppConstants.roleStudent,
+    role: KlasivoRole.student,
     orgId: organizationId,
   ));
 }
@@ -197,7 +198,7 @@ Future<void> saveParentAuthData({
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
-  await box.put('userRole', AppConstants.roleParent);
+  await box.put('userRole', KlasivoRole.parent);
   await box.put('userName', name);
   await box.put('userId', userId);
   await box.put('userEmail', email);
@@ -211,7 +212,7 @@ Future<void> saveParentAuthData({
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
     userId: userId,
-    role: AppConstants.roleParent,
+    role: KlasivoRole.parent,
     orgId: organizationId,
   ));
 }

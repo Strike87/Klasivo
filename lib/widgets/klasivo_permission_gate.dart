@@ -2,21 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/tokens/tokens.dart';
 import '../core/rbac/rbac.dart';
-import '../providers/permission_provider.dart'; // Backward compat — old providers
-import '../providers/rbac_provider.dart'; // New RBAC v2.0 providers
+import '../providers/rbac_provider.dart'; // RBAC v2.0 providers
 import '../providers/feature_flag_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO PERMISSION GATE v2.0 — Declarative RBAC UI control
 //
-// Supports both the old API (backward compatible) and the new RBAC v2.0 API.
-// The new API adds scope-aware permission checks.
+// Scope-aware permission checks using the RBAC v2.0 provider system.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Shows [child] only if the current user has the specified permission.
 /// Optionally shows [fallback] when permission is denied.
 ///
-/// **v2.0 API (recommended):**
 /// ```dart
 /// KlasivoPermissionGate(
 ///   permission: Permission.examCreate,
@@ -26,33 +23,14 @@ import '../providers/feature_flag_provider.dart';
 ///   fallback: Text('No permission'),
 /// )
 /// ```
-///
-/// **v1 backward compatible API:**
-/// ```dart
-/// KlasivoPermissionGate(
-///   permission: Permission.examCreate,
-///   resourceId: 'class_5A',    // Legacy field
-///   resourceType: 'class',     // Legacy field
-///   child: ...,
-/// )
-/// ```
 class KlasivoPermissionGate extends ConsumerWidget {
   final String permission;
   final Widget child;
   final Widget? fallback;
 
-  // v2.0 scope fields (preferred)
+  // Scope fields for scoped permission checks
   final String? scopeType;
   final String? scopeId;
-
-  // v1 legacy fields (backward compatible)
-  final String? resourceId;
-  final String? resourceType;
-
-  /// When true, uses the new RBAC v2.0 providers.
-  /// When false (default), uses the old permission_provider.dart.
-  /// Toggle this during migration; remove after full migration.
-  final bool useV2;
 
   const KlasivoPermissionGate({
     Key? key,
@@ -61,37 +39,22 @@ class KlasivoPermissionGate extends ConsumerWidget {
     this.fallback,
     this.scopeType,
     this.scopeId,
-    this.resourceId,
-    this.resourceType,
-    this.useV2 = true,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     bool hasPermission;
 
-    if (useV2) {
-      // v2.0: Use new RBAC providers with scope support
-      if (scopeType != null && scopeId != null) {
-        hasPermission = ref.watch(rbacCanScopedProvider(
-          RbacScopedCheck(
-            permission: permission,
-            scopeType: scopeType!,
-            scopeId: scopeId!,
-          ),
-        ));
-      } else {
-        hasPermission = ref.watch(rbacCanProvider(permission));
-      }
-    } else {
-      // v1: Use old permission providers (backward compatible)
-      hasPermission = ref.watch(hasPermissionProvider(
-        PermissionCheck(
+    if (scopeType != null && scopeId != null) {
+      hasPermission = ref.watch(rbacCanScopedProvider(
+        RbacScopedCheck(
           permission: permission,
-          resourceId: resourceId,
-          resourceType: resourceType,
+          scopeType: scopeType!,
+          scopeId: scopeId!,
         ),
       ));
+    } else {
+      hasPermission = ref.watch(rbacCanProvider(permission));
     }
 
     if (hasPermission) return child;
@@ -102,7 +65,7 @@ class KlasivoPermissionGate extends ConsumerWidget {
 /// Shows [child] only if the current user has one of the specified roles.
 /// Optionally shows [fallback] when role check fails.
 ///
-/// **v2.0** uses hierarchy-aware role checking via [hasRole].
+/// Uses hierarchy-aware role checking via [hasRole].
 class KlasivoRoleGate extends ConsumerWidget {
   final List<String> allowedRoles;
   final Widget child;
@@ -111,35 +74,25 @@ class KlasivoRoleGate extends ConsumerWidget {
   /// When true, uses hierarchy-aware hasRole() instead of exact match.
   final bool useHierarchy;
 
-  /// When true, uses the new RBAC v2.0 providers.
-  final bool useV2;
-
   const KlasivoRoleGate({
     Key? key,
     required this.allowedRoles,
     required this.child,
     this.fallback,
     this.useHierarchy = true,
-    this.useV2 = true,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final service = ref.watch(rbacPermissionServiceProvider);
     bool hasRole;
 
-    if (useV2) {
-      final service = ref.watch(rbacPermissionServiceProvider);
-      if (useHierarchy) {
-        // Hierarchy-aware: owner is considered to "have" admin role, etc.
-        hasRole = allowedRoles.any((role) => service.hasRole(role));
-      } else {
-        // Exact match only
-        hasRole = allowedRoles.any((role) => service.hasExactRole(role));
-      }
+    if (useHierarchy) {
+      // Hierarchy-aware: owner is considered to "have" admin role, etc.
+      hasRole = allowedRoles.any((role) => service.hasRole(role));
     } else {
-      // v1: exact string match
-      final userRole = ref.watch(currentUserRoleProvider);
-      hasRole = allowedRoles.contains(userRole);
+      // Exact match only
+      hasRole = allowedRoles.any((role) => service.hasExactRole(role));
     }
 
     if (hasRole) return child;

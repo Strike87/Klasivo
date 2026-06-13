@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -47,7 +48,7 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       );
 
       await saveTeacherAuthData(
-        role: AppConstants.roleOwner,
+        role: KlasivoRole.owner,
         name: result['fullName'],
         userId: result['id'],
         email: result['email'],
@@ -76,7 +77,7 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       final result = await authService.registerOwnerWithGoogle();
 
       await saveTeacherAuthData(
-        role: result['role'] ?? AppConstants.roleOwner,
+        role: result['role'] ?? KlasivoRole.owner,
         name: result['fullName'] ?? 'User',
         userId: result['id'],
         email: result['email'] ?? '',

@@ -7,6 +7,7 @@ import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import '../config/app_constants.dart';
 import '../rbac/rbac.dart';
+import '../rbac/roles.dart';
 
 class ExcelImportService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -161,7 +162,7 @@ class ExcelImportService {
 
             batch.set(docRef, {
               'organizationId': organizationId,
-              'role': AppConstants.roleStudent,
+              'role': KlasivoRole.student,
               'classId': classId,
               'fullName': student.name,
               'studentCode': studentCode,

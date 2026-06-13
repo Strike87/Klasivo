@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 
 class DeepLinkService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -241,7 +242,7 @@ class DeepLinkService {
       final studentSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: resultId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .limit(1)
           .get();
 

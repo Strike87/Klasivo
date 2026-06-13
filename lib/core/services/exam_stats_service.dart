@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 import 'performance_trace_service.dart';
 
 class ExamStatsService {
@@ -47,7 +48,7 @@ class ExamStatsService {
       final classStudentsSnapshot = await _firestore
           .collection(AppConstants.studentsCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .get();
       final totalStudents = classStudentsSnapshot.size;
 

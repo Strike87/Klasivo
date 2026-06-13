@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../config/app_constants.dart';
 import '../rbac/rbac.dart';
+import '../rbac/roles.dart';
 
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -104,7 +105,7 @@ class StudentService {
 
       await docRef.set({
         'organizationId': organizationId,
-        'role': AppConstants.roleStudent,
+        'role': KlasivoRole.student,
         'fullName': fullName,
         'studentCode': studentCode,
         'authEmail': authEmail, // Internal email for Firebase Auth
@@ -124,7 +125,7 @@ class StudentService {
       final countSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .count()
           .get();
 
@@ -210,7 +211,7 @@ class StudentService {
       final countSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .count()
           .get();
 
@@ -227,7 +228,7 @@ class StudentService {
     return _firestore
         .collection(AppConstants.usersCollection)
         .where('classId', isEqualTo: classId)
-        .where('role', isEqualTo: AppConstants.roleStudent)
+        .where('role', isEqualTo: KlasivoRole.student)
         .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .snapshots();
@@ -237,7 +238,7 @@ class StudentService {
     return _firestore
         .collection(AppConstants.usersCollection)
         .where('organizationId', isEqualTo: organizationId)
-        .where('role', isEqualTo: AppConstants.roleStudent)
+        .where('role', isEqualTo: KlasivoRole.student)
         .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .snapshots();
@@ -248,7 +249,7 @@ class StudentService {
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('organizationId', isEqualTo: organizationId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .count()
           .get();
       return snapshot.count ?? 0;
@@ -284,7 +285,7 @@ class StudentService {
 
         batch.set(docRef, {
           'organizationId': organizationId,
-          'role': AppConstants.roleStudent,
+          'role': KlasivoRole.student,
           'fullName': student['fullName']!,
           'studentCode': studentCode,
           'authEmail': authEmail,
@@ -308,7 +309,7 @@ class StudentService {
       final countSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
+          .where('role', isEqualTo: KlasivoRole.student)
           .count()
           .get();
 

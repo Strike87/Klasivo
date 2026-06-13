@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../config/app_constants.dart';
+import '../rbac/roles.dart';
 
 /// Service for QR code-based student enrollment
 /// QR codes contain encoded class/teacher information that allows
@@ -77,7 +78,7 @@ class QREnrollmentService {
     final docRef = _firestore.collection(AppConstants.usersCollection).doc();
     await docRef.set({
       'organizationId': organizationId,
-      'role': AppConstants.roleStudent,
+      'role': KlasivoRole.student,
       'id': docRef.id,
       'teacherId': teacherId,
       'classId': classId,
