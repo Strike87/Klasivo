@@ -35,18 +35,16 @@ service cloud.firestore {
 
     // Helper: Get user role — claims first, Firestore fallback
     function getUserRole() {
-      if (hasClaims()) {
-        return claimsRole();
-      }
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return hasClaims()
+        ? claimsRole()
+        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     // Helper: Get user organizationId — claims first, Firestore fallback
     function getUserOrgId() {
-      if (hasClaims()) {
-        return claimsOrgId();
-      }
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+      return hasClaims()
+        ? claimsOrgId()
+        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
     }
 
     // Helper: Check if user is in the same organization as a resource
@@ -61,10 +59,9 @@ service cloud.firestore {
 
     // Helper: Check if user has one of the specified roles
     function hasAnyRole(roles) {
-      if (hasClaims()) {
-        return claimsRole() in roles;
-      }
-      return getUserRole() in roles;
+      return hasClaims()
+        ? claimsRole() in roles
+        : getUserRole() in roles;
     }
 
     // Helper: Check if user is a teacher, admin, campus_manager, stage_manager, academic_supervisor, or owner
