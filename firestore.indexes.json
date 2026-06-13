@@ -186,6 +186,7 @@
 
     { "collectionGroup": "scheduled_classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "isStarted", "order": "ASCENDING" }, { "fieldPath": "startsAt", "order": "ASCENDING" }] },
     { "collectionGroup": "scheduled_classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "startsAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "scheduled_classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "reminderSent", "order": "ASCENDING" }, { "fieldPath": "startsAt", "order": "ASCENDING" }] },
 
     { "collectionGroup": "session_analytics", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "organizationId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "session_analytics", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "roomId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
