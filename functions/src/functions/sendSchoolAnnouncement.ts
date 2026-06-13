@@ -5,6 +5,7 @@ import { queueEmail } from '../services/queueService';
 import { isValidEmail, isValidPriority, isValidRecipientList, missingField } from '../utils/validators';
 import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
 import { initSentry } from '../config/sentry';
+import { verifyOrgBoundary, ANNOUNCEMENT_ROLES } from '../utils/rbac';
 
 export const sendSchoolAnnouncement = onCall(
   { secrets: ['SENTRY_DSN'], enforceAppCheck: true },
@@ -14,6 +15,12 @@ export const sendSchoolAnnouncement = onCall(
     Sentry.setTag('function', 'sendSchoolAnnouncement');
 
     if (!request.auth) throw new Error('User must be authenticated.');
+
+    // ── Role check: administrative roles only (no teacher/assistant_teacher) ───
+    const callerRole = (request.auth.token.role as string) || '';
+    if (!ANNOUNCEMENT_ROLES.includes(callerRole as any)) {
+      throw new Error('Only administrators can send school-wide announcements.');
+    }
 
     const data = request.data;
     const required = ['to', 'schoolId', 'schoolName', 'title', 'message', 'senderName', 'senderRole'];
@@ -39,6 +46,12 @@ export const sendSchoolAnnouncement = onCall(
     const cleanMessage = sanitizeText(String(message ?? ''), 10000);
     const cleanSenderName = sanitizeText(String(senderName ?? ''), 100);
     const cleanSenderRole = sanitizeText(String(senderRole ?? ''), 50);
+
+    // ── Org boundary check ──────────────────────────────────────
+    const callerOrgId = (request.auth.token.organizationId as string) || '';
+    if (!verifyOrgBoundary(callerOrgId, cleanSchoolId, callerRole)) {
+      throw new Error('You can only send announcements for your own organization.');
+    }
 
     const rawAnnouncementId = fields['announcementId'];
     const cleanAnnouncementId = typeof rawAnnouncementId === 'string' && rawAnnouncementId !== ''

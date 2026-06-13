@@ -113,3 +113,41 @@ export function verifyOrgBoundary(
   if (callerRole === 'super_admin') return true;
   return callerOrgId === targetOrgId;
 }
+
+// ─── Capability-Based Access Constants ────────────────────────────────────
+//
+// Single source of truth for role-based capability checks.
+// Use these instead of inline role arrays to prevent hierarchy drift.
+//
+// TODO(Phase-2B): Add hasMinimumRole() and canPerformAction() helpers
+// that use ROLE_HIERARCHY for ordinal comparison instead of inclusion checks.
+
+/** Roles that can send teacher invitations (administrative onboarding action). */
+export const INVITATION_ROLES: KlasivoRole[] = [
+  'super_admin', 'owner', 'admin',
+];
+
+/** Roles that can send school-wide announcements. */
+export const ANNOUNCEMENT_ROLES: KlasivoRole[] = [
+  'super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager',
+];
+
+/** Roles that can reset other users' passwords. */
+export const PASSWORD_RESET_ROLES: KlasivoRole[] = [
+  'super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager',
+];
+
+/**
+ * Roles that receive roomAdmin grant in LiveKit tokens.
+ *
+ * roomAdmin grants classroom moderation: mute/unmute participants,
+ * remove participants, and manage the classroom session.
+ * If roomAdmin is extended to include recording control or room
+ * metadata modification, consider narrowing this to supervisory
+ * roles only (owner/admin/campus_manager/stage_manager).
+ */
+export const LIVEKIT_ADMIN_ROLES: KlasivoRole[] = [
+  'super_admin', 'owner', 'admin',
+  'campus_manager', 'stage_manager',
+  'academic_supervisor', 'teacher', 'assistant_teacher',
+];

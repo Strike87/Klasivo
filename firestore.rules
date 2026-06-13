@@ -622,8 +622,12 @@ service cloud.firestore {
       allow read: if isAuth() && canReadInOrg();
       // Only teachers can create rooms; students cannot start rooms
       allow create: if isStaffOrAbove() && canCreateInOrg();
-      // Only the room creator or another teacher can update (end, record, etc.)
-      allow update: if isStaffOrAbove() && canWriteInOrg();
+      // Only staff can update; identity fields (organizationId, createdBy, createdAt) are immutable
+      // This prevents org-boundary bypass: a teacher cannot move a room to another org after creation
+      allow update: if isStaffOrAbove() && canWriteInOrg()
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
       // Only owners can permanently delete room records
       allow delete: if isOwner();
 

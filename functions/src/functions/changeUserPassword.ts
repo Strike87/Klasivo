@@ -2,6 +2,8 @@ import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
+import { verifyOrgBoundary, PASSWORD_RESET_ROLES } from '../utils/rbac';
+
 interface ChangePasswordData {
   currentPassword?: string;
   newPassword: string;
@@ -33,14 +35,8 @@ export const changeUserPassword = functions
     const effectiveTargetId = targetUserId || callerUid;
     const isAdminReset = effectiveTargetId !== callerUid;
 
-    // If admin resetting someone else's password, check permissions
-    if (isAdminReset) {
-      const callerRole = (context.auth.token.role as string) || '';
-      if (!['super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager'].includes(callerRole)) {
-        throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions to reset passwords.');
-      }
-    }
-
+    // ── Load target user document ──────────────────────────────
+    // Must happen BEFORE role/org checks so we can verify org boundary
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(effectiveTargetId).get();
     if (!userDoc.exists) {
@@ -49,6 +45,30 @@ export const changeUserPassword = functions
 
     const userData = userDoc.data()!;
     const authProvider = userData.authProvider || 'password';
+
+    // If admin resetting someone else's password, check permissions and org boundary
+    if (isAdminReset) {
+      const callerRole = (context.auth.token.role as string) || '';
+      if (!PASSWORD_RESET_ROLES.includes(callerRole as any)) {
+        throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions to reset passwords.');
+      }
+
+      // Org boundary: fail-closed — deny if either org ID is missing
+      const targetOrgId = userData.organizationId || '';
+      const callerOrgId = (context.auth.token.organizationId as string) || '';
+      if (!targetOrgId || !callerOrgId) {
+        throw new functions.https.HttpsError(
+          'permission-denied',
+          'Organization information is required for cross-user password resets.',
+        );
+      }
+      if (!verifyOrgBoundary(callerOrgId, targetOrgId, callerRole)) {
+        throw new functions.https.HttpsError(
+          'permission-denied',
+          'You can only reset passwords for users in your organization.',
+        );
+      }
+    }
 
     // ─── Student (student_code auth) ────────────────────────────────────
     if (authProvider === 'student_code') {

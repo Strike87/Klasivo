@@ -5,6 +5,7 @@ import { queueEmail } from '../services/queueService';
 import { isValidEmail, missingField } from '../utils/validators';
 import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
 import { initSentry } from '../config/sentry';
+import { verifyOrgBoundary, INVITATION_ROLES } from '../utils/rbac';
 
 export const sendTeacherInvitation = onCall(
   { secrets: ['SENTRY_DSN'], enforceAppCheck: true },
@@ -14,6 +15,12 @@ export const sendTeacherInvitation = onCall(
     Sentry.setTag('function', 'sendTeacherInvitation');
 
     if (!request.auth) throw new Error('User must be authenticated.');
+
+    // ── Role check: owner/admin only ────────────────────────────
+    const callerRole = (request.auth.token.role as string) || '';
+    if (!INVITATION_ROLES.includes(callerRole as any)) {
+      throw new Error('Only owners and administrators can send teacher invitations.');
+    }
 
     const data = request.data;
     const required = ['email', 'teacherName', 'schoolName', 'inviterName', 'inviteCode', 'orgId'];
@@ -29,6 +36,12 @@ export const sendTeacherInvitation = onCall(
     const cleanInviterName = sanitizeText(fields['inviterName'] ?? '', 100);
     const cleanInviteCode = sanitizeText(fields['inviteCode'] ?? '', 20);
     const cleanOrgId = sanitizeText(fields['orgId'] ?? '', 50);
+
+    // ── Org boundary check ──────────────────────────────────────
+    const callerOrgId = (request.auth.token.organizationId as string) || '';
+    if (!verifyOrgBoundary(callerOrgId, cleanOrgId, callerRole)) {
+      throw new Error('You can only send invitations for your own organization.');
+    }
 
     try {
       const result = await queueEmail({
