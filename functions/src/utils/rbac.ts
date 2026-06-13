@@ -151,3 +151,167 @@ export const LIVEKIT_ADMIN_ROLES: KlasivoRole[] = [
   'campus_manager', 'stage_manager',
   'academic_supervisor', 'teacher', 'assistant_teacher',
 ];
+
+// ─── LiveKit Room Type Constants ─────────────────────────────────────────
+//
+// Explicit room types determine which authorization rules apply.
+// Must stay in sync with Dart's RoomType enum in livekit_room_model.dart.
+
+export const ROOM_TYPES = ['classroom', 'meeting', 'webinar'] as const;
+export type RoomType = typeof ROOM_TYPES[number];
+
+/** Room types that require scope-level authorization (classId mandatory). */
+export const SCOPE_ENFORCED_ROOM_TYPES: RoomType[] = ['classroom'];
+
+/** Room types that require only org-level authorization. */
+export const ORG_ONLY_ROOM_TYPES: RoomType[] = ['meeting', 'webinar'];
+
+// ─── Scope Authorization (Fail-Closed) ──────────────────────────────────
+//
+// Data-driven scope validation for LiveKit token issuance.
+// Uses a lookup table for scopeAccessLevel → validation strategy,
+// making future roles easier to add.
+//
+// PHILOSOPHY: Missing metadata on either the room OR the caller → DENY.
+// This prevents rooms created before the migration from becoming bypasses.
+
+/** Scope field on a room document, mapped by scopeAccessLevel. */
+interface ScopeRequirement {
+  /** The room field to check (e.g., 'classId'). */
+  roomField: string;
+  /** The caller's scope array field (e.g., 'classIds'). */
+  callerField: string;
+}
+
+/**
+ * Lookup table: scopeAccessLevel → which scope fields must match.
+ *
+ * Each entry maps a caller's scopeAccessLevel to the chain of
+ * scope fields checked, from broadest to narrowest.
+ *
+ * The validator checks the narrowest applicable level.
+ * If the room is missing the required field, the result is DENY.
+ */
+const SCOPE_REQUIREMENTS: Record<string, ScopeRequirement> = {
+  campus: { roomField: 'campusId', callerField: 'campusIds' },
+  stage:  { roomField: 'stageId',  callerField: 'stageIds' },
+  class:  { roomField: 'classId',  callerField: 'classIds' },
+  self:   { roomField: 'classId',  callerField: 'classIds' },
+  linked: { roomField: 'classId',  callerField: 'classIds' },
+};
+
+/** Result of scope authorization check. */
+export interface ScopeAuthResult {
+  /** Whether the caller is authorized for this room. */
+  authorized: boolean;
+  /** Machine-readable reason for denial (empty if authorized). */
+  reason?: 'missing_room_scope' | 'missing_caller_scope' | 'scope_mismatch' | 'room_type_mismatch';
+  /** Human-readable explanation. */
+  message?: string;
+}
+
+/**
+ * Verify that a caller is authorized to access a specific room
+ * based on their scope access level and the room's scope metadata.
+ *
+ * This function is FAIL-CLOSED:
+ *   - Missing room scope metadata → DENY
+ *   - Missing caller scope arrays → DENY
+ *   - Empty caller scope arrays → DENY (not "all access")
+ *   - Unknown scopeAccessLevel → DENY
+ *   - Unknown roomType → DENY
+ *
+ * Only `scopeAccessLevel === 'all'` bypasses scope checks
+ * (super_admin, owner, admin — org boundary already verified).
+ *
+ * @param scopeAccessLevel  Caller's scopeAccessLevel from claims
+ * @param callerScope       Caller's scope arrays from Firestore user doc
+ * @param roomData          Room document data from Firestore
+ * @returns ScopeAuthResult with authorized flag and denial reason
+ */
+export function verifyScopeAuthorization(
+  scopeAccessLevel: string,
+  callerScope: Record<string, string[]>,
+  roomData: Record<string, unknown>,
+): ScopeAuthResult {
+  // ── All-access roles: org boundary is sufficient ──────────
+  if (scopeAccessLevel === 'all') {
+    return { authorized: true };
+  }
+
+  const roomType = roomData['roomType'] as string;
+
+  // ── Meeting/webinar: org-level only, no scope check ──────
+  if (ORG_ONLY_ROOM_TYPES.includes(roomType as RoomType)) {
+    // For meetings, verify caller is at least staff (not student/parent)
+    if (scopeAccessLevel === 'self' || scopeAccessLevel === 'linked') {
+      return {
+        authorized: false,
+        reason: 'scope_mismatch',
+        message: 'Students and parents cannot access meeting rooms.',
+      };
+    }
+    return { authorized: true };
+  }
+
+  // ── Classroom: scope validation required ──────────────────
+  if (!SCOPE_ENFORCED_ROOM_TYPES.includes(roomType as RoomType)) {
+    // Unknown room type — fail closed
+    return {
+      authorized: false,
+      reason: 'room_type_mismatch',
+      message: `Unknown room type: ${roomType}. Authorization denied.`,
+    };
+  }
+
+  // Look up which scope fields to check for this access level
+  const requirement = SCOPE_REQUIREMENTS[scopeAccessLevel];
+  if (!requirement) {
+    // Unknown scopeAccessLevel — fail closed
+    return {
+      authorized: false,
+      reason: 'scope_mismatch',
+      message: `Unknown scopeAccessLevel: ${scopeAccessLevel}. Authorization denied.`,
+    };
+  }
+
+  // ── Check room has the required scope field ───────────────
+  const roomScopeValue = roomData[requirement.roomField] as string | undefined;
+  if (!roomScopeValue) {
+    return {
+      authorized: false,
+      reason: 'missing_room_scope',
+      message: `Room is missing ${requirement.roomField}. Cannot verify scope authorization.`,
+    };
+  }
+
+  // ── Check caller has scope arrays ─────────────────────────
+  const callerScopeArray = callerScope[requirement.callerField];
+  if (!callerScopeArray || !Array.isArray(callerScopeArray)) {
+    return {
+      authorized: false,
+      reason: 'missing_caller_scope',
+      message: `Caller is missing ${requirement.callerField}. Cannot verify scope authorization.`,
+    };
+  }
+
+  // ── Fail-closed: empty scope array = DENY ─────────────────
+  if (callerScopeArray.length === 0) {
+    return {
+      authorized: false,
+      reason: 'missing_caller_scope',
+      message: `Caller has empty ${requirement.callerField}. Access denied (fail-closed).`,
+    };
+  }
+
+  // ── Check scope match ─────────────────────────────────────
+  if (!callerScopeArray.includes(roomScopeValue)) {
+    return {
+      authorized: false,
+      reason: 'scope_mismatch',
+      message: `Caller's ${requirement.callerField} does not include this room's ${requirement.roomField}.`,
+    };
+  }
+
+  return { authorized: true };
+}

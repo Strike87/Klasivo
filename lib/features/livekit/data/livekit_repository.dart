@@ -31,16 +31,17 @@ class LiveKitRepository {
   // ─── Token Generation ────────────────────────────────────────
 
   /// Generate a LiveKit access token via the `generateLiveKitToken` callable.
+  ///
+  /// The server derives roomName and role grants from the room document
+  /// and the caller's auth claims — the client sends only roomId.
   Future<String> generateToken({
-    required String roomName,
+    required String roomId,
     String? displayName,
-    bool isTeacher = false,
   }) async {
     final callable = _functions.httpsCallable('generateLiveKitToken');
     final result = await callable.call<Map<String, dynamic>>({
-      'roomName': roomName,
+      'roomId': roomId,
       'displayName': displayName,
-      'isTeacher': isTeacher,
     });
     return result.data['token'] as String;
   }

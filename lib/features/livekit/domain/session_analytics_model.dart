@@ -4,6 +4,8 @@
 /// Contains aggregated metrics: attendance, duration, engagement.
 /// Clients have read-only access (no create/update).
 
+import 'livekit_room_model.dart';
+
 class SessionAnalytics {
   final String id;
   final String roomId;
@@ -11,7 +13,7 @@ class SessionAnalytics {
   final String organizationId;
   final String? campusId;
   final String teacherId;
-  final String roomType;
+  final RoomType roomType;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final int durationMinutes;
@@ -49,7 +51,7 @@ class SessionAnalytics {
       organizationId: data['organizationId'] as String? ?? '',
       campusId: data['campusId'] as String?,
       teacherId: data['teacherId'] as String? ?? '',
-      roomType: data['roomType'] as String? ?? 'classroom',
+      roomType: RoomType.fromString(data['roomType'] as String?),
       startedAt: data['startedAt'] != null
           ? DateTime.tryParse(data['startedAt'].toString())
           : null,

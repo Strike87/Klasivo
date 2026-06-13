@@ -8,8 +8,11 @@
  *   1. Auth required (enforceAppCheck)
  *   2. Room document loaded by roomId (client cannot choose roomName)
  *   3. Org boundary: caller must belong to room's organization
- *   4. Server-side role determination (isTeacher from claims, not client)
- *   5. TODO(Phase-2A-cont): Scope-level authorization (requires classId/stageId on rooms)
+ *   4. Scope authorization: caller must have access to room's scope
+ *      - classroom: classId required on room, must be in caller's classIds
+ *      - meeting/webinar: org boundary only (staff only, no students/parents)
+ *      - ALL checks fail-closed: missing metadata = DENY
+ *   5. Server-side role determination (from claims, not client input)
  *
  * Grants:
  *   - All authenticated users: roomJoin, canPublish, canSubscribe, canPublishData
@@ -26,7 +29,7 @@ import * as Sentry from '@sentry/node';
 import { AccessToken } from 'livekit-server-sdk';
 
 import { initSentry } from '../config/sentry';
-import { verifyOrgBoundary, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
+import { verifyOrgBoundary, verifyScopeAuthorization, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -36,8 +39,6 @@ const LIVEKIT_API_SECRET = defineSecret('LIVEKIT_API_SECRET');
 interface LiveKitTokenRequest {
   roomId: string;          // Required — server derives roomName from Firestore
   displayName?: string;
-  // roomName: REMOVED — derived from room document
-  // isTeacher: REMOVED — determined server-side from caller's role
 }
 
 interface LiveKitTokenResponse {
@@ -98,25 +99,43 @@ export const generateLiveKitToken = onCall(
     const callerOrgId = (request.auth.token.organizationId as string) || '';
     const roomOrgId = roomData['organizationId'] as string;
     const callerRole = (request.auth.token.role as string) || '';
+    const scopeAccessLevel = (request.auth.token.scopeAccessLevel as string) || '';
 
     if (!verifyOrgBoundary(callerOrgId, roomOrgId, callerRole)) {
+      await _logTokenDenied(db, uid, callerRole, callerOrgId, roomId, 'org_boundary', 'Cross-org access denied');
       Sentry.captureMessage(`Cross-org LiveKit token attempt: caller=${callerOrgId} room=${roomOrgId}`);
       throw new Error('You can only join rooms in your organization.');
+    }
+
+    // ── Scope authorization ──────────────────────────────────
+    // Load caller's scope arrays from Firestore user doc
+    const callerDoc = await db.collection('users').doc(uid).get();
+    const callerScope: Record<string, string[]> = {};
+    if (callerDoc.exists) {
+      const callerData = callerDoc.data()!;
+      callerScope['campusIds'] = callerData['campusIds'] as string[] || [];
+      callerScope['stageIds'] = callerData['stageIds'] as string[] || [];
+      callerScope['classIds'] = callerData['classIds'] as string[] || [];
+      callerScope['subjectIds'] = callerData['subjectIds'] as string[] || [];
+      callerScope['studentIds'] = callerData['studentIds'] as string[] || [];
+    }
+
+    const scopeResult = verifyScopeAuthorization(
+      scopeAccessLevel,
+      callerScope,
+      roomData as Record<string, unknown>,
+    );
+
+    if (!scopeResult.authorized) {
+      await _logTokenDenied(db, uid, callerRole, callerOrgId, roomId, scopeResult.reason ?? 'unknown', scopeResult.message ?? 'Scope authorization failed');
+      Sentry.captureMessage(`LiveKit scope denial: uid=${uid} room=${roomId} reason=${scopeResult.reason}`);
+      throw new Error(scopeResult.message || 'You are not authorized to access this room.');
     }
 
     // ── Server-side role determination ────────────────────────
     // roomAdmin grants classroom moderation: mute/unmute, remove participants,
     // end room. Determined from caller's claims, NOT from client input.
     const isTeacherOrAbove = LIVEKIT_ADMIN_ROLES.includes(callerRole as any);
-
-    // TODO(Phase-2A-cont): Add scope-level authorization here once
-    // livekit_rooms have classId/stageId/subjectId fields. Flow:
-    //   1. Read caller's scope arrays from users/{uid}
-    //   2. Check room.classId against caller.classIds (for class-scoped roles)
-    //   3. Check room.campusId against caller.campusIds (for campus-scoped roles)
-    //   4. Use fail-closed logic: empty scope array = DENY, not "all access"
-    //   5. Students: verify classId is in their enrolled classIds
-    //   6. Parents: verify studentId is in their linked studentIds
 
     // ── Build token ──────────────────────────────────────────
     const token = new AccessToken(
@@ -148,3 +167,37 @@ export const generateLiveKitToken = onCall(
     return { token: jwt };
   },
 );
+
+// ─── Audit Helper ─────────────────────────────────────────────
+
+/**
+ * Write an audit event when a LiveKit token is denied.
+ * These events are invaluable for monitoring and debugging
+ * during scope authorization rollout.
+ */
+async function _logTokenDenied(
+  db: admin.firestore.Firestore,
+  uid: string,
+  role: string,
+  orgId: string,
+  roomId: string,
+  reason: string,
+  message: string,
+): Promise<void> {
+  try {
+    await db.collection('audit_logs').add({
+      organizationId: orgId,
+      performedBy: uid,
+      performedByRole: role,
+      performedByOrgId: orgId,
+      action: 'livekit_token_denied',
+      targetType: 'livekit_room',
+      targetId: roomId,
+      metadata: { reason, message },
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch {
+    // Audit logging failure should never block the denial
+    console.warn('Failed to write livekit_token_denied audit event');
+  }
+}

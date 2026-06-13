@@ -2,14 +2,44 @@
 ///
 /// Each document represents a virtual classroom or proctored exam session
 /// that can be joined via LiveKit.
+///
+/// Scope fields (classId, stageId, campusId, subjectId) are used by the
+/// server-side scope validator to enforce class-level authorization.
+/// For roomType 'classroom', classId is mandatory.
+/// For roomType 'meeting', only org-level authorization is required.
+
+/// Explicit room type — determines which authorization rules apply.
+///
+/// - classroom:  classId required, scope validation enforced, fail-closed
+/// - meeting:    org boundary only, creator or admin role required
+/// - webinar:    org boundary + role-based access (future)
+enum RoomType {
+  classroom('classroom'),
+  meeting('meeting'),
+  webinar('webinar');
+
+  const RoomType(this.value);
+  final String value;
+
+  /// Parse from Firestore string, defaults to classroom if unknown.
+  static RoomType fromString(String? value) {
+    return RoomType.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => RoomType.classroom,
+    );
+  }
+}
 
 class LiveKitRoom {
   final String id;
   final String name;
   final String organizationId;
   final String? campusId;
+  final String? stageId;
+  final String? classId;
+  final String? subjectId;
   final String createdBy;
-  final String roomType; // 'classroom' | 'exam_proctoring' | 'meeting'
+  final RoomType roomType;
   final int? maxParticipants;
   final bool isActive;
   final bool isRecording;
@@ -24,6 +54,9 @@ class LiveKitRoom {
     required this.name,
     required this.organizationId,
     this.campusId,
+    this.stageId,
+    this.classId,
+    this.subjectId,
     required this.createdBy,
     required this.roomType,
     this.maxParticipants,
@@ -46,6 +79,9 @@ class LiveKitRoom {
   /// Class/grade name for this room (if set).
   String? get className => metadata['className'] as String?;
 
+  /// Whether this room requires scope-level authorization.
+  bool get requiresScopeAuthorization => roomType == RoomType.classroom;
+
   /// Construct from a Firestore document snapshot.
   factory LiveKitRoom.fromFirestore(Map<String, dynamic> data, String id) {
     return LiveKitRoom(
@@ -53,8 +89,11 @@ class LiveKitRoom {
       name: data['name'] as String? ?? '',
       organizationId: data['organizationId'] as String? ?? '',
       campusId: data['campusId'] as String?,
+      stageId: data['stageId'] as String?,
+      classId: data['classId'] as String?,
+      subjectId: data['subjectId'] as String?,
       createdBy: data['createdBy'] as String? ?? '',
-      roomType: data['roomType'] as String? ?? 'classroom',
+      roomType: RoomType.fromString(data['roomType'] as String?),
       maxParticipants: data['maxParticipants'] as int?,
       isActive: data['isActive'] as bool? ?? true,
       isRecording: data['isRecording'] as bool? ?? false,
@@ -80,8 +119,11 @@ class LiveKitRoom {
       'name': name,
       'organizationId': organizationId,
       'campusId': campusId,
+      'stageId': stageId,
+      'classId': classId,
+      'subjectId': subjectId,
       'createdBy': createdBy,
-      'roomType': roomType,
+      'roomType': roomType.value,
       'maxParticipants': maxParticipants,
       'isActive': isActive,
       'isRecording': isRecording,
@@ -108,6 +150,9 @@ class LiveKitRoom {
       name: name ?? this.name,
       organizationId: organizationId,
       campusId: campusId,
+      stageId: stageId,
+      classId: classId,
+      subjectId: subjectId,
       createdBy: createdBy,
       roomType: roomType,
       maxParticipants: maxParticipants ?? this.maxParticipants,

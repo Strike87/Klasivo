@@ -621,7 +621,10 @@ service cloud.firestore {
     match /livekit_rooms/{roomId} {
       allow read: if isAuth() && canReadInOrg();
       // Only teachers can create rooms; students cannot start rooms
-      allow create: if isStaffOrAbove() && canCreateInOrg();
+      // Classroom rooms (roomType == 'classroom') require classId for scope authorization
+      allow create: if isStaffOrAbove() && canCreateInOrg()
+        && (request.resource.data.roomType != 'classroom'
+            || request.resource.data.classId is string);
       // Only staff can update; identity fields (organizationId, createdBy, createdAt) are immutable
       // This prevents org-boundary bypass: a teacher cannot move a room to another org after creation
       allow update: if isStaffOrAbove() && canWriteInOrg()

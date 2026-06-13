@@ -99,9 +99,8 @@ class LiveClassLobbyScreen extends ConsumerWidget {
     try {
       final repo = ref.read(liveKitRepositoryProvider);
       final token = await repo.generateToken(
-        roomName: room.name,
+        roomId: room.id,
         displayName: displayName,
-        isTeacher: isTeacher,
       );
 
       if (context.mounted) {
@@ -159,7 +158,10 @@ class LiveClassLobbyScreen extends ConsumerWidget {
     final nameCtrl = TextEditingController();
     final subjectCtrl = TextEditingController();
     final classCtrl = TextEditingController();
-    String roomType = 'classroom';
+    final classIdCtrl = TextEditingController();
+    final stageIdCtrl = TextEditingController();
+    final campusIdCtrl = TextEditingController();
+    RoomType roomType = RoomType.classroom;
 
     showDialog(
       context: context,
@@ -194,16 +196,47 @@ class LiveClassLobbyScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                DropdownButtonFormField<RoomType>(
                   value: roomType,
                   decoration: const InputDecoration(labelText: 'Room Type'),
                   items: const [
-                    DropdownMenuItem(value: 'classroom', child: Text('Classroom')),
-                    DropdownMenuItem(value: 'exam_proctoring', child: Text('Exam Proctoring')),
-                    DropdownMenuItem(value: 'meeting', child: Text('Meeting')),
+                    DropdownMenuItem(value: RoomType.classroom, child: Text('Classroom')),
+                    DropdownMenuItem(value: RoomType.meeting, child: Text('Meeting')),
+                    DropdownMenuItem(value: RoomType.webinar, child: Text('Webinar')),
                   ],
-                  onChanged: (v) => setDialogState(() => roomType = v ?? 'classroom'),
+                  onChanged: (v) => setDialogState(() => roomType = v ?? RoomType.classroom),
                 ),
+                // Scope fields — required for classroom type
+                if (roomType == RoomType.classroom) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: classIdCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Class ID *',
+                      hintText: 'Firestore class document ID',
+                    ),
+                  ),
+                ],
+                if (roomType == RoomType.classroom) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: stageIdCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Stage ID',
+                      hintText: 'Optional — Firestore stage document ID',
+                    ),
+                  ),
+                ],
+                if (roomType == RoomType.classroom) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: campusIdCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Campus ID',
+                      hintText: 'Optional — Firestore campus document ID',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -214,11 +247,23 @@ class LiveClassLobbyScreen extends ConsumerWidget {
                 final name = nameCtrl.text.trim();
                 if (name.isEmpty) return;
 
+                // Classroom rooms require classId for scope authorization
+                if (roomType == RoomType.classroom && classIdCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Class ID is required for classroom sessions')),
+                  );
+                  return;
+                }
+
                 final repo = ref.read(liveKitRepositoryProvider);
                 final roomId = await repo.createRoom(LiveKitRoom(
                   id: '',
                   name: name,
                   organizationId: orgId,
+                  campusId: campusIdCtrl.text.trim().isEmpty ? null : campusIdCtrl.text.trim(),
+                  stageId: stageIdCtrl.text.trim().isEmpty ? null : stageIdCtrl.text.trim(),
+                  classId: classIdCtrl.text.trim().isEmpty ? null : classIdCtrl.text.trim(),
+                  subjectId: null, // TODO: populate from subject selection
                   createdBy: userId,
                   roomType: roomType,
                   isActive: true,
@@ -271,10 +316,9 @@ class _RoomCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final roomTypeIcon = switch (room.roomType) {
-      'classroom' => Icons.school,
-      'exam_proctoring' => Icons.shield,
-      'meeting' => Icons.groups,
-      _ => Icons.videocam,
+      RoomType.classroom => Icons.school,
+      RoomType.meeting => Icons.groups,
+      RoomType.webinar => Icons.cast_for_education,
     };
 
     return Card(
@@ -316,7 +360,7 @@ class _RoomCard extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 _InfoChip(
-                  label: room.roomType.replaceAll('_', ' ').toUpperCase(),
+                  label: room.roomType.value.toUpperCase(),
                   color: Colors.purple.shade100,
                 ),
               ],

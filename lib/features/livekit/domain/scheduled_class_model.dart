@@ -5,6 +5,8 @@
 /// The `scheduledClassReminder` Cloud Function sends push notifications
 /// 10 minutes before start.
 
+import 'livekit_room_model.dart';
+
 class ScheduledClass {
   final String id;
   final String title;
@@ -14,7 +16,7 @@ class ScheduledClass {
   final String teacherName;
   final String? subjectName;
   final String? className;
-  final String roomType; // 'classroom' | 'exam_proctoring' | 'meeting'
+  final RoomType roomType;
   final DateTime startsAt;
   final int? durationMinutes;
   final String? description;
@@ -33,7 +35,7 @@ class ScheduledClass {
     required this.teacherName,
     this.subjectName,
     this.className,
-    this.roomType = 'classroom',
+    this.roomType = RoomType.classroom,
     required this.startsAt,
     this.durationMinutes,
     this.description,
@@ -54,7 +56,7 @@ class ScheduledClass {
       teacherName: data['teacherName'] as String? ?? '',
       subjectName: data['subjectName'] as String?,
       className: data['className'] as String?,
-      roomType: data['roomType'] as String? ?? 'classroom',
+      roomType: RoomType.fromString(data['roomType'] as String?),
       startsAt: data['startsAt'] != null
           ? DateTime.tryParse(data['startsAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -81,7 +83,7 @@ class ScheduledClass {
       'teacherName': teacherName,
       'subjectName': subjectName,
       'className': className,
-      'roomType': roomType,
+      'roomType': roomType.value,
       'startsAt': startsAt.toIso8601String(),
       'durationMinutes': durationMinutes,
       'description': description,

@@ -36,7 +36,7 @@ import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 
 import { initSentry } from '../config/sentry';
-import { verifyOrgBoundary, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
+import { verifyOrgBoundary, verifyScopeAuthorization, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -174,6 +174,37 @@ function _sanitizeForAudit(body: Record<string, unknown> | undefined): Record<st
 // Apply audit logging to all v1 routes
 app.use('/v1', auditLog);
 
+// ─── LiveKit Token Denial Audit Helper ─────────────────────────
+
+/**
+ * Write an audit event when a LiveKit token is denied via the API.
+ * Invaluable for monitoring during scope authorization rollout.
+ */
+async function _logTokenDenied(
+  uid: string,
+  role: string,
+  orgId: string,
+  roomId: string,
+  reason: string,
+  message: string,
+): Promise<void> {
+  try {
+    await admin.firestore().collection('audit_logs').add({
+      organizationId: orgId,
+      performedBy: uid,
+      performedByRole: role,
+      performedByOrgId: orgId,
+      action: 'livekit_token_denied',
+      targetType: 'livekit_room',
+      targetId: roomId,
+      metadata: { reason, message },
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch {
+    console.warn('Failed to write livekit_token_denied audit event');
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Health Check
 // ═══════════════════════════════════════════════════════════════════
@@ -267,16 +298,37 @@ app.post(
       // ── Org boundary check ──────────────────────────────────
       const roomOrgId = roomData['organizationId'] as string;
       if (!verifyOrgBoundary(req.userOrgId ?? '', roomOrgId, req.userRole ?? '')) {
+        await _logTokenDenied(req.user!.uid, req.userRole ?? 'unknown', req.userOrgId ?? '', roomId, 'org_boundary', 'Cross-org access denied');
         Sentry.captureMessage(`Cross-org LiveKit token attempt (API): caller=${req.userOrgId} room=${roomOrgId}`);
         res.status(403).json({ error: 'You can only join rooms in your organization.' });
         return;
       }
 
+      // ── Scope authorization ────────────────────────────────
+      const scopeAccessLevel = (req.user?.token?.['scopeAccessLevel'] as string) || '';
+      const callerScope: Record<string, string[]> = {};
+
+      // Load caller's scope arrays from user doc (already loaded by verifyAuthToken middleware)
+      const callerDoc = await admin.firestore().collection('users').doc(req.user!.uid).get();
+      if (callerDoc.exists) {
+        const callerData = callerDoc.data()!;
+        callerScope['campusIds'] = callerData['campusIds'] as string[] || [];
+        callerScope['stageIds'] = callerData['stageIds'] as string[] || [];
+        callerScope['classIds'] = callerData['classIds'] as string[] || [];
+        callerScope['subjectIds'] = callerData['subjectIds'] as string[] || [];
+        callerScope['studentIds'] = callerData['studentIds'] as string[] || [];
+      }
+
+      const scopeResult = verifyScopeAuthorization(scopeAccessLevel, callerScope, roomData as Record<string, unknown>);
+      if (!scopeResult.authorized) {
+        await _logTokenDenied(req.user!.uid, req.userRole ?? 'unknown', req.userOrgId ?? '', roomId, scopeResult.reason ?? 'unknown', scopeResult.message ?? 'Scope authorization failed');
+        Sentry.captureMessage(`LiveKit scope denial (API): uid=${req.user!.uid} room=${roomId} reason=${scopeResult.reason}`);
+        res.status(403).json({ error: scopeResult.message || 'You are not authorized to access this room.' });
+        return;
+      }
+
       // ── Server-side role determination ──────────────────────
       const isTeacherOrAbove = LIVEKIT_ADMIN_ROLES.includes(req.userRole as any);
-
-      // TODO(Phase-2A-cont): Add scope-level authorization here
-      // (same as generateLiveKitToken callable)
 
       const { AccessToken } = await import('livekit-server-sdk');
 

@@ -32,16 +32,14 @@ class LiveKitTokenNotifier extends StateNotifier<AsyncValue<String>> {
   LiveKitTokenNotifier(this._repo) : super(const AsyncData(''));
 
   Future<String?> generateToken({
-    required String roomName,
+    required String roomId,
     String? displayName,
-    bool isTeacher = false,
   }) async {
     state = const AsyncLoading();
     try {
       final token = await _repo.generateToken(
-        roomName: roomName,
+        roomId: roomId,
         displayName: displayName,
-        isTeacher: isTeacher,
       );
       state = AsyncData(token);
       return token;
