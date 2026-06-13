@@ -728,7 +728,7 @@ class _ClassTile extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
               ),
               const SizedBox(width: 4),
-              Icon(Icons.class__rounded,
+              Icon(Icons.groups_rounded,
                   size: 12,
                   color: isSelected
                       ? AppColors.warning

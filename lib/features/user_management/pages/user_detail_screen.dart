@@ -378,16 +378,16 @@ class _ScopeTab extends ConsumerWidget {
 
         const SizedBox(height: 16),
 
-        // Current scope assignments
-        if (user.campusIds.isNotEmpty)
-          _ScopeChipList(
-              label: 'Campuses', ids: user.campusIds, type: 'campus'),
-        if (user.stageIds.isNotEmpty)
-          _ScopeChipList(
-              label: 'Stages', ids: user.stageIds, type: 'stage'),
-        if (user.classIds.isNotEmpty)
-          _ScopeChipList(
-              label: 'Classes', ids: user.classIds, type: 'class'),
+        // Current scope assignments — hierarchical tree view
+        if (user.hasScopeAssignment)
+          KlasivoCard(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _ReadOnlyScopeTree(user: user),
+            ),
+          ),
+
+        // Subjects remain as chips (no tree hierarchy for subjects)
         if (user.subjectIds.isNotEmpty)
           _ScopeChipList(
               label: 'Subjects', ids: user.subjectIds, type: 'subject'),
@@ -826,10 +826,292 @@ class _ScopeChipList extends StatelessWidget {
   IconData get _typeIcon => switch (type) {
         'campus' => Icons.location_city_rounded,
         'stage' => Icons.stairs_rounded,
-        'class' => Icons.class__rounded,
+        'class' => Icons.groups_rounded,
         'subject' => Icons.book_rounded,
         _ => Icons.circle_rounded,
       };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// READ-ONLY SCOPE TREE — User Detail view
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Read-only hierarchical tree showing the user's scope assignments.
+/// Highlights assigned nodes within the full org structure:
+///
+///   Main Campus ✓
+///   └─ Primary ✓
+///      ├─ 5A ✓
+///      ├─ 5B
+///      └─ 5C ✓
+class _ReadOnlyScopeTree extends ConsumerWidget {
+  final UserListItem user;
+
+  const _ReadOnlyScopeTree({required this.user});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final treeAsync = ref.watch(scopeTreeProvider);
+
+    return treeAsync.when(
+      loading: () => const Center(child: KlasivoLoading()),
+      error: (e, _) => Center(child: Text('Error loading tree: $e')),
+      data: (tree) {
+        if (tree.isEmpty) {
+          return const KlasivoEmptyState(
+            icon: Icons.account_tree_rounded,
+            title: 'No organizational structure',
+            subtitle: 'Create stages and classes first',
+          );
+        }
+
+        final assignedCampusIds = user.campusIds.toSet();
+        final assignedStageIds = user.stageIds.toSet();
+        final assignedClassIds = user.classIds.toSet();
+
+        // The tree may have campuses as roots, or stages as roots
+        // (when no campuses exist in the organization).
+        final hasCampusRoots = tree.isNotEmpty && tree.first.type == 'campus';
+
+        if (hasCampusRoots) {
+          // Filter to only campuses that have relevant assignments
+          final relevantCampuses = tree.where((campus) {
+            final isCampusAssigned = assignedCampusIds.contains(campus.id);
+            final hasAssignedChildren = campus.children.any(
+              (stage) =>
+                  assignedStageIds.contains(stage.id) ||
+                  stage.children
+                      .any((cls) => assignedClassIds.contains(cls.id)),
+            );
+            return isCampusAssigned || hasAssignedChildren;
+          }).toList();
+
+          if (relevantCampuses.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: relevantCampuses
+                .map((campus) => _ReadOnlyCampusNode(
+                      campus: campus,
+                      assignedCampusIds: assignedCampusIds,
+                      assignedStageIds: assignedStageIds,
+                      assignedClassIds: assignedClassIds,
+                    ))
+                .toList(),
+          );
+        }
+
+        // No campuses — stages are root nodes
+        final relevantStages = tree.where((stage) {
+          return assignedStageIds.contains(stage.id) ||
+              stage.children
+                  .any((cls) => assignedClassIds.contains(cls.id));
+        }).toList();
+
+        if (relevantStages.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: relevantStages
+              .asMap()
+              .entries
+              .map((entry) => _ReadOnlyStageNode(
+                    stage: entry.value,
+                    assignedStageIds: assignedStageIds,
+                    assignedClassIds: assignedClassIds,
+                    isLastStage: entry.key == relevantStages.length - 1,
+                  ))
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _ReadOnlyCampusNode extends StatelessWidget {
+  final ScopeTreeNode campus;
+  final Set<String> assignedCampusIds;
+  final Set<String> assignedStageIds;
+  final Set<String> assignedClassIds;
+
+  const _ReadOnlyCampusNode({
+    required this.campus,
+    required this.assignedCampusIds,
+    required this.assignedStageIds,
+    required this.assignedClassIds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAssigned = assignedCampusIds.contains(campus.id);
+
+    // Filter to stages with relevant assignments
+    final relevantStages = campus.children.where((stage) {
+      return assignedStageIds.contains(stage.id) ||
+          stage.children.any((cls) => assignedClassIds.contains(cls.id));
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Campus header
+          Row(
+            children: [
+              Icon(Icons.location_city_rounded,
+                  size: 18,
+                  color:
+                      isAssigned ? AppColors.primary : AppColors.lightTextTertiary),
+              const SizedBox(width: 8),
+              Text(campus.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: isAssigned
+                        ? AppColors.primary
+                        : AppColors.lightTextTertiary,
+                    fontWeight:
+                        isAssigned ? FontWeight.w600 : FontWeight.normal,
+                  )),
+              if (isAssigned) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.check_circle_rounded,
+                    size: 14, color: AppColors.success),
+              ],
+            ],
+          ),
+          // Stage children
+          ...relevantStages
+              .map((stage) => _ReadOnlyStageNode(
+                    stage: stage,
+                    assignedStageIds: assignedStageIds,
+                    assignedClassIds: assignedClassIds,
+                    isLastStage: stage == relevantStages.last,
+                  ))
+              .toList(),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadOnlyStageNode extends StatelessWidget {
+  final ScopeTreeNode stage;
+  final Set<String> assignedStageIds;
+  final Set<String> assignedClassIds;
+  final bool isLastStage;
+
+  const _ReadOnlyStageNode({
+    required this.stage,
+    required this.assignedStageIds,
+    required this.assignedClassIds,
+    required this.isLastStage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAssigned = assignedStageIds.contains(stage.id);
+    final stageConnector = isLastStage ? '└─ ' : '├─ ';
+
+    // Compute assigned classes with correct last-child tracking
+    final assignedClasses = stage.children
+        .where((cls) => assignedClassIds.contains(cls.id))
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(stageConnector,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+              Icon(Icons.stairs_rounded,
+                  size: 14,
+                  color: isAssigned
+                      ? AppColors.success
+                      : AppColors.lightTextTertiary),
+              const SizedBox(width: 6),
+              Text(stage.name,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight:
+                        isAssigned ? FontWeight.w600 : FontWeight.normal,
+                    color:
+                        isAssigned ? null : AppColors.lightTextTertiary,
+                  )),
+              if (isAssigned) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.check_circle_rounded,
+                    size: 12, color: AppColors.success),
+              ],
+            ],
+          ),
+          // Class children — with correct last-child detection
+          ...List.generate(assignedClasses.length, (i) {
+            final cls = assignedClasses[i];
+            return _ReadOnlyClassNode(
+              classNode: cls,
+              isAssigned: true,
+              isLast: i == assignedClasses.length - 1,
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadOnlyClassNode extends StatelessWidget {
+  final ScopeTreeNode classNode;
+  final bool isAssigned;
+  final bool isLast;
+
+  const _ReadOnlyClassNode({
+    required this.classNode,
+    required this.isAssigned,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final connector = isLast ? '   └─ ' : '   ├─ ';
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 32, bottom: 2),
+      child: Row(
+        children: [
+          Text(connector,
+              style:
+                  const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+          Icon(Icons.groups_rounded,
+              size: 12,
+              color: isAssigned
+                  ? AppColors.warning
+                  : AppColors.lightTextTertiary),
+          const SizedBox(width: 6),
+          Text(classNode.name,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight:
+                    isAssigned ? FontWeight.w600 : FontWeight.normal,
+                color:
+                    isAssigned ? null : AppColors.lightTextTertiary,
+              )),
+          if (isAssigned) ...[
+            const SizedBox(width: 6),
+            Icon(Icons.check_circle_rounded,
+                size: 10, color: AppColors.success),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _OverrideTile extends StatelessWidget {
