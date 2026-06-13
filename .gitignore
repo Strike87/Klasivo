@@ -91,6 +91,9 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 google-services.json
 GoogleService-Info.plist
 
+# Secrets inventory — never commit
+docs/secrets-inventory.md
+
 # Generated files
 .dart_tool/
 pubspec.lock
