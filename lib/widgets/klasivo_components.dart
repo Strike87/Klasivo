@@ -63,10 +63,14 @@ class KlasivoAnalyticsCard extends StatelessWidget {
           // Label + Trend
           Row(
             children: [
-              Text(
-                label,
-                style: KlasivoTypography.bodySmall.copyWith(
-                  color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+                  ),
                 ),
               ),
               if (trend != null) ...[
