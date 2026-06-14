@@ -382,8 +382,9 @@ class _TeacherRegistrationScreenState
                 const SizedBox(height: KlasivoSpacing.xxl),
 
                 // ── Login Link ──
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       'Already have an account? ',
