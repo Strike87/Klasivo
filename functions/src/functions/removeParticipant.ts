@@ -41,6 +41,7 @@ export const removeParticipant = onCall(
     memory: '256MiB',
     timeoutSeconds: 30,
     minInstances: 0,       // On-demand — not latency-critical
+    maxInstances: 20,      // Cap — removals are infrequent
     concurrency: 80,
   },
   async (request: CallableRequest<RemoveParticipantRequest>) => {

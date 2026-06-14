@@ -35,6 +35,7 @@ export const syncClaims = onCall(
     memory: '256MiB',
     timeoutSeconds: 60,
     minInstances: 0,
+    maxInstances: 20,      // Can burst on app open — allow moderate scaling
     concurrency: 80,
   },
   async (request: CallableRequest<SyncClaimsData>) => {

@@ -51,6 +51,7 @@ export const setPermissionOverrides = onCall(
     memory: '256MiB',
     timeoutSeconds: 60,
     minInstances: 0,
+    maxInstances: 10,      // Admin-only — very infrequent
     concurrency: 80,
   },
   async (request: CallableRequest<SetPermissionOverridesData>) => {

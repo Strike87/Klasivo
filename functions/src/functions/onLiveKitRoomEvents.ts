@@ -27,6 +27,7 @@ export const onLiveKitRoomCreated = onDocumentCreated(
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
+    minInstances: 0,
   },
   async (event) => {
     initSentry();
@@ -175,6 +176,7 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
+    minInstances: 0,
   },
   async (event) => {
     initSentry();

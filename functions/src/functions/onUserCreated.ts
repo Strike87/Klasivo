@@ -8,7 +8,7 @@ import { initSentry } from '../config/sentry';
 const db = admin.firestore();
 
 export const onUserCreated = functions
-  .runWith({ secrets: ['SENTRY_DSN'] })
+  .runWith({ secrets: ['SENTRY_DSN'], memory: '256MB', timeoutSeconds: 60 })
   .auth.user()
   .onCreate(async (user) => {
     initSentry();

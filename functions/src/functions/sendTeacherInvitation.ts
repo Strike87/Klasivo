@@ -8,7 +8,7 @@ import { initSentry } from '../config/sentry';
 import { verifyOrgBoundary, INVITATION_ROLES } from '../utils/rbac';
 
 export const sendTeacherInvitation = onCall(
-  { secrets: ['SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, concurrency: 80 },
+  { secrets: ['SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
   async (request) => {
     initSentry();
     Sentry.setTag('service', 'email');

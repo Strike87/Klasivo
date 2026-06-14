@@ -6,7 +6,7 @@ import { initSentry } from '../config/sentry';
 const db = admin.firestore();
 
 export const onUserDeleted = functions
-  .runWith({ secrets: ['SENTRY_DSN'] })
+  .runWith({ secrets: ['SENTRY_DSN'], memory: '256MB', timeoutSeconds: 120 })
   .auth.user().onDelete(async (user) => {
     initSentry();
     Sentry.setTag('service', 'auth');

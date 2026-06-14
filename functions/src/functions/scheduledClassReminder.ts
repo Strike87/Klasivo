@@ -23,6 +23,7 @@ export const scheduledClassReminder = onSchedule(
     memory: '256MiB',
     timeoutSeconds: 120,
     minInstances: 0,
+    maxInstances: 1,       // Only one instance needed for scheduled job
   },
   async () => {
     initSentry();

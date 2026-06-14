@@ -54,6 +54,7 @@ export const generateLiveKitToken = onCall(
     memory: '256MiB',
     timeoutSeconds: 30,
     minInstances: 1,      // Keep warm — latency-critical for live class join
+    maxInstances: 50,     // Cap to prevent runaway billing
     concurrency: 100,     // High concurrency — v2 supports up to 1000
     cpu: 1,               // Full CPU for fast JWT signing
   },

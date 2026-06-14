@@ -22,6 +22,7 @@ export const changeUserPassword = onCall(
     memory: '256MiB',
     timeoutSeconds: 60,
     minInstances: 0,
+    maxInstances: 10,      // Infrequent operation
     concurrency: 80,
   },
   async (request: CallableRequest<ChangePasswordData>) => {

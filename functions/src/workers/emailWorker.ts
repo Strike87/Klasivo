@@ -53,7 +53,7 @@ async function handleFailure(docRef: admin.firestore.DocumentReference, currentA
 }
 
 export const emailWorker = onDocumentWritten(
-  { document: 'emailQueue/{queueId}', secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
+  { document: 'emailQueue/{queueId}', secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], region: 'us-central1', memory: '256MiB', timeoutSeconds: 60, minInstances: 0 },
   async (event) => {
     initSentry();
     Sentry.setTag('service', 'email');

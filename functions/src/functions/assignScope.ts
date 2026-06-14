@@ -44,6 +44,7 @@ export const assignScope = onCall(
     memory: '256MiB',
     timeoutSeconds: 60,
     minInstances: 0,
+    maxInstances: 10,      // Admin-only — low concurrency need
     concurrency: 80,
   },
   async (request: CallableRequest<AssignScopeData>) => {
