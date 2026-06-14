@@ -1,0 +1,894 @@
+     1→import 'dart:async';
+     2→import 'package:flutter/material.dart';
+     3→import 'package:flutter_riverpod/flutter_riverpod.dart';
+     4→import 'package:firebase_core/firebase_core.dart';
+     5→import 'package:firebase_auth/firebase_auth.dart';
+     6→import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+     7→import 'package:flutter/foundation.dart';
+     8→import 'package:go_router/go_router.dart';
+     9→import 'package:hive_flutter/hive_flutter.dart';
+    10→
+    11→import 'core/config/theme.dart';
+    12→import 'core/config/app_constants.dart';
+    13→import 'features/auth/pages/splash_screen.dart';
+    14→import 'features/auth/pages/role_selection_screen.dart';
+    15→import 'features/auth/pages/teacher_login_screen.dart';
+    16→import 'features/auth/pages/teacher_registration_screen.dart';
+    17→import 'features/auth/pages/student_login_screen.dart';
+    18→import 'features/auth/pages/welcome_screen.dart';
+    19→import 'features/auth/pages/forgot_password_screen.dart';
+    20→import 'features/auth/pages/owner_register_screen.dart';
+    21→import 'features/shell/teacher_shell.dart';
+    22→import 'features/shell/student_shell.dart';
+    23→import 'features/shell/parent_shell.dart';
+    24→import 'features/dashboard/owner_dashboard.dart';
+    25→import 'features/dashboard/teacher_dashboard.dart';
+    26→import 'features/dashboard/student_dashboard.dart';
+    27→import 'features/classes/pages/class_list_screen.dart';
+    28→import 'features/classes/pages/class_form_screen.dart';
+    29→import 'features/students/pages/student_list_screen.dart';
+    30→import 'features/students/pages/student_form_screen.dart';
+    31→import 'features/students/pages/all_students_screen.dart';
+    32→import 'features/exams/pages/exam_list_screen.dart';
+    33→import 'features/exams/pages/exam_form_screen.dart';
+    34→import 'features/exams/pages/question_builder_screen.dart';
+    35→import 'features/exams/pages/exam_detail_screen.dart';
+    36→import 'features/student_exams/pages/student_exam_list_screen.dart';
+    37→import 'features/student_exams/pages/exam_taking_screen.dart';
+    38→import 'features/student_results/pages/student_results_screen.dart';
+    39→import 'features/teacher_results/pages/exam_results_screen.dart';
+    40→import 'features/stages/pages/stage_list_screen.dart';
+    41→import 'features/groups/pages/group_list_screen.dart';
+    42→import 'features/question_bank/pages/question_bank_screen.dart';
+    43→import 'features/notifications/pages/notification_center_screen.dart';
+    44→import 'features/notifications/pages/notification_detail_screen.dart';
+    45→import 'features/excel_import/pages/excel_import_screen.dart';
+    46→import 'features/qr/pages/qr_generate_screen.dart';
+    47→import 'features/qr/pages/qr_scan_screen.dart';
+    48→import 'features/analytics/pages/teacher_analytics_dashboard.dart';
+    49→import 'features/reports/pages/report_generation_screen.dart';
+    50→import 'features/integrity/pages/exam_integrity_dashboard.dart';
+    51→import 'features/settings/pages/settings_screen.dart';
+    52→import 'features/settings/pages/organization_settings_screen.dart';
+    53→import 'features/settings/pages/profile_settings_screen.dart';
+    54→import 'features/settings/pages/student_settings_screen.dart';
+    55→import 'features/settings/pages/feature_flags_screen.dart';
+    56→import 'features/exam_instances/pages/exam_instances_screen.dart';
+    57→// ─── v1.7 Imports ─────────────────────────────────────────────────────────────
+    58→import 'features/assignments/pages/assignment_list_screen.dart';
+    59→import 'features/assignments/pages/assignment_form_screen.dart';
+    60→import 'features/assignments/pages/assignment_detail_screen.dart';
+    61→import 'features/gradebook/pages/gradebook_screen.dart';
+    62→import 'features/attendance/pages/attendance_screen.dart';
+    63→import 'features/parent/pages/parent_login_screen.dart';
+    64→import 'features/parent/pages/parent_register_screen.dart';
+    65→import 'features/parent/pages/parent_link_screen.dart';
+    66→import 'features/parent/pages/parent_dashboard.dart';
+    67→import 'features/parent/pages/parent_assignments_screen.dart';
+    68→import 'features/parent/pages/parent_progress_screen.dart';
+    69→import 'features/parent/pages/parent_announcements_screen.dart';
+    70→import 'features/moderation/pages/moderation_queue_screen.dart';
+    71→import 'features/progress/pages/progress_tracking_screen.dart';
+    72→// ─── v1.7 LMS Imports ─────────────────────────────────────────────────────────
+    73→import 'features/lms/pages/subject_content_screen.dart';
+    74→import 'features/lms/pages/lesson_detail_screen.dart';
+    75→import 'features/lms/pages/material_viewer_screen.dart';
+    76→// ─── v1.8 Messaging Imports ────────────────────────────────────────────────────
+    77→import 'features/messaging/pages/conversation_list_screen.dart';
+    78→import 'features/messaging/pages/chat_screen.dart';
+    79→// ─── v1.9 Contact Us Import ────────────────────────────────────────────────────
+    80→import 'features/contact/pages/contact_us_screen.dart';
+    81→
+    82→// ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
+    83→import 'features/announcements/pages/announcement_list_screen.dart';
+    84→import 'features/announcements/pages/announcement_form_screen.dart';
+    85→import 'features/announcements/pages/announcement_detail_screen.dart';
+    86→import 'features/calendar/pages/calendar_screen.dart';
+    87→import 'features/calendar/pages/calendar_event_form_screen.dart';
+    88→import 'features/academic_years/pages/academic_year_list_screen.dart';
+    89→import 'features/academic_years/pages/academic_year_form_screen.dart';
+    90→import 'features/audit_log/pages/audit_log_screen.dart';
+    91→import 'providers/class_provider.dart';
+    92→import 'providers/student_provider.dart';
+    93→import 'providers/exam_provider.dart';
+    94→import 'providers/auth_provider.dart';
+    95→import 'providers/feature_flag_provider.dart';
+    96→import 'providers/event_bus_provider.dart';
+    97→import 'providers/permission_provider.dart';
+    98→import 'core/services/notification_service.dart';
+    99→import 'core/services/feature_flag_service.dart';
+   100→import 'core/services/permission_service.dart';
+   101→import 'core/services/event_bus.dart';
+   102→import 'firebase_options.dart';
+   103→
+   104→Future<void> main() async {
+   105→  WidgetsFlutterBinding.ensureInitialized();
+   106→
+   107→  // ─── Initialize Firebase with error handling ────────────────────────
+   108→  try {
+   109→    await Firebase.initializeApp(
+   110→      options: DefaultFirebaseOptions.currentPlatform,
+   111→    );
+   112→
+   113→    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+   114→
+   115→    PlatformDispatcher.instance.onError = (error, stack) {
+   116→      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+   117→      return true;
+   118→    };
+   119→
+   120→    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+   121→      !kDebugMode,
+   122→    );
+   123→  } catch (e) {
+   124→    debugPrint('Firebase initialization failed: $e');
+   125→  }
+   126→
+   127→  await Hive.initFlutter();
+   128→  await Hive.openBox(AppConstants.authBox);
+   129→
+   130→  try {
+   131→    await NotificationService.initialize();
+   132→  } catch (e) {
+   133→    debugPrint('Notification initialization failed: $e');
+   134→  }
+   135→
+   136→  runApp(const ProviderScope(child: MyApp()));
+   137→}
+   138→
+   139→class MyApp extends ConsumerStatefulWidget {
+   140→  const MyApp({Key? key}) : super(key: key);
+   141→
+   142→  @override
+   143→  ConsumerState<MyApp> createState() => _MyAppState();
+   144→}
+   145→
+   146→class _MyAppState extends ConsumerState<MyApp> {
+   147→  bool _initialized = false;
+   148→
+   149→  @override
+   150→  void initState() {
+   151→    super.initState();
+   152→    _initializeEnterpriseServices();
+   153→  }
+   154→
+   155→  Future<void> _initializeEnterpriseServices() async {
+   156→    try {
+   157→      final box = Hive.box(AppConstants.authBox);
+   158→      final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+   159→      final orgId = box.get('organizationId') as String?;
+   160→
+   161→      if (isLoggedIn && orgId != null) {
+   162→        // Load feature flags for the organization
+   163→        final flagService = ref.read(featureFlagServiceProvider);
+   164→        await flagService.loadFlags(orgId);
+   165→
+   166→        // Load custom permissions for the organization
+   167→        final permService = ref.read(permissionServiceProvider);
+   168→        await permService.loadPermissions(orgId);
+   169→
+   170→        debugPrint('[MyApp] Enterprise services initialized for org: $orgId');
+   171→      }
+   172→    } catch (e) {
+   173→      debugPrint('[MyApp] Enterprise service initialization failed: $e');
+   174→    }
+   175→
+   176→    if (mounted) {
+   177→      setState(() => _initialized = true);
+   178→    }
+   179→  }
+   180→
+   181→  @override
+   182→  Widget build(BuildContext context) {
+   183→    final router = ref.watch(routerProvider);
+   184→
+   185→    // Show splash while enterprise services are loading
+   186→    if (!_initialized) {
+   187→      return MaterialApp(
+   188→        debugShowCheckedModeBanner: false,
+   189→        theme: AppTheme.lightTheme,
+   190→        darkTheme: AppTheme.darkTheme,
+   191→        themeMode: ThemeMode.system,
+   192→        home: Scaffold(
+   193→          body: Center(
+   194→            child: Column(
+   195→              mainAxisSize: MainAxisSize.min,
+   196→              children: [
+   197→                const CircularProgressIndicator(strokeWidth: 3),
+   198→                const SizedBox(height: KlasivoSpacing.lg),
+   199→                Text(
+   200→                  'Loading Klasivo...',
+   201→                  style: KlasivoTypography.bodyMedium.copyWith(
+   202→                    color: KlasivoColors.lightTextTertiary,
+   203→                  ),
+   204→                ),
+   205→              ],
+   206→            ),
+   207→          ),
+   208→        ),
+   209→      );
+   210→    }
+   211→
+   212→    return MaterialApp.router(
+   213→      title: 'Klasivo',
+   214→      debugShowCheckedModeBanner: false,
+   215→      theme: AppTheme.lightTheme,
+   216→      darkTheme: AppTheme.darkTheme,
+   217→      themeMode: ThemeMode.system,
+   218→      routerConfig: router,
+   219→    );
+   220→  }
+   221→}
+   222→
+   223→// ─── Auth Change Notifier for GoRouter refresh ──────────────────────────────
+   224→
+   225→class AuthChangeNotifier extends ChangeNotifier {
+   226→  StreamSubscription<User?>? _firebaseSub;
+   227→  StreamSubscription? _hiveSub;
+   228→
+   229→  AuthChangeNotifier() {
+   230→    _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(
+   231→      (_) => notifyListeners(),
+   232→      onError: (_) => notifyListeners(),
+   233→    );
+   234→    _startHiveWatch();
+   235→  }
+   236→
+   237→  void _startHiveWatch() {
+   238→    // Use Hive's built-in watch() instead of polling every 500ms
+   239→    _hiveSub = Hive.box(AppConstants.authBox).watch().listen((event) {
+   240→      notifyListeners();
+   241→    });
+   242→  }
+   243→
+   244→  @override
+   245→  void dispose() {
+   246→    _firebaseSub?.cancel();
+   247→    _hiveSub?.cancel();
+   248→    super.dispose();
+   249→  }
+   250→}
+   251→
+   252→final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
+   253→  final notifier = AuthChangeNotifier();
+   254→  ref.onDispose(() => notifier.dispose());
+   255→  return notifier;
+   256→});
+   257→
+   258→// ─── GoRouter with Auth Guards & v1.7 Complete Navigation ─────────────────────
+   259→
+   260→final routerProvider = Provider<GoRouter>((ref) {
+   261→  final notifier = ref.watch(authChangeNotifierProvider);
+   262→
+   263→  return GoRouter(
+   264→    initialLocation: '/',
+   265→    debugLogDiagnostics: true,
+   266→    refreshListenable: notifier,
+   267→    redirect: (context, state) {
+   268→      final box = Hive.box(AppConstants.authBox);
+   269→      final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+   270→      final userRole = box.get('userRole', defaultValue: '') as String;
+   271→      final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
+   272→
+   273→      final isOnSplash = state.matchedLocation == '/';
+   274→      final isOnAuth = state.matchedLocation.startsWith('/auth');
+   275→      final isOnWelcome = state.matchedLocation == '/welcome';
+   276→      final isOnDashboard = state.matchedLocation.startsWith('/dashboard') ||
+   277→          state.matchedLocation.startsWith('/academic') ||
+   278→          state.matchedLocation.startsWith('/people') ||
+   279→          state.matchedLocation.startsWith('/inbox') ||
+   280→          state.matchedLocation.startsWith('/settings') ||
+   281→          state.matchedLocation.startsWith('/teacher') ||
+   282→          state.matchedLocation.startsWith('/lms');
+   283→      final isOnStudent = state.matchedLocation.startsWith('/student');
+   284→      final isOnParent = state.matchedLocation.startsWith('/parent') ||
+   285→          state.matchedLocation.startsWith('/auth/parent');
+   286→
+   287→      // Splash → redirect based on auth state
+   288→      if (isOnSplash) {
+   289→        if (isLoggedIn && userRole.isNotEmpty) {
+   290→          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+   291→            return '/welcome';
+   292→          }
+   293→          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+   294→            return '/dashboard';
+   295→          }
+   296→          if (userRole == AppConstants.roleStudent) return '/student';
+   297→          if (userRole == AppConstants.roleParent) return '/parent';
+   298→        }
+   299→        return '/auth';
+   300→      }
+   301→
+   302→      // Welcome screen — only accessible to logged-in owners who haven't completed setup
+   303→      if (isOnWelcome) {
+   304→        if (!isLoggedIn) return '/auth';
+   305→        if (userRole != AppConstants.roleOwner) return '/dashboard';
+   306→        if (hasCompletedSetup) return '/dashboard';
+   307→        return null;
+   308→      }
+   309→
+   310→      // Auth screens → redirect if already logged in
+   311→      if (isOnAuth) {
+   312→        if (isLoggedIn && userRole.isNotEmpty) {
+   313→          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+   314→            return '/welcome';
+   315→          }
+   316→          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+   317→            return '/dashboard';
+   318→          }
+   319→          if (userRole == AppConstants.roleStudent) return '/student';
+   320→          if (userRole == AppConstants.roleParent) return '/parent';
+   321→        }
+   322→        return null;
+   323→      }
+   324→
+   325→      // Protected screens → require login
+   326→      if (isOnDashboard || isOnStudent || isOnParent) {
+   327→        if (!isLoggedIn) return '/auth';
+   328→        if (userRole.isEmpty) return '/auth';
+   329→
+   330→        if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+   331→          return '/welcome';
+   332→        }
+   333→
+   334→        // ─── Feature Flag Gates ───────────────────────────────────────────
+   335→        // LMS routes require lms flag
+   336→        if (state.matchedLocation.startsWith('/lms')) {
+   337→          final flagService = ref.read(featureFlagServiceProvider);
+   338→          if (!flagService.isEnabled(FeatureFlags.lms)) {
+   339→            return '/dashboard';
+   340→          }
+   341→        }
+   342→
+   343→        // Parent portal requires parentPortal flag
+   344→        if (state.matchedLocation.startsWith('/parent') ||
+   345→            state.matchedLocation.startsWith('/auth/parent')) {
+   346→          final flagService = ref.read(featureFlagServiceProvider);
+   347→          if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
+   348→            if (userRole == AppConstants.roleParent) return '/auth';
+   349→            return '/dashboard';
+   350→          }
+   351→        }
+   352→
+   353→        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
+   354→            isOnDashboard) {
+   355→          return null;
+   356→        }
+   357→        if (userRole == AppConstants.roleStudent && isOnStudent) {
+   358→          return null;
+   359→        }
+   360→        if (userRole == AppConstants.roleParent && isOnParent) {
+   361→          return null;
+   362→        }
+   363→
+   364→        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+   365→          return '/dashboard';
+   366→        }
+   367→        if (userRole == AppConstants.roleStudent) return '/student';
+   368→        if (userRole == AppConstants.roleParent) return '/parent';
+   369→      }
+   370→
+   371→      return null;
+   372→    },
+   373→    routes: [
+   374→      // ─── Splash ──────────────────────────────────────────────────────
+   375→      GoRoute(
+   376→        path: '/',
+   377→        builder: (context, state) => const SplashScreen(),
+   378→      ),
+   379→
+   380→      // ─── Auth Routes ─────────────────────────────────────────────────
+   381→      GoRoute(
+   382→        path: '/auth',
+   383→        builder: (context, state) => const RoleSelectionScreen(),
+   384→        routes: [
+   385→          GoRoute(
+   386→            path: 'teacher-login',
+   387→            builder: (context, state) => const TeacherLoginScreen(),
+   388→          ),
+   389→          GoRoute(
+   390→            path: 'teacher-register',
+   391→            builder: (context, state) => const TeacherRegistrationScreen(),
+   392→          ),
+   393→          GoRoute(
+   394→            path: 'student-login',
+   395→            builder: (context, state) => const StudentLoginScreen(),
+   396→          ),
+   397→          GoRoute(
+   398→            path: 'parent-login',
+   399→            builder: (context, state) => const ParentLoginScreen(),
+   400→          ),
+   401→          GoRoute(
+   402→            path: 'parent-register',
+   403→            builder: (context, state) => const ParentRegisterScreen(),
+   404→          ),
+   405→          GoRoute(
+   406→            path: 'forgot-password',
+   407→            builder: (context, state) => const ForgotPasswordScreen(),
+   408→          ),
+   409→          GoRoute(
+   410→            path: 'owner-register',
+   411→            builder: (context, state) => const OwnerRegisterScreen(),
+   412→          ),
+   413→        ],
+   414→      ),
+   415→
+   416→      // ─── Welcome / Org Naming ────────────────────────────────────────
+   417→      GoRoute(
+   418→        path: '/welcome',
+   419→        builder: (context, state) => const WelcomeScreen(),
+   420→      ),
+   421→
+   422→      // ─── Contact Us (public — no auth required) ─────────────────────
+   423→      GoRoute(
+   424→        path: '/contact',
+   425→        builder: (context, state) => const ContactUsScreen(),
+   426→      ),
+   427→
+   428→      // ─── Parent Link Screen ──────────────────────────────────────────
+   429→      GoRoute(
+   430→        path: '/auth/parent-link',
+   431→        builder: (context, state) => const ParentLinkScreen(),
+   432→      ),
+   433→
+   434→      // ─── Teacher/Owner Shell Navigation ──────────────────────────────
+   435→      ShellRoute(
+   436→        builder: (context, state, child) => TeacherShell(child: child),
+   437→        routes: [
+   438→          // Dashboard
+   439→          GoRoute(
+   440→            path: '/dashboard',
+   441→            builder: (context, state) => const OwnerDashboard(),
+   442→          ),
+   443→
+   444→          // Academic
+   445→          GoRoute(
+   446→            path: '/academic',
+   447→            builder: (context, state) => const StageListScreen(),
+   448→            routes: [
+   449→              GoRoute(
+   450→                path: 'stages/:stageId/classes',
+   451→                builder: (context, state) {
+   452→                  final stageId = state.pathParameters['stageId']!;
+   453→                  return ClassListScreen(stageId: stageId);
+   454→                },
+   455→                routes: [
+   456→                  GoRoute(
+   457→                    path: 'create',
+   458→                    builder: (context, state) {
+   459→                      final stageId = state.extra as String? ??
+   460→                          state.pathParameters['stageId'] ?? '';
+   461→                      return ClassFormScreen(
+   462→                        isEditing: false,
+   463→                        stageId: stageId,
+   464→                      );
+   465→                    },
+   466→                  ),
+   467→                ],
+   468→              ),
+   469→            ],
+   470→          ),
+   471→
+   472→          // People
+   473→          GoRoute(
+   474→            path: '/people',
+   475→            builder: (context, state) => const AllStudentsScreen(),
+   476→          ),
+   477→
+   478→          // Inbox (Messages + Notifications + Announcements)
+   479→          GoRoute(
+   480→            path: '/inbox',
+   481→            builder: (context, state) => const NotificationCenterScreen(),
+   482→            routes: [
+   483→              GoRoute(
+   484→                path: 'notifications',
+   485→                builder: (context, state) => const NotificationCenterScreen(),
+   486→              ),
+   487→              GoRoute(
+   488→                path: 'notifications/:id',
+   489→                builder: (context, state) {
+   490→                  final notificationId = state.pathParameters['id']!;
+   491→                  return NotificationDetailScreen(notificationId: notificationId);
+   492→                },
+   493→              ),
+   494→              GoRoute(
+   495→                path: 'messages',
+   496→                builder: (context, state) => const ConversationListScreen(),
+   497→                routes: [
+   498→                  GoRoute(
+   499→                    path: ':conversationId',
+   500→                    builder: (context, state) {
+   501→                      final conversationId = state.pathParameters['conversationId']!;
+   502→                      return ChatScreen(conversationId: conversationId);
+   503→                    },
+   504→                  ),
+   505→                ],
+   506→              ),
+   507→              GoRoute(
+   508→                path: 'announcements',
+   509→                builder: (context, state) => const AnnouncementListScreen(),
+   510→              ),
+   511→              GoRoute(
+   512→                path: 'announcements/create',
+   513→                builder: (context, state) => const AnnouncementFormScreen(isEditing: false),
+   514→              ),
+   515→              GoRoute(
+   516→                path: 'announcements/:id',
+   517→                builder: (context, state) {
+   518→                  final id = state.pathParameters['id']!;
+   519→                  return AnnouncementDetailScreen(announcementId: id);
+   520→                },
+   521→              ),
+   522→            ],
+   523→          ),
+   524→
+   525→          // Settings
+   526→          GoRoute(
+   527→            path: '/settings',
+   528→            builder: (context, state) => const SettingsScreen(),
+   529→            routes: [
+   530→              GoRoute(
+   531→                path: 'organization',
+   532→                builder: (context, state) => const OrganizationSettingsScreen(),
+   533→              ),
+   534→              GoRoute(
+   535→                path: 'profile',
+   536→                builder: (context, state) => const ProfileSettingsScreen(),
+   537→              ),
+   538→              GoRoute(
+   539→                path: 'feature-flags',
+   540→                builder: (context, state) => const FeatureFlagsScreen(),
+   541→              ),
+   542→            ],
+   543→          ),
+   544→        ],
+   545→      ),
+   546→
+   547→      // ─── LMS Routes (outside shell for full-screen content browser) ───
+   548→      GoRoute(
+   549→        path: '/lms/subject/:subjectId',
+   550→        builder: (context, state) {
+   551→          final subjectId = state.pathParameters['subjectId']!;
+   552→          final subjectName = state.uri.queryParameters['name'] ?? 'Subject';
+   553→          final classId = state.uri.queryParameters['classId'] ?? '';
+   554→          return SubjectContentScreen(
+   555→            subjectId: subjectId,
+   556→            subjectName: subjectName,
+   557→            classId: classId,
+   558→          );
+   559→        },
+   560→      ),
+   561→      GoRoute(
+   562→        path: '/lms/lessons/:lessonId',
+   563→        builder: (context, state) {
+   564→          final lessonId = state.pathParameters['lessonId']!;
+   565→          final extra = state.extra as Map<String, dynamic>? ?? {};
+   566→          final subjectId = extra['subjectId'] as String? ?? '';
+   567→          return LessonDetailScreen(
+   568→            lessonId: lessonId,
+   569→            subjectId: subjectId,
+   570→          );
+   571→        },
+   572→      ),
+   573→      GoRoute(
+   574→        path: '/lms/materials/:materialId',
+   575→        builder: (context, state) {
+   576→          final materialId = state.pathParameters['materialId']!;
+   577→          final extra = state.extra as Map<String, dynamic>? ?? {};
+   578→          final subjectId = extra['subjectId'] as String?;
+   579→          return MaterialViewerScreen(
+   580→            materialId: materialId,
+   581→            subjectId: subjectId,
+   582→          );
+   583→        },
+   584→      ),
+   585→
+   586→      // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
+   587→      GoRoute(
+   588→        path: '/teacher',
+   589→        builder: (context, state) => const TeacherDashboard(),
+   590→        routes: [
+   591→          GoRoute(
+   592→            path: 'classes',
+   593→            builder: (context, state) => const ClassListScreen(),
+   594→            routes: [
+   595→              GoRoute(
+   596→                path: 'create',
+   597→                builder: (context, state) {
+   598→                  final stageId = state.extra as String?;
+   599→                  return ClassFormScreen(isEditing: false, stageId: stageId);
+   600→                },
+   601→              ),
+   602→              GoRoute(
+   603→                path: 'edit/:classId',
+   604→                builder: (context, state) {
+   605→                  final classData = state.extra as ClassData?;
+   606→                  return ClassFormScreen(isEditing: true, classData: classData);
+   607→                },
+   608→              ),
+   609→              GoRoute(
+   610→                path: ':classId/students',
+   611→                builder: (context, state) {
+   612→                  final classId = state.pathParameters['classId']!;
+   613→                  return StudentListScreen(classId: classId);
+   614→                },
+   615→                routes: [
+   616→                  GoRoute(
+   617→                    path: 'create',
+   618→                    builder: (context, state) {
+   619→                      final classId = state.pathParameters['classId']!;
+   620→                      return StudentFormScreen(classId: classId, isEditing: false);
+   621→                    },
+   622→                  ),
+   623→                  GoRoute(
+   624→                    path: 'edit/:studentId',
+   625→                    builder: (context, state) {
+   626→                      final classId = state.pathParameters['classId']!;
+   627→                      final studentData = state.extra as StudentData?;
+   628→                      return StudentFormScreen(classId: classId, isEditing: true, studentData: studentData);
+   629→                    },
+   630→                  ),
+   631→                  GoRoute(
+   632→                    path: 'import',
+   633→                    builder: (context, state) {
+   634→                      final classId = state.pathParameters['classId']!;
+   635→                      return ExcelImportScreen(classId: classId);
+   636→                    },
+   637→                  ),
+   638→                  GoRoute(
+   639→                    path: 'qr',
+   640→                    builder: (context, state) {
+   641→                      final classId = state.pathParameters['classId']!;
+   642→                      return QrGenerateScreen(classId: classId);
+   643→                    },
+   644→                  ),
+   645→                  GoRoute(
+   646→                    path: 'groups',
+   647→                    builder: (context, state) {
+   648→                      final classId = state.pathParameters['classId']!;
+   649→                      return GroupListScreen(classId: classId);
+   650→                    },
+   651→                  ),
+   652→                ],
+   653→              ),
+   654→            ],
+   655→          ),
+   656→          GoRoute(
+   657→            path: 'students',
+   658→            builder: (context, state) => const AllStudentsScreen(),
+   659→          ),
+   660→          GoRoute(
+   661→            path: 'exams',
+   662→            builder: (context, state) => const ExamListScreen(),
+   663→            routes: [
+   664→              GoRoute(
+   665→                path: 'create',
+   666→                builder: (context, state) => const ExamFormScreen(isEditing: false),
+   667→              ),
+   668→              GoRoute(
+   669→                path: 'edit/:examId',
+   670→                builder: (context, state) {
+   671→                  final examData = state.extra as ExamData?;
+   672→                  return ExamFormScreen(isEditing: true, examData: examData);
+   673→                },
+   674→              ),
+   675→              GoRoute(
+   676→                path: ':examId',
+   677→                builder: (context, state) {
+   678→                  final examId = state.pathParameters['examId']!;
+   679→                  return ExamDetailScreen(examId: examId);
+   680→                },
+   681→                routes: [
+   682→                  GoRoute(
+   683→                    path: 'questions',
+   684→                    builder: (context, state) {
+   685→                      final examId = state.pathParameters['examId']!;
+   686→                      return QuestionBuilderScreen(examId: examId);
+   687→                    },
+   688→                  ),
+   689→                  GoRoute(
+   690→                    path: 'results',
+   691→                    builder: (context, state) {
+   692→                      final examId = state.pathParameters['examId']!;
+   693→                      return ExamResultsScreen(examId: examId);
+   694→                    },
+   695→                  ),
+   696→                  GoRoute(
+   697→                    path: 'instances',
+   698→                    builder: (context, state) {
+   699→                      final examId = state.pathParameters['examId']!;
+   700→                      return ExamInstancesScreen(examId: examId);
+   701→                    },
+   702→                  ),
+   703→                ],
+   704→              ),
+   705→            ],
+   706→          ),
+   707→          GoRoute(
+   708→            path: 'stages',
+   709→            builder: (context, state) => const StageListScreen(),
+   710→            routes: [
+   711→              GoRoute(
+   712→                path: ':stageId/classes',
+   713→                builder: (context, state) {
+   714→                  final stageId = state.pathParameters['stageId']!;
+   715→                  return ClassListScreen(stageId: stageId);
+   716→                },
+   717→              ),
+   718→            ],
+   719→          ),
+   720→          GoRoute(
+   721→            path: 'question-bank',
+   722→            builder: (context, state) => const QuestionBankScreen(),
+   723→          ),
+   724→
+   725→          // ─── Calendar ─────────────────────────────────────────────────
+   726→          GoRoute(
+   727→            path: 'calendar',
+   728→            builder: (context, state) => const CalendarScreen(),
+   729→          ),
+   730→
+   731→          // ─── Academic Years ─────────────────────────────────────────────
+   732→          GoRoute(
+   733→            path: 'academic-years',
+   734→            builder: (context, state) => const AcademicYearListScreen(),
+   735→          ),
+   736→
+   737→          // ─── v1.7 New Routes ──────────────────────────────────────────
+   738→          GoRoute(
+   739→            path: 'assignments',
+   740→            builder: (context, state) => const AssignmentListScreen(),
+   741→            routes: [
+   742→              GoRoute(
+   743→                path: 'create',
+   744→                builder: (context, state) => const AssignmentFormScreen(isEditing: false),
+   745→              ),
+   746→              GoRoute(
+   747→                path: ':assignmentId',
+   748→                builder: (context, state) {
+   749→                  final assignmentId = state.pathParameters['assignmentId']!;
+   750→                  return AssignmentDetailScreen(assignmentId: assignmentId);
+   751→                },
+   752→              ),
+   753→            ],
+   754→          ),
+   755→          GoRoute(
+   756→            path: 'gradebook',
+   757→            builder: (context, state) => const GradebookScreen(),
+   758→          ),
+   759→          GoRoute(
+   760→            path: 'attendance',
+   761→            builder: (context, state) => const AttendanceScreen(),
+   762→          ),
+   763→
+   764→          // ─── Existing v1.6 Routes ────────────────────────────────────
+   765→          GoRoute(
+   766→            path: 'notifications',
+   767→            builder: (context, state) => const NotificationCenterScreen(),
+   768→          ),
+   769→          GoRoute(
+   770→            path: 'analytics',
+   771→            builder: (context, state) => const TeacherAnalyticsDashboard(),
+   772→          ),
+   773→          GoRoute(
+   774→            path: 'reports',
+   775→            builder: (context, state) => const ReportGenerationScreen(),
+   776→          ),
+   777→          GoRoute(
+   778→            path: 'integrity',
+   779→            builder: (context, state) => const ExamIntegrityDashboard(),
+   780→          ),
+   781→
+   782→          // ─── Audit Log (Owners Only) ──────────────────────────────────
+   783→          GoRoute(
+   784→            path: 'audit-log',
+   785→            builder: (context, state) => const AuditLogScreen(),
+   786→          ),
+   787→
+   788→          // ─── Moderation Queue ──────────────────────────────────────────
+   789→          GoRoute(
+   790→            path: 'moderation',
+   791→            builder: (context, state) => const ModerationQueueScreen(),
+   792→          ),
+   793→
+   794→          // ─── Progress Tracking ───────────────────────────────────────
+   795→          GoRoute(
+   796→            path: 'progress',
+   797→            builder: (context, state) {
+   798→              final classId = state.uri.queryParameters['classId'] ?? '';
+   799→              final className = state.uri.queryParameters['className'] ?? 'Class';
+   800→              return ProgressTrackingScreen(classId: classId, className: className);
+   801→            },
+   802→          ),
+   803→        ],
+   804→      ),
+   805→
+   806→      // ─── Student Shell Navigation ────────────────────────────────────
+   807→      ShellRoute(
+   808→        builder: (context, state, child) => StudentShell(child: child),
+   809→        routes: [
+   810→          GoRoute(
+   811→            path: '/student',
+   812→            builder: (context, state) => const StudentDashboard(),
+   813→          ),
+   814→        ],
+   815→      ),
+   816→
+   817→      // ─── Parent Shell Navigation ─────────────────────────────────────
+   818→      ShellRoute(
+   819→        builder: (context, state, child) => ParentShell(child: child),
+   820→        routes: [
+   821→          GoRoute(
+   822→            path: '/parent',
+   823→            builder: (context, state) => const ParentDashboard(),
+   824→          ),
+   825→          GoRoute(
+   826→            path: '/parent/results',
+   827→            builder: (context, state) => const ParentResultsView(),
+   828→          ),
+   829→          GoRoute(
+   830→            path: '/parent/attendance',
+   831→            builder: (context, state) => const ParentAttendanceView(),
+   832→          ),
+   833→          GoRoute(
+   834→            path: '/parent/assignments',
+   835→            builder: (context, state) => const ParentAssignmentsScreen(),
+   836→          ),
+   837→          GoRoute(
+   838→            path: '/parent/progress',
+   839→            builder: (context, state) => const ParentProgressScreen(),
+   840→          ),
+   841→          GoRoute(
+   842→            path: '/parent/announcements',
+   843→            builder: (context, state) => const ParentAnnouncementsScreen(),
+   844→          ),
+   845→        ],
+   846→      ),
+   847→
+   848→      // ─── Student Settings Route ──────────────────────────────────────
+   849→      GoRoute(
+   850→        path: '/student/settings',
+   851→        builder: (context, state) => const StudentSettingsScreen(),
+   852→      ),
+   853→
+   854→      // ─── Student Deep Routes (outside shell for full-screen) ─────────
+   855→      GoRoute(
+   856→        path: '/student/exams',
+   857→        builder: (context, state) => const StudentExamListScreen(),
+   858→        routes: [
+   859→          GoRoute(
+   860→            path: ':examId/take',
+   861→            builder: (context, state) {
+   862→              final examId = state.pathParameters['examId']!;
+   863→              return ExamTakingScreen(examId: examId);
+   864→            },
+   865→          ),
+   866→        ],
+   867→      ),
+   868→      GoRoute(
+   869→        path: '/student/results',
+   870→        builder: (context, state) => const StudentResultsScreen(),
+   871→        routes: [
+   872→          GoRoute(
+   873→            path: ':submissionId',
+   874→            builder: (context, state) {
+   875→              final submissionId = state.pathParameters['submissionId']!;
+   876→              return StudentResultDetailScreen(submissionId: submissionId);
+   877→            },
+   878→          ),
+   879→        ],
+   880→      ),
+   881→      GoRoute(
+   882→        path: '/student/scan-qr',
+   883→        builder: (context, state) => const QrScanScreen(),
+   884→      ),
+   885→      GoRoute(
+   886→        path: '/student/notifications',
+   887→        builder: (context, state) => const NotificationCenterScreen(),
+   888→      ),
+   889→    ],
+   890→  );
+   891→});
+   892→
+   893→
+   894→
