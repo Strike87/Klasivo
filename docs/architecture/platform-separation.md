@@ -2,7 +2,9 @@
 
 **Status**: Approved — v1.x Implementation Roadmap  
 **Date**: 2026-06-13  
-**Sprint Target**: Sprint 4+ (after RBAC foundation is complete)
+**Sprint Target**: Sprint 5+ (after RBAC foundation + adoption features are complete)
+
+> **Note (2026-06-15):** Roadmap re-prioritized. Dashboard and platform separation work is now scheduled after adoption-driving features (Teacher Approval, Assignments, Parent Engagement, Student Engagement). See `DEVELOPMENT_ROADMAP.md` for current priority order. Sprint 4 is now School Accounts, not Dashboard.
 
 ---
 
@@ -109,6 +111,8 @@ Do NOT start `dashboard.klasivo.app` or `platform.klasivo.app` yet.
 
 The RBAC foundation must exist first. Without Sprint 2: Dashboard = UI without security.
 
+**Additionally (2026-06-15 re-prioritization):** Even after RBAC is complete, adoption-driving features (Teacher Approval, Assignment Submission, Parent Enhancement, Student Engagement) take priority over the dashboard. Schools need these features on mobile before they need a web dashboard. The dashboard is for efficiency at scale — not an adoption driver at the current stage.
+
 ---
 
 ## Updated Roadmap
@@ -186,7 +190,7 @@ status.klasivo.app         → Status Page (later)
 docs.klasivo.app           → Documentation (later)
 ```
 
-**Today**: Priority = Sprint 2/3 (RBAC foundation). Not subdomains.
+**Today**: Priority = Sprint 1+2 Merge → Sprint 3 (RBAC + adoption features). Not subdomains.
 
 ---
 

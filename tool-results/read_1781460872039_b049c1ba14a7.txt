@@ -1,0 +1,1264 @@
+     1→# Klasivo — Unified Development Roadmap
+     2→
+     3→> **Current Version:** v2.0.0+7  
+     4→> **Platform:** Android (Flutter 3.x / Dart 3.x) → Multi-platform (Mobile + Web + Dashboard)  
+     5→> **Architecture:** Clean Architecture + Riverpod + Firebase + Monorepo  
+     6→> **Last Updated:** 2026-06-15  
+     7→> **Source of Truth:** This document supersedes all previous roadmap versions.
+     8→
+     9→---
+    10→
+    11→## How This Roadmap Works
+    12→
+    13→This roadmap uses **three parallel tracks** that proceed independently but converge:
+    14→
+    15→- **Releases** (v2.1, v2.2, ...) — user-facing feature deliveries, each produces a shippable build
+    16→- **Sprints** (Sprint 1, 2, ...) — infrastructure/RBAC work that enables platform-scale features
+    17→- **Migration Phases** (M1–M8) — zero-downtime migration from MVP to production SaaS platform
+    18→
+    19→A release may span multiple sprints. A sprint may contribute to multiple releases. Dependencies are explicitly mapped.
+    20→
+    21→```
+    22→Releases:      v2.0 ─── v2.1 ─── v2.2 ─── v2.3 ─── v2.4 ─── v2.5 ─── v2.6 ─── v3.0
+    23→                   \       \       \                \       \       \        \
+    24→Sprints:        S1+S2 ──  S3 ──  S3B ─── S4 ─── S5 ─── S6 ─── S7 ─── S8 ─── S9+
+    25→                                                                     \
+    26→Migration:                                             M1 ── M2 ── M3 ── M4 ── M5 ── M6 ── M7 ── M8
+    27→```
+    28→
+    29→---
+    30→
+    31→## Version History
+    32→
+    33→| Version | Focus | Release | Sprint | Status |
+    34→|---------|-------|---------|--------|--------|
+    35→| **v1.0** | Core exam platform (auth, exams, grading) | v1.0 | — | ✅ Complete |
+    36→| **v1.1–v1.4** | Student dashboard, auto-save, timer, violations | v1.4 | — | ✅ Complete |
+    37→| **v1.5** | QR enrollment, notifications, PDF reports | v1.5 | — | ✅ Complete |
+    38→| **v1.6** | Announcements, Calendar, Academic Years, Audit Logs | v1.6 | — | ✅ Complete |
+    39→| **v1.7** | Enterprise foundations (Tokens, Components, Flags, EventBus, Permissions) | v1.7 | — | ✅ Complete |
+    40→| **v1.8** | Feature Completion (LMS, Messaging, legacy cleanup) | v1.8 | — | ✅ Complete |
+    41→| **v1.9** | Polish & Integration (component migration, tests, CI/CD) | v1.9 | — | ✅ Complete |
+    42→| **v2.0** | Dark mode, Push notifications, Video player, Content tracking | v2.0 | — | ✅ Complete |
+    43→| **v2.0.1** | Bug fixes (WidgetRef, mounted guards, adaptive icon, auth data sync) | v2.0.1 | — | ✅ Complete |
+    44→| **v2.1** | Video Library & Recorded Lessons (YouTube Integration) | v2.1 | — | 🔲 Planned |
+    45→| **v2.2** | Chat attachments, Offline caching, Enhanced attendance | v2.2 | — | 🔲 Planned |
+    46→| **v2.3** | Teacher Approval Workflow, Role-based routing | v2.3 | S3+S3B | 🔲 Planned |
+    47→| **v2.4** | Assignment Submission API, Parent Accounts Enhanced | v2.4 | — | 🔲 Planned |
+    48→| **v2.5** | School Accounts / Multi-Tenancy, Analytics Dashboard, Web Dashboard | v2.5 | S4+S5 | 🔲 Planned |
+    49→| **v2.6** | Subscription & Billing | v2.6 | — | 🔲 Planned |
+    50→| **v3.0** | Full Dashboard Platform — Owner, School, Teacher, Parent, Student dashboards | v3.0 | S7+S8+M1-M8 | 🔲 Planned |
+    51→
+    52→---
+    53→
+    54→## Sprint History
+    55→
+    56→| Sprint | Focus | Status | Code Location |
+    57→|--------|-------|--------|---------------|
+    58→| **Sprint 1** | LiveKit — rooms, token gen, lobby, chat, hands, attendance, recordings, scheduled classes, analytics | ✅ Coded | `klasivo/lib/features/livekit/` + `klasivo/functions/` |
+    59→| **Sprint 2** | RBAC Infrastructure — Custom Claims, Firestore Rules, Scope-level auth, Password Flow, Audit Logs | ✅ Coded | `klasivo/lib/core/rbac/` + `klasivo/functions/src/` |
+    60→| **Sprint 2A** | Scope-level LiveKit authorization (verifyScopeAuthorization, SCOPE_REQUIREMENTS, room-type-based checks, fail-closed) | ✅ Coded | `klasivo/functions/src/utils/rbac.ts` + `generateLiveKitToken.ts` |
+    61→| **Sprint 3** | Scope Enforcement, Claims Caching, Error Handling, Role Hierarchy helpers | 🔲 Next | — |
+    62→| **Sprint 3B** | User Management UI — People Hub, Role Matrix, Scope Assignment, Permission Overrides | 🟡 Partial | `klasivo/lib/features/user_management/` (screens exist, routes not wired) |
+    63→| **Sprint 4** | Flutter Web Dashboard Skeleton at `dashboard.klasivo.app` | 🔲 Planned | — |
+    64→| **Sprint 5** | Analytics, Bulk Import, Audit Viewer, Reports (dashboard pages) | 🔲 Planned | — |
+    65→| **Sprint 6** | Admin Mobile Companion (read-focused subset for admin roles) | 🔲 Planned | — |
+    66→| **Sprint 7** | `platform.klasivo.app` — Super Admin / Owner Platform | 🔲 Planned | — |
+    67→| **Sprint 8** | Platform Separation — subdomain routing, auth flow separation | 🔲 Planned | — |
+    68→| **Sprint 9+** | Full Dashboard Platform completion, Billing, Scale | 🔲 Planned | — |
+    69→
+    70→---
+    71→
+    72→## Dependency Map
+    73→
+    74→```
+    75→┌─────────────────────────────────────────────────────────────────────┐
+    76→│  BLOCKER: Sprint 1+2 code must be MERGED into klasivo-repo first   │
+    77→│  All Sprint 3+ work depends on this merge.                          │
+    78→└──────────────────────────────┬──────────────────────────────────────┘
+    79→                               │
+    80→          ┌────────────────────┼────────────────────┐
+    81→          │                    │                     │
+    82→          ▼                    ▼                     ▼
+    83→   ┌──────────┐      ┌──────────────┐      ┌──────────────┐
+    84→   │ v2.1     │      │ Sprint 3     │      │ v2.2         │
+    85→   │ Video    │      │ Scope        │      │ Chat,        │
+    86→   │ Library  │      │ Enforcement  │      │ Offline,     │
+    87→   │ (indep.) │      │              │      │ Attendance   │
+    88→   └──────────┘      └──────┬───────┘      └──────────────┘
+    89→                             │
+    90→                             ▼
+    91→                     ┌──────────────┐
+    92→                     │ Sprint 3B    │
+    93→                     │ User Mgmt UI │
+    94→                     │ v2.3 Release │
+    95→                     └──────┬───────┘
+    96→                             │
+    97→              ┌──────────────┼──────────────┐
+    98→              │              │              │
+    99→              ▼              ▼              ▼
+   100→       ┌───────────┐  ┌───────────┐  ┌───────────┐
+   101→       │ v2.4      │  │ Sprint 4  │  │ v2.5      │
+   102→       │ Assignment│  │ Dashboard │  │ Multi-    │
+   103→       │ Parent    │  │ Skeleton  │  │ Tenancy   │
+   104→       └───────────┘  └─────┬─────┘  └─────┬─────┘
+   105→                           │              │
+   106→                           ▼              ▼
+   107→                    ┌───────────┐  ┌───────────┐
+   108→                    │ Sprint 5  │  │ Sprint 6  │
+   109→                    │ Analytics │  │ Admin     │
+   110→                    │ Reports   │  │ Mobile    │
+   111→                    └─────┬─────┘  └─────┬─────┘
+   112→                          │              │
+   113→                          ▼              ▼
+   114→                   ┌───────────┐  ┌───────────┐
+   115→                   │ v2.6      │  │ Sprint 7  │
+   116→                   │ Billing   │  │ Owner     │
+   117→                   └───────────┘  │ Platform  │
+   118→                                  └─────┬─────┘
+   119→                                        │
+   120→                              ┌─────────┼─────────┐
+   121→                              │                   │
+   122→                              ▼                   ▼
+   123→                       ┌───────────┐      ┌───────────┐
+   124→                       │ Sprint 8  │      │ M1-M8     │
+   125→                       │ Subdomain │      │ Migration │
+   126→                       │ Separation│      │ Phases    │
+   127→                       └─────┬─────┘      └─────┬─────┘
+   128→                             │                  │
+   129→                             └──────┬───────────┘
+   130→                                    ▼
+   131→                             ┌───────────┐
+   132→                             │ v3.0      │
+   133→                             │ Full      │
+   134→                             │ Dashboard │
+   135→                             │ Platform  │
+   136→                             └───────────┘
+   137→```
+   138→
+   139→**Key:** v2.1 (Video Library) is **independent** — can ship before or in parallel with Sprint 3. Everything else is sequential.
+   140→
+   141→---
+   142→
+   143→# PART I — CURRENT PLATFORM (v1.0–v2.0.1)
+   144→
+   145→## v2.0.1 — Bug Fixes ✅ (2026-06-15)
+   146→
+   147→### Auth Data Sync
+   148→- [x] `saveTeacherAuthData`, `saveStudentAuthData`, `saveParentAuthData` now accept `WidgetRef? ref` and sync Riverpod providers after Hive writes
+   149→- [x] Welcome screen Hive fallback read if providers return null
+   150→
+   151→### UI Fixes
+   152→- [x] Create Account / Sign In buttons misalignment — replaced `Wrap` with `Row` + `Flexible` across all auth screens
+   153→
+   154→### Android App Icon
+   155→- [x] Fixed colored background on app icon — created adaptive icon XML + transparent foreground PNGs + white background
+   156→
+   157→### Crash Fixes
+   158→- [x] Sentry crash `StateError: Cannot use 'ref' after widget disposed` — added `if (!mounted) return` / `if (mounted)` guards in all auth screen catch/finally blocks
+   159→
+   160→---
+   161→
+   162→## Immediate: Merge Sprint 1+2 Code into klasivo-repo 🔲
+   163→
+   164→> **This is the highest-priority task.** All Sprint 3+ work is blocked until this merge is complete.
+   165→
+   166→### What needs to be merged from `klasivo/` to `klasivo-repo/`:
+   167→
+   168→#### Flutter — LiveKit Feature (13 files)
+   169→- [ ] `lib/features/livekit/data/livekit_repository.dart`
+   170→- [ ] `lib/features/livekit/domain/livekit_room_model.dart`
+   171→- [ ] `lib/features/livekit/domain/livekit_chat_message.dart`
+   172→- [ ] `lib/features/livekit/domain/livekit_raised_hand.dart`
+   173→- [ ] `lib/features/livekit/domain/livekit_attendance.dart`
+   174→- [ ] `lib/features/livekit/domain/recording_model.dart`
+   175→- [ ] `lib/features/livekit/domain/scheduled_class_model.dart`
+   176→- [ ] `lib/features/livekit/domain/session_analytics_model.dart`
+   177→- [ ] `lib/features/livekit/providers/livekit_providers.dart`
+   178→- [ ] `lib/features/livekit/pages/live_class_screen.dart`
+   179→- [ ] `lib/features/livekit/pages/live_class_lobby_screen.dart`
+   180→- [ ] `lib/features/livekit/pages/scheduled_classes_screen.dart`
+   181→- [ ] `lib/features/livekit/pages/session_analytics_dashboard.dart`
+   182→
+   183→#### Flutter — RBAC System (15 files)
+   184→- [ ] `lib/core/rbac/roles.dart`
+   185→- [ ] `lib/core/rbac/scope_access_level.dart`
+   186→- [ ] `lib/core/rbac/scope_validator.dart`
+   187→- [ ] `lib/core/rbac/custom_claims.dart`
+   188→- [ ] `lib/core/rbac/user_scope.dart`
+   189→- [ ] `lib/core/rbac/scoped_query_builder.dart`
+   190→- [ ] `lib/core/rbac/role_hierarchy.dart`
+   191→- [ ] `lib/core/rbac/permission_groups.dart`
+   192→- [ ] `lib/core/rbac/permission_service.dart`
+   193→- [ ] `lib/core/rbac/permission_state.dart`
+   194→- [ ] `lib/core/rbac/permission_overrides.dart`
+   195→- [ ] `lib/core/rbac/permissions.dart`
+   196→- [ ] `lib/core/rbac/rbac.dart` (barrel export)
+   197→- [ ] `lib/core/rbac/rbac_health.dart`
+   198→- [ ] `lib/core/rbac/password_generator.dart`
+   199→- [ ] `lib/providers/rbac_provider.dart`
+   200→
+   201→#### Flutter — User Management (10 files)
+   202→- [ ] `lib/features/user_management/data/user_management_repository.dart`
+   203→- [ ] `lib/features/user_management/pages/people_hub_screen.dart`
+   204→- [ ] `lib/features/user_management/pages/user_detail_screen.dart`
+   205→- [ ] `lib/features/user_management/pages/role_assignment_sheet.dart`
+   206→- [ ] `lib/features/user_management/pages/role_matrix_screen.dart`
+   207→- [ ] `lib/features/user_management/pages/scope_assignment_screen.dart`
+   208→- [ ] `lib/features/user_management/pages/permission_override_screen.dart`
+   209→- [ ] `lib/features/user_management/pages/effective_permissions_screen.dart`
+   210→- [ ] `lib/features/user_management/providers/user_management_providers.dart`
+   211→- [ ] `lib/features/user_management/user_management.dart` (barrel export)
+   212→
+   213→#### Cloud Functions — Migrate JS → TS (25+ files)
+   214→- [ ] `functions/src/index.ts` + `functions/src/api/index.ts` + `functions/src/config/sentry.ts`
+   215→- [ ] RBAC callables: `assignRole.ts`, `assignScope.ts`, `syncClaims.ts`, `changeUserPassword.ts`, `setPermissionOverrides.ts`
+   216→- [ ] LiveKit callables: `generateLiveKitToken.ts`, `removeParticipant.ts`, `onLiveKitRoomEvents.ts`, `scheduledClassReminder.ts`
+   217→- [ ] Auth triggers: `onUserCreated.ts`, `onUserDeleted.ts`
+   218→- [ ] Email functions: `sendContactForm.ts`, `sendTeacherInvitation.ts`, `sendSchoolAnnouncement.ts`
+   219→- [ ] Utils: `rbac.ts`, `sanitizer.ts`, `validators.ts`
+   220→- [ ] Services: `emailService.ts`, `emailLogService.ts`, `queueService.ts`
+   221→- [ ] Workers: `emailWorker.ts`
+   222→- [ ] Templates: 5 email template files
+   223→
+   224→#### Integration Work
+   225→- [ ] Wire LiveKit routes into `main.dart` router
+   226→- [ ] Wire User Management routes into `main.dart` router
+   227→- [ ] Add RBAC provider imports and initialization
+   228→- [ ] Add `livekit-server-sdk` dependency to `functions/package.json`
+   229→- [ ] Update `pubspec.yaml` with new Flutter dependencies
+   230→- [ ] Add Firestore indexes for new collections
+   231→- [ ] Update Firestore security rules with RBAC scope rules
+   232→- [ ] Add feature flags for LiveKit and RBAC features
+   233→- [ ] Verify build compiles and all existing tests pass
+   234→
+   235→---
+   236→
+   237→# PART II — FEATURE RELEASES (v2.1–v2.6)
+   238→
+   239→## v2.1 — Video Library & Recorded Lessons (YouTube Integration) 🔲
+   240→
+   241→> **Independent of Sprint 3.** Can ship in parallel.
+   242→
+   243→### Phase 1 — Recording Library
+   244→- [ ] Firestore `class_recordings` collection with schema: `id`, `organizationId`, `classId`, `subjectId`, `teacherId`, `title`, `description`, `youtubeVideoId`, `thumbnailUrl`, `duration`, `publishedAt`, `visibility` (public/class-only/enrolled), `tags[]`, `createdAt`, `updatedAt`
+   245→- [ ] YouTube video ID extraction utility (supports full URL, short URL, embed URL, and raw ID formats)
+   246→- [ ] Class-specific recording filter (recordings scoped to student's enrolled classes)
+   247→- [ ] Recording list screen with search, filter by subject/teacher/date, and thumbnail grid view
+   248→- [ ] Route: `/lms/recordings`, `/lms/recordings/:recordingId`
+   249→
+   250→### Phase 2 — Recording Management
+   251→- [ ] Teacher upload/link flow: paste YouTube URL → auto-extract video ID → fetch metadata
+   252→- [ ] Recording CRUD operations (create, edit, delete) with permission gates
+   253→- [ ] Visibility controls: Public (all students), Class-only (enrolled students), Draft (unpublished)
+   254→- [ ] Bulk import from YouTube playlist
+   255→- [ ] Recording form screen with URL validation and preview
+   256→- [ ] Route: `/teacher/recordings/create`, `/teacher/recordings/:recordingId/edit`
+   257→
+   258→### Phase 3 — Analytics & Engagement
+   259→- [ ] View count tracking per recording (Firestore `recording_views` subcollection)
+   260→- [ ] Watch time analytics: aggregate watch time per student, per recording, per class
+   261→- [ ] Student engagement dashboard for teachers
+   262→- [ ] Recording popularity leaderboard
+   263→- [ ] Notify students when new recording is published (FCM + in-app)
+   264→
+   265→### Future Expansion — Multi-Provider Architecture
+   266→- [ ] Abstract video provider interface: YouTube → Mux → LiveKit → Direct Upload
+   267→- [ ] Provider-agnostic recording model: `providerType` field with provider-specific metadata
+   268→- [ ] Feature flag per provider
+   269→
+   270→---
+   271→
+   272→## v2.2 — Chat Attachments, Offline Caching, Enhanced Attendance 🔲
+   273→
+   274→### Communication
+   275→- [ ] File/image attachments in chat (Firebase Storage upload + Firestore message metadata)
+   276→- [ ] Message reactions (emoji picker, reaction count badges)
+   277→- [ ] Typing indicators (real-time presence via Firestore)
+   278→
+   279→### Offline
+   280→- [ ] Offline content caching (lesson downloads to local storage)
+   281→- [ ] Background sync queue for offline actions
+   282→- [ ] Offline indicator in app shell
+   283→
+   284→### Attendance (Enhanced)
+   285→- [ ] Real-time attendance during live classes (LiveKit integration)
+   286→- [ ] Manual attendance marking by teachers
+   287→- [ ] Attendance analytics per student/class/subject
+   288→- [ ] Parent notifications for student absences
+   289→- [ ] Export attendance reports (PDF/Excel)
+   290→- [ ] Attendance trends and heatmaps
+   291→
+   292→---
+   293→
+   294→## v2.3 — Teacher Approval Workflow & Role-Based Routing 🔲
+   295→
+   296→> **Depends on: Sprint 3 (RBAC scope enforcement)**
+   297→
+   298→### Teacher Approval Workflow
+   299→- [ ] Admin approves/rejects teacher registration requests
+   300→- [ ] Teacher onboarding flow with invite code verification
+   301→- [ ] Approval queue dashboard for owners/admins
+   302→- [ ] Email notifications on approval status change
+   303→- [ ] Auto-assign default scope (campus/stage/class) on approval
+   304→
+   305→### Role-Based Routing
+   306→- [ ] Mobile app refactored to use RBAC for route guards
+   307→- [ ] Permission gates on all screens (replace hardcoded role checks)
+   308→- [ ] Dynamic navigation based on user's effective permissions
+   309→- [ ] 403 Forbidden screen for unauthorized access attempts
+   310→
+   311→---
+   312→
+   313→## v2.4 — Assignment Submission API & Parent Accounts Enhanced 🔲
+   314→
+   315→### Assignment Submission API
+   316→- [ ] REST API for assignment creation, submission, and grading
+   317→- [ ] File upload support (PDF, images, documents)
+   318→- [ ] Submission deadlines with late penalty rules
+   319→- [ ] Plagiarism detection integration placeholder
+   320→- [ ] Rubric-based grading interface
+   321→- [ ] Batch grading and feedback
+   322→- [ ] Student submission status tracking
+   323→
+   324→### Parent Accounts (Enhanced)
+   325→- [ ] Self-service parent registration (email verification)
+   326→- [ ] Link multiple children to one parent account
+   327→- [ ] Parent dashboard with real-time child progress
+   328→- [ ] Push notifications for grades, attendance, announcements
+   329→- [ ] Parent-teacher messaging channel
+   330→- [ ] Weekly progress summary emails
+   331→- [ ] Parent role scope isolation (view-only, no edit)
+   332→
+   333→---
+   334→
+   335→## v2.5 — School Accounts / Multi-Tenancy, Analytics Dashboard 🔲
+   336→
+   337→> **Depends on: Sprint 5**
+   338→
+   339→### School Accounts / Multi-Tenancy
+   340→- [ ] School registration and onboarding wizard
+   341→- [ ] Organization settings (branding, logo, academic calendar)
+   342→- [ ] Campus/stage/class hierarchy management
+   343→- [ ] Role-based access per campus/stage
+   344→- [ ] Cross-campus analytics for district-level admins
+   345→- [ ] Data isolation between organizations (Firestore security)
+   346→- [ ] Organization-specific feature flag overrides
+   347→- [ ] Bulk import/export for school data
+   348→
+   349→### Analytics Warehouse
+   350→- [ ] BigQuery integration for historical analytics
+   351→- [ ] Custom report builder
+   352→- [ ] Student performance prediction (ML model integration)
+   353→- [ ] Data export pipelines
+   354→
+   355→### Platform Expansion
+   356→- [ ] iOS support
+   357→- [ ] Web support (Flutter Web for students/parents)
+   358→- [ ] SSO integration (Google Workspace, Microsoft 365)
+   359→- [ ] Lesson plan templates
+   360→
+   361→---
+   362→
+   363→## v2.6 — Subscription & Billing 🔲
+   364→
+   365→> **Depends on: Sprint 7 (platform needs billing)**
+   366→
+   367→### Subscription Plans
+   368→- [ ] Free tier definition (limits: students, storage, features)
+   369→- [ ] Pro plan with expanded limits
+   370→- [ ] Enterprise plan with custom pricing
+   371→- [ ] Plan comparison page
+   372→
+   373→### Billing Infrastructure
+   374→- [ ] Stripe integration for payment processing
+   375→- [ ] Subscription management (upgrade/downgrade/cancel)
+   376→- [ ] Invoice generation and history
+   377→- [ ] Trial period with automatic conversion
+   378→- [ ] Proration on plan changes
+   379→
+   380→### Billing-aware Features
+   381→- [ ] Feature gating based on subscription tier
+   382→- [ ] Usage metering (student count, storage, API calls)
+   383→- [ ] Soft limits with upgrade prompts
+   384→- [ ] Admin billing dashboard
+   385→- [ ] Payment method management
+   386→- [ ] Revenue analytics for platform admin
+   387→
+   388→---
+   389→
+   390→# PART III — SPRINTS (Infrastructure & RBAC)
+   391→
+   392→## Sprint 3 — Scope Enforcement, Claims Caching, Error Handling 🔲
+   393→
+   394→> **Depends on: Sprint 1+2 merge**
+   395→
+   396→### Scope Enforcement
+   397→- [ ] Scope-level Firestore rules — enforce `classId`/`stageId`/`campusId` boundaries in security rules
+   398→- [ ] Claims caching strategy — avoid stale claims after role/scope changes
+   399→- [ ] `hasMinimumRole()` helper — ordinal comparison using ROLE_HIERARCHY
+   400→- [ ] `canPerformAction()` helper — unified capability check (role + permission + scope)
+   401→- [ ] Unit tests for scope validator with edge cases
+   402→
+   403→### Error Handling
+   404→- [ ] Client-side RBAC error mapping — Firebase permission denied → user-friendly messages
+   405→- [ ] Claims sync retry logic — exponential backoff with user notification
+   406→- [ ] Scope mismatch diagnostics — help admins understand access denials
+   407→
+   408→### Phase 2B — Role Hierarchy Helpers
+   409→- [ ] `ROLE_HIERARCHY` ordinal map
+   410→- [ ] `hasMinimumRole(callerRole, minimumRole)` — ordinal comparison
+   411→- [ ] `canPerformAction(callerRole, action)` — ROLE_HIERARCHY + capability constants
+   412→- [ ] Replace all inline role-array inclusion checks with these helpers
+   413→
+   414→---
+   415→
+   416→## Sprint 3B — User Management UI 🔲
+   417→
+   418→> **Depends on: Sprint 3 · Release target: v2.3**
+   419→
+   420→### People Hub
+   421→- [ ] Unified people list with role badges, search, and filters
+   422→- [ ] Route: `/people`
+   423→
+   424→### User Detail
+   425→- [ ] User profile with effective permissions view
+   426→- [ ] Route: `/people/:userId`
+   427→
+   428→### Role Assignment
+   429→- [ ] Bottom sheet for role assignment with role matrix visualization
+   430→- [ ] Permission preview before confirming role change
+   431→- [ ] Calls `assignRole` callable
+   432→
+   433→### Scope Assignment
+   434→- [ ] Screen for assigning campus/stage/class/subject scope
+   435→- [ ] Scope visualization (tree view)
+   436→- [ ] Calls `assignScope` callable
+   437→
+   438→### Permission Overrides
+   439→- [ ] Allow/deny individual permissions beyond role defaults
+   440→- [ ] Calls `setPermissionOverrides` callable
+   441→
+   442→### Role Matrix
+   443→- [ ] Visual matrix of roles × permissions
+   444→- [ ] Read-only view of the RBAC system
+   445→
+   446→---
+   447→
+   448→## Sprint 4 — Flutter Web Dashboard Skeleton 🔲
+   449→
+   450→> **Depends on: Sprint 3B · Release target: v2.5 (partial)**
+   451→
+   452→### Architecture Decision
+   453→Flutter Web first (same models, providers, RBAC, Firestore). If performance becomes a bottleneck at v2.5+, migrate dashboard to Next.js at `dashboard.klasivo.app`.
+   454→
+   455→### Monorepo Structure
+   456→```
+   457→apps/
+   458→ ├─ mobile_app          ← Existing Flutter mobile app
+   459→ ├─ web_dashboard       ← New Flutter Web dashboard
+   460→ └─ public_site         ← Marketing website (future)
+   461→
+   462→packages/
+   463→ ├─ auth                ← Shared authentication (Firebase Auth, Email OTP, Google, Apple, SSO)
+   464→ ├─ permissions         ← Shared RBAC (roles, scopes, permission checks)
+   465→ ├─ analytics           ← Shared analytics tracking and aggregation
+   466→ ├─ notifications       ← Shared push/email/in-app notifications
+   467→ ├─ api_client          ← Shared Firebase Functions callable wrappers
+   468→ ├─ design_system       ← Shared KlasivoButton, KlasivoCard, tokens, themes
+   469→ ├─ audit_logs          ← Shared audit event recording and querying
+   470→ └─ common_models       ← Shared Firestore models, DTOs, converters
+   471→```
+   472→
+   473→### Dashboard Pages (Sprint 4 — Skeleton)
+   474→- [ ] `/dashboard` — Overview (org stats, active classes, recent activity)
+   475→- [ ] `/users` — User management (People Hub, web-optimized layout)
+   476→- [ ] `/roles` — Role assignment and role matrix
+   477→- [ ] `/scopes` — Scope assignment and visualization
+   478→- [ ] `/settings` — Organization settings (branding, calendar, features)
+   479→
+   480→### Responsive Layout
+   481→- [ ] Sidebar navigation (collapsible)
+   482→- [ ] Data tables with sorting, filtering, pagination
+   483→- [ ] Bulk action toolbar (multi-select, batch operations)
+   484→- [ ] Breadcrumb navigation
+   485→
+   486→---
+   487→
+   488→## Sprint 5 — Analytics, Bulk Import, Audit Viewer, Reports 🔲
+   489→
+   490→> **Depends on: Sprint 4 · Release target: v2.5 (partial)**
+   491→
+   492→### Analytics Dashboard
+   493→- [ ] Teacher dashboard: class performance, assignment completion rates
+   494→- [ ] Student dashboard: personal progress, strengths/weaknesses
+   495→- [ ] Admin dashboard: organization-wide KPIs
+   496→- [ ] Live class participation metrics
+   497→- [ ] Custom date range filters
+   498→- [ ] Exportable charts and reports
+   499→
+   500→### Bulk Import
+   501→- [ ] CSV/Excel import for students, teachers, classes
+   502→- [ ] Import validation and error reporting
+   503→- [ ] Dry-run preview before committing
+   504→
+   505→### Audit Viewer
+   506→- [ ] Searchable audit log with filters (user, action, date, resource)
+   507→- [ ] Audit event detail view with metadata
+   508→- [ ] Export audit logs (CSV)
+   509→
+   510→### Reports
+   511→- [ ] Custom report builder (drag-and-drop fields)
+   512→- [ ] Scheduled report generation (daily/weekly/monthly)
+   513→- [ ] Report sharing (PDF export, email)
+   514→
+   515→---
+   516→
+   517→## Sprint 6 — Admin Mobile Companion 🔲
+   518→
+   519→> **Depends on: Sprint 4**
+   520→
+   521→| Platform | Admin Experience |
+   522→|----------|-----------------|
+   523→| **Dashboard** | Full access, bulk operations, analytics, configuration |
+   524→| **Mobile** | Read-focused, quick approvals, notifications, student lookup, attendance overview |
+   525→
+   526→### Features
+   527→- [ ] Read-only analytics cards on mobile
+   528→- [ ] Quick approval actions (teacher approval, permission requests)
+   529→- [ ] Student lookup with scoped access
+   530→- [ ] Attendance overview by class
+   531→- [ ] Push notification management
+   532→- [ ] Offline access to critical data
+   533→
+   534→---
+   535→
+   536→# PART IV — DASHBOARD PLATFORM (v3.0)
+   537→
+   538→## Platform Domains
+   539→
+   540→```
+   541→klasivo.app                → Marketing Website (public, no management functionality)
+   542→dashboard.klasivo.app      → Platform administration, school management, analytics, operations
+   543→api.klasivo.app            → Secure backend APIs, Cloud Functions, admin operations
+   544→status.klasivo.app         → Status Page (future)
+   545→docs.klasivo.app           → Documentation (future)
+   546→```
+   547→
+   548→---
+   549→
+   550→## Authentication
+   551→
+   552→**Primary:** Firebase Auth
+   553→
+   554→| Method | Status | Notes |
+   555→|--------|--------|-------|
+   556→| Email/Password | ✅ Live | Current default |
+   557→| Email OTP | 🔲 Planned | Passwordless sign-in |
+   558→| Google Sign-In | ✅ Live | Current |
+   559→| Apple Sign-In | 🔲 Planned | Required for iOS App Store |
+   560→| SSO | 🔲 Planned | Google Workspace, Microsoft 365 |
+   561→
+   562→---
+   563→
+   564→## Authorization — RBAC
+   565→
+   566→### Roles
+   567→
+   568→```
+   569→owner              → Platform owner (multi-school access)
+   570→school_admin       → School-level administrator
+   571→teacher            → Classroom operations
+   572→parent             → Child monitoring (view-only)
+   573→student            → Learning and participation
+   574→```
+   575→
+   576→Expanded role hierarchy (from Sprint 2):
+   577→```
+   578→super_admin         → Platform-wide (klasivo team only)
+   579→owner               → Multi-school owner
+   580→ └─ admin            → School administrator
+   581→      ├─ observer           → Read-only school access
+   582→      ├─ campus_manager     → Campus-level operations
+   583→      ├─ stage_manager      → Stage/grade-level operations
+   584→      └─ academic_supervisor → Academic oversight
+   585→teacher             → Classroom operations
+   586→ └─ assistant_teacher   → Limited classroom access
+   587→parent              → Child monitoring
+   588→student             → Learning and participation
+   589→```
+   590→
+   591→### Permission Domains
+   592→
+   593→```
+   594→users.read          users.write
+   595→schools.read        schools.write
+   596→classes.read        classes.write
+   597→assignments.read    assignments.write
+   598→attendance.read     attendance.write
+   599→analytics.read
+   600→billing.read        billing.write
+   601→exams.read          exams.write
+   602→grades.read         grades.write
+   603→live_rooms.read     live_rooms.write
+   604→notifications.read  notifications.write
+   605→reports.read        reports.write
+   606→settings.read       settings.write
+   607→audit.read
+   608→```
+   609→
+   610→### Authorization Chain (Fail-Closed)
+   611→
+   612→All access must pass through every layer:
+   613→
+   614→```
+   615→Authentication → Role Validation → Scope Validation → Resource Validation
+   616→```
+   617→
+   618→If any layer fails or is missing data: **DENY**. Never allow by default.
+   619→
+   620→---
+   621→
+   622→## Owner Dashboard
+   623→
+   624→> **Domain: `dashboard.klasivo.app/owner`**  
+   625→> **Sprint: Sprint 7**
+   626→
+   627→Purpose: Platform administration across all schools.
+   628→
+   629→### Overview
+   630→- [ ] KPIs: Total Schools, Total Teachers, Total Students, Total Parents, Active Classes, Live Sessions, Monthly Growth, Revenue, Storage Usage
+   631→- [ ] Charts: User Growth, School Growth, Session Usage, Daily Activity
+   632→
+   633→### Schools
+   634→- [ ] Create school, Suspend school, Activate school
+   635→- [ ] View statistics, Assign admins, Set quotas
+   636→
+   637→### Teacher Approval
+   638→- [ ] Workflow: Pending → Approved → Rejected
+   639→- [ ] Review profile, Verify credentials, Approval notes, Audit trail
+   640→
+   641→### User Management
+   642→- [ ] Manage: Owners, Admins, Teachers, Parents, Students
+   643→- [ ] Search, Disable, Reactivate, Reset access
+   644→
+   645→### LiveKit Management
+   646→- [ ] View: Rooms, Participants, Duration, Quality
+   647→- [ ] Controls: Close room, Remove participant, View logs
+   648→
+   649→### Platform Analytics
+   650→- [ ] DAU, WAU, MAU, Retention, Engagement, Attendance, Assignment Completion
+   651→
+   652→### Audit Logs
+   653→- [ ] Track every action with: userId, role, action, resource, resourceId, ip, timestamp, metadata
+   654→- [ ] Immutable — append-only, no deletion
+   655→
+   656→### Billing
+   657→- [ ] Plans, Subscriptions, Invoices, Payments (future-ready)
+   658→
+   659→### Navigation
+   660→```
+   661→Dashboard → Schools → Users → Teacher Approval → Live Classes → Analytics → Audit Logs → Billing → Settings
+   662→```
+   663→
+   664→---
+   665→
+   666→## School Dashboard
+   667→
+   668→> **Domain: `dashboard.klasivo.app/school`**  
+   669→> **Sprint: Sprint 4 (skeleton) → Sprint 5 (full)**
+   670→
+   671→Purpose: School operations.
+   672→
+   673→### School Overview
+   674→- [ ] KPIs: Teachers, Students, Attendance Rate, Assignments, Active Classes
+   675→
+   676→### Teacher Management
+   677→- [ ] Add teacher, Remove teacher, Assign subjects, Assign classes
+   678→
+   679→### Student Management
+   680→- [ ] Enrollment, Transfer, Status changes
+   681→
+   682→### Parent Management
+   683→- [ ] Link parent, Invite parent, Remove access
+   684→
+   685→### Class Management
+   686→- [ ] Create class, Assign teacher, Schedule lessons
+   687→
+   688→### Attendance
+   689→- [ ] Daily attendance tracking
+   690→- [ ] Reports: Student, Class, School
+   691→
+   692→### Exams
+   693→- [ ] Exam creation, Grades, Results
+   694→
+   695→### Assignments
+   696→- [ ] Create, Review, Grade
+   697→
+   698→### Reports
+   699→- [ ] PDF, Excel generation
+   700→
+   701→### Navigation
+   702→```
+   703→Overview → Teachers → Students → Parents → Classes → Attendance → Assignments → Exams → Reports → Settings
+   704→```
+   705→
+   706→---
+   707→
+   708→## Teacher Dashboard
+   709→
+   710→> **Domain: `dashboard.klasivo.app/teacher`**  
+   711→> **Sprint: Sprint 5 (web) · Mobile: already live**
+   712→
+   713→### Modules
+   714→- [ ] My Classes — view assigned classes
+   715→- [ ] Assignments — create and grade
+   716→- [ ] Exams — create and mark
+   717→- [ ] Attendance — take attendance
+   718→- [ ] Live Classes — create LiveKit rooms
+   719→- [ ] Student Performance — track progress
+   720→
+   721→### Navigation
+   722→```
+   723→Overview → Classes → Assignments → Attendance → Exams → Live Classes → Students
+   724→```
+   725→
+   726→---
+   727→
+   728→## Parent Dashboard
+   729→
+   730→> **Domain: `dashboard.klasivo.app/parent`**  
+   731→> **Sprint: Sprint 5 (web) · Mobile: already live**
+   732→
+   733→### Modules
+   734→- [ ] Children — view linked students
+   735→- [ ] Attendance — track attendance
+   736→- [ ] Grades — view results
+   737→- [ ] Assignments — monitor completion
+   738→- [ ] Notifications — receive alerts
+   739→
+   740→### Navigation
+   741→```
+   742→Overview → Children → Attendance → Assignments → Grades → Notifications
+   743→```
+   744→
+   745→---
+   746→
+   747→## Student Dashboard
+   748→
+   749→> **Domain: `dashboard.klasivo.app/student`**  
+   750→> **Sprint: Sprint 5 (web) · Mobile: already live**
+   751→
+   752→### Modules
+   753→- [ ] My Classes
+   754→- [ ] Assignments
+   755→- [ ] Exams
+   756→- [ ] Attendance
+   757→- [ ] Live Classes
+   758→- [ ] Resources
+   759→
+   760→### Navigation
+   761→```
+   762→Overview → Classes → Assignments → Attendance → Exams → Live Classes → Resources
+   763→```
+   764→
+   765→---
+   766→
+   767→## Dashboard UI Design System
+   768→
+   769→Inspired by: Linear, Notion, Stripe Dashboard
+   770→
+   771→Requirements:
+   772→- [ ] Responsive layout (desktop-first, mobile-friendly)
+   773→- [ ] Dark mode + Light mode (use existing design tokens)
+   774→- [ ] Accessibility (WCAG 2.1 AA)
+   775→- [ ] Sidebar navigation (collapsible)
+   776→- [ ] Data tables with sort/filter/pagination
+   777→- [ ] Bulk action toolbar
+   778→- [ ] Global search (schools, classes, students, teachers, parents)
+   779→
+   780→---
+   781→
+   782→# PART V — FIRESTORE DESIGN
+   783→
+   784→## Collections
+   785→
+   786→```
+   787→users               ← Authenticated users (all roles)
+   788→schools             ← Organization/school entities
+   789→school_members      ← Membership links (user ↔ school + role)
+   790→classes             ← Class/group entities
+   791→enrollments         ← Student ↔ class enrollment
+   792→parents             ← Parent entities
+   793→parent_links        ← Parent ↔ student links
+   794→students            ← Student profile data
+   795→teachers            ← Teacher profile data
+   796→attendance          ← Daily attendance records
+   797→assignments         ← Assignment definitions
+   798→submissions         ← Student assignment submissions
+   799→grades              ← Grade records
+   800→exams               ← Exam definitions
+   801→exam_submissions    ← Student exam submissions
+   802→live_rooms          ← LiveKit room metadata (existing: livekit_rooms)
+   803→notifications       ← In-app notifications
+   804→analytics_events    ← Raw analytics events
+   805→audit_logs          ← Immutable audit trail (existing)
+   806→subscriptions       ← Billing subscriptions
+   807→class_recordings    ← Video library (v2.1)
+   808→scheduled_classes   ← Scheduled live classes (existing)
+   809→session_analytics   ← LiveKit session analytics (existing)
+   810→feature_flags       ← Feature flag definitions (existing)
+   811→permission_overrides ← Per-user permission overrides (existing)
+   812→```
+   813→
+   814→### Schema Requirements
+   815→- [ ] All collections include: `createdAt`, `updatedAt`, `organizationId`
+   816→- [ ] Soft delete pattern: `isArchived` + `archivedAt` on all entities
+   817→- [ ] Scope fields on scope-bound collections: `campusId`, `stageId`, `classId`
+   818→- [ ] Owner validation on all writes (resource must belong to caller's org)
+   819→- [ ] Immutable audit logs (no update/delete — append only)
+   820→
+   821→### Indexes
+   822→- [ ] Composite indexes for all filtered+sorted queries
+   823→- [ ] Scope-based indexes: `organizationId` + `classId` + `createdAt`
+   824→- [ ] Full-text search indexes (Algolia or Firestore native) for global search
+   825→
+   826→### Security Rules
+   827→- [ ] Role-based rules with field-level security
+   828→- [ ] Scope validation in rules (caller's classIds must include resource.classId)
+   829→- [ ] Organization boundary enforcement (caller.orgId == resource.orgId)
+   830→- [ ] Fail-closed: missing fields → DENY
+   831→
+   832→---
+   833→
+   834→# PART VI — CROSS-CUTTING SYSTEMS
+   835→
+   836→## Analytics System
+   837→
+   838→### Event Tracking (`analytics_events` collection)
+   839→- [ ] Login events
+   840→- [ ] Attendance marking
+   841→- [ ] Assignment submission
+   842→- [ ] Live session join/leave
+   843→- [ ] Exam completion
+   844→- [ ] Recording view
+   845→- [ ] Page view (dashboard)
+   846→
+   847→### Aggregation
+   848→- [ ] Daily/weekly/monthly aggregation Cloud Functions
+   849→- [ ] Pre-computed dashboards in `analytics_daily`, `analytics_monthly` collections
+   850→- [ ] BigQuery export for historical analysis (v2.5+)
+   851→
+   852→### Platform Analytics (Owner)
+   853→- [ ] DAU, WAU, MAU
+   854→- [ ] Retention cohorts
+   855→- [ ] Engagement scoring
+   856→- [ ] Attendance trends
+   857→- [ ] Assignment completion rates
+   858→
+   859→---
+   860→
+   861→## Notification System
+   862→
+   863→### Channels
+   864→| Channel | Status | Notes |
+   865→|---------|--------|-------|
+   866→| Push (FCM) | ✅ Live | Android + iOS |
+   867→| In-App | ✅ Live | Notification center |
+   868→| Email | ✅ Live | Resend integration |
+   869→
+   870→### Events → Notifications
+   871→| Event | Recipients | Channel |
+   872→|-------|-----------|---------|
+   873→| Assignment Due | Student | Push + In-App |
+   874→| Attendance Alert | Parent | Push + Email |
+   875→| Grade Published | Student, Parent | Push + In-App |
+   876→| Live Class Starting | Student | Push |
+   877→| Teacher Approved | Teacher | Email |
+   878→| New Recording | Student | Push + In-App |
+   879→
+   880→---
+   881→
+   882→## Search System 🔲
+   883→
+   884→Global dashboard search across:
+   885→- [ ] Schools
+   886→- [ ] Classes
+   887→- [ ] Students
+   888→- [ ] Teachers
+   889→- [ ] Parents
+   890→- [ ] Assignments
+   891→- [ ] Exams
+   892→
+   893→Implementation options:
+   894→- [ ] Algolia (recommended for production-scale full-text search)
+   895→- [ ] Firestore native search (limited but zero-infrastructure)
+   896→- [ ] Meilisearch (self-hosted alternative)
+   897→
+   898→---
+   899→
+   900→## Audit Logging
+   901→
+   902→### Schema
+   903→```typescript
+   904→{
+   905→  userId: string,
+   906→  role: string,
+   907→  action: string,           // e.g., 'user.disable', 'school.create', 'role.assign'
+   908→  resource: string,         // e.g., 'user', 'school', 'class'
+   909→  resourceId: string,
+   910→  organizationId: string,
+   911→  ip: string,
+   912→  userAgent: string,
+   913→  timestamp: Timestamp,
+   914→  metadata: Map<string, any>,  // action-specific details
+   915→}
+   916→```
+   917→
+   918→### Requirements
+   919→- [ ] Immutable — append-only, no update or delete
+   920→- [ ] Indexed by: `organizationId`, `userId`, `action`, `timestamp`
+   921→- [ ] Retention policy: 90 days hot, 1 year cold (BigQuery)
+   922→- [ ] Export to CSV for compliance reporting
+   923→
+   924→---
+   925→
+   926→# PART VII — MIGRATION PLAN (M1–M8)
+   927→
+   928→> **Goal:** Migrate from MVP to production SaaS platform with zero downtime and full backward compatibility.  
+   929→> **Principle:** Feature flags gate every migration step. Rollback is always possible.
+   930→
+   931→### M1 — Preserve & Stabilize
+   932→- [ ] Audit all existing Firestore collections for schema consistency
+   933→- [ ] Add missing `organizationId` fields to legacy documents
+   934→- [ ] Backfill `createdAt`/`updatedAt` on documents missing timestamps
+   935→- [ ] Verify all existing users have correct custom claims (`role`, `organizationId`, `scopeAccessLevel`)
+   936→- [ ] Feature flag: `migration_m1_complete` → enables M2
+   937→
+   938→### M2 — Introduce RBAC
+   939→- [ ] Deploy RBAC callables (assignRole, assignScope, syncClaims, setPermissionOverrides)
+   940→- [ ] Deploy scope-aware Firestore rules (fail-closed, but with legacy bypass flag)
+   941→- [ ] Feature flag: `rbac_enforcement` → defaults OFF, per-org rollout
+   942→- [ ] Feature flag: `migration_m2_complete` → enables M3
+   943→- [ ] Backward compatible: existing code continues to work with RBAC OFF
+   944→
+   945→### M3 — Introduce Dashboard
+   946→- [ ] Deploy Flutter Web dashboard skeleton at `dashboard.klasivo.app`
+   947→- [ ] Dashboard uses same Firestore, same models, same RBAC
+   948→- [ ] Feature flag: `dashboard_enabled` → per-org, defaults OFF
+   949→- [ ] Feature flag: `migration_m3_complete` → enables M4
+   950→
+   951→### M4 — Migrate Attendance
+   952→- [ ] Dashboard attendance page reads/writes same `attendance` collection as mobile
+   953→- [ ] Mobile attendance screen continues to work unchanged
+   954→- [ ] Feature flag: `dashboard_attendance` → per-org
+   955→- [ ] Feature flag: `migration_m4_complete` → enables M5
+   956→
+   957→### M5 — Migrate Assignments
+   958→- [ ] Dashboard assignment page reads/writes same `assignments` + `submissions` collections
+   959→- [ ] Mobile assignment screens continue to work unchanged
+   960→- [ ] Feature flag: `dashboard_assignments` → per-org
+   961→- [ ] Feature flag: `migration_m5_complete` → enables M6
+   962→
+   963→### M6 — Migrate Analytics
+   964→- [ ] Dashboard analytics page reads pre-computed aggregation collections
+   965→- [ ] Aggregation Cloud Functions run alongside existing analytics
+   966→- [ ] Feature flag: `dashboard_analytics` → per-org
+   967→- [ ] Feature flag: `migration_m6_complete` → enables M7
+   968→
+   969→### M7 — Enable School Management
+   970→- [ ] School dashboard pages (teachers, students, parents, classes)
+   971→- [ ] Owner dashboard pages (schools, teacher approval, platform analytics)
+   972→- [ ] Feature flag: `school_management` → per-org
+   973→- [ ] Feature flag: `migration_m7_complete` → enables M8
+   974→
+   975→### M8 — Enable Billing
+   976→- [ ] Stripe integration, subscription management, invoice generation
+   977→- [ ] Feature flag: `billing_enabled` → per-org
+   978→- [ ] Feature flag: `migration_m8_complete` → platform fully migrated
+   979→
+   980→---
+   981→
+   982→# PART VIII — SECURITY REQUIREMENTS
+   983→
+   984→### Mandatory Security Layers
+   985→
+   986→```
+   987→┌──────────────────────────────────────────────────────────────────┐
+   988→│  1. Authentication  — Firebase Auth (email, Google, Apple, OTP)  │
+   989→│  2. Role Validation — Custom claims checked server-side          │
+   990→│  3. Scope Validation — Caller scope must include resource scope  │
+   991→│  4. Resource Validation — Resource must belong to caller's org   │
+   992→│  5. Audit Logging   — Every mutation recorded immutably          │
+   993→└──────────────────────────────────────────────────────────────────┘
+   994→```
+   995→
+   996→### Additional Security Requirements
+   997→- [ ] Rate limiting on all callable functions (per-user, per-IP)
+   998→- [ ] Cloudflare protection on `dashboard.klasivo.app` and `api.klasivo.app`
+   999→- [ ] Secure API gateway with request validation
+  1000→- [ ] Signed Firebase Storage URLs (no public access)
+  1001→- [ ] Server-side authorization on ALL operations (never trust client)
+  1002→- [ ] Firestore rules: role + scope + ownership validation
+  1003→- [ ] App Check enforcement on all callable functions
+  1004→- [ ] CORS configuration for `dashboard.klasivo.app` origin only
+  1005→
+  1006→### Fail-Closed Principle
+  1007→- Missing role → DENY
+  1008→- Missing scope → DENY
+  1009→- Missing organizationId → DENY
+  1010→- Unknown scopeAccessLevel → DENY
+  1011→- Empty scope arrays → DENY (not "all access")
+  1012→- Unknown room type → DENY
+  1013→
+  1014→---
+  1015→
+  1016→# PART IX — INFRASTRUCTURE
+  1017→
+  1018→## Cloud Functions ✅ (2026-06-14)
+  1019→
+  1020→### v1→v2 Migration
+  1021→- [x] 5 RBAC callables migrated v1→v2
+  1022→- [x] Auth triggers remain v1 (no v2 after-event auth API)
+  1023→- [x] All other functions already v2
+  1024→
+  1025→### Cost Optimization
+  1026→- [x] `maxInstances` caps on all v2 functions
+  1027→- [x] `minInstances: 1` only on latency-critical (api, generateLiveKitToken)
+  1028→- [x] `concurrency: 80–100` on all callables
+  1029→- [x] Explicit `memory` + `timeoutSeconds` on all functions
+  1030→
+  1031→### Post-Deploy Verification Required
+  1032→- [ ] Run `firebase deploy --only functions` to deploy v2 callables
+  1033→- [ ] Run `firebase functions:list` to confirm all RBAC functions are Gen 2
+  1034→- [ ] If old v1 versions remain, delete explicitly
+  1035→- [ ] Confirm no duplicate Gen1 + Gen2 versions
+  1036→
+  1037→### Function Config Summary
+  1038→| Function | Gen | min | max | Conc. | Memory |
+  1039→|----------|-----|-----|-----|-------|--------|
+  1040→| api | v2 | 1 | 100 | 80 | 512MiB |
+  1041→| generateLiveKitToken | v2 | 1 | 50 | 100 | 256MiB |
+  1042→| removeParticipant | v2 | 0 | 20 | 80 | 256MiB |
+  1043→| assignRole | v2 | 0 | 10 | 80 | 256MiB |
+  1044→| assignScope | v2 | 0 | 10 | 80 | 256MiB |
+  1045→| syncClaims | v2 | 0 | 20 | 80 | 256MiB |
+  1046→| changeUserPassword | v2 | 0 | 10 | 80 | 256MiB |
+  1047→| setPermissionOverrides | v2 | 0 | 10 | 80 | 256MiB |
+  1048→| sendContactForm | v2 | 0 | 10 | 80 | 256MiB |
+  1049→| sendTeacherInvitation | v2 | 0 | 10 | 80 | 256MiB |
+  1050→| sendSchoolAnnouncement | v2 | 0 | 10 | 80 | 256MiB |
+  1051→| emailWorker | v2 | 0 | — | — | 256MiB |
+  1052→| onLiveKitRoomCreated | v2 | 0 | — | — | 256MiB |
+  1053→| onLiveKitRoomUpdated | v2 | 0 | — | — | 256MiB |
+  1054→| scheduledClassReminder | v2 | 0 | 1 | — | 256MiB |
+  1055→| onUserCreated | v1 | — | — | — | 256MB |
+  1056→| onUserDeleted | v1 | — | — | — | 256MB |
+  1057→
+  1058→---
+  1059→
+  1060→## Sprint 7 — Owner Platform 🔲
+  1061→
+  1062→> **Depends on: Sprint 5 · Domain: `platform.klasivo.app`**
+  1063→
+  1064→Capabilities (separate from school dashboard — normal owners never see these):
+  1065→- [ ] Manage Organizations (create, suspend, delete)
+  1066→- [ ] Subscriptions management (plan assignment, billing overrides)
+  1067→- [ ] Feature Flags (platform-wide and per-org)
+  1068→- [ ] Support Tools (impersonate user, view org data, debug scope issues)
+  1069→- [ ] Platform Analytics (signups, churn, MRR, active users)
+  1070→- [ ] System Health (function metrics, error rates, latency)
+  1071→- [ ] Audit Review (cross-org audit log, compliance reporting)
+  1072→
+  1073→---
+  1074→
+  1075→## Sprint 8 — Platform Separation 🔲
+  1076→
+  1077→> **Depends on: Sprint 7**
+  1078→
+  1079→### Subdomain Routing
+  1080→```
+  1081→klasivo.app           → Marketing Website
+  1082→dashboard.klasivo.app → School Dashboard (Flutter Web)
+  1083→platform.klasivo.app  → Klasivo Platform Admin
+  1084→api.klasivo.app       → Functions / APIs
+  1085→```
+  1086→
+  1087→### Auth Flow Separation
+  1088→- [ ] School dashboard auth (owner, admin, campus_manager, stage_manager, academic_supervisor)
+  1089→- [ ] Platform auth (super_admin only)
+  1090→- [ ] Mobile app auth (teacher, assistant_teacher, student, parent)
+  1091→- [ ] Shared token format, separate routing based on role
+  1092→
+  1093→### Enterprise Structure
+  1094→```
+  1095→Klasivo Platform
+  1096→│
+  1097→├── platform.klasivo.app
+  1098→│     └─ super_admin
+  1099→│
+  1100→├── dashboard.klasivo.app
+  1101→│     ├─ owner
+  1102→│     ├─ admin
+  1103→│     ├─ campus_manager
+  1104→│     ├─ stage_manager
+  1105→│     └─ academic_supervisor
+  1106→│
+  1107→└── Mobile App (Android/iOS)
+  1108→      ├─ teacher
+  1109→      ├─ assistant_teacher
+  1110→      ├─ student
+  1111→      └─ parent
+  1112→```
+  1113→
+  1114→---
+  1115→
+  1116→# PART X — OBSERVER ROLE SPECIFICATION
+  1117→
+  1118→### Hierarchy Placement
+  1119→```
+  1120→owner
+  1121→ └─ admin
+  1122→      ├─ observer
+  1123→      ├─ campus_manager
+  1124→      └─ stage_manager
+  1125→```
+  1126→
+  1127→### Permissions (Read-Only)
+  1128→```
+  1129→✓ analytics.view       ✓ attendance.view       ✓ student.view
+  1130→✓ reports.view         ✓ exam.view             ✓ assignment.view
+  1131→✓ class.view           ✓ stage.view            ✓ subject.view
+  1132→✓ group.view           ✓ user.view             ✓ result.view
+  1133→✓ lesson.view          ✓ material.view         ✓ notification.view
+  1134→✓ integrity.view       ✓ fees.view             ✓ payments.view
+  1135→✓ inventory.view       ✓ org.view              ✓ progress.view
+  1136→✓ question.view
+  1137→
+  1138→✗ create               ✗ edit                  ✗ delete
+  1139→✗ assign roles         ✗ publish               ✗ export
+  1140→```
+  1141→
+  1142→### Platform
+  1143→- Dashboard (primary)
+  1144→- Optional mobile companion (read-only views)
+  1145→
+  1146→---
+  1147→
+  1148→# PART XI — PERMISSION SEPARATION BY PLATFORM
+  1149→
+  1150→### Dashboard-Only (available via API but UI only on dashboard)
+  1151→```
+  1152→organization.create    organization.delete
+  1153→role.assign            scope.assign
+  1154→billing.manage         feature_flags.manage
+  1155→user.manage            audit.view
+  1156→```
+  1157→
+  1158→### Mobile + Web (available on both platforms)
+  1159→```
+  1160→attendance.mark        exam.grade
+  1161→assignment.create      message.send
+  1162→notification.view
+  1163→```
+  1164→
+  1165→RBAC is platform-agnostic. The constraint is purely at the UI/routing layer.
+  1166→
+  1167→---
+  1168→
+  1169→# PART XII — COMPLETED RELEASES (ARCHIVE)
+  1170→
+  1171→### v1.0–v1.5 — Core Platform ✅
+  1172→- [x] Firebase Auth (email/password + Google Sign-In), Multi-role, Hive-persisted sessions
+  1173→- [x] Teacher: Dashboard, Stage→Class→Group, Exams (3 types), Question Bank, Auto-grading, Results, Attendance, Gradebook, Assignments, Excel import, QR enrollment
+  1174→- [x] Student: Dashboard, Exam taking (auto-save, timer, integrity), Results review
+  1175→- [x] Parent: Dashboard, child overview, results/attendance/assignments/progress/announcements
+  1176→- [x] Notifications: FCM, Local, Notification center
+  1177→- [x] Reports: PDF generation, exam statistics, analytics dashboard
+  1178→
+  1179→### v1.6 — Feature Expansion ✅
+  1180→- [x] Announcements, Calendar, Academic Years, Audit Logs
+  1181→
+  1182→### v1.7 — Enterprise Foundations ✅
+  1183→- [x] Design Tokens (7 files), Component Library (8 files), Feature Flags (27 flags), Event Bus (25+ events), Permission Service (80+ permissions)
+  1184→
+  1185→### v1.8 — Feature Completion ✅
+  1186→- [x] LMS screens, Messaging UI, legacy cleanup
+  1187→
+  1188→### v1.9 — Polish & Integration ✅
+  1189→- [x] Component migration, Unit/Integration tests, CI/CD, Performance optimization
+  1190→
+  1191→### v2.0 — Dark Mode, Push Notifications, Video Player, Content Tracking ✅
+  1192→- [x] Theme provider, Dark/Light/System, FCM push notifications, YouTube player, Video progress tracking, Content completion tracking
+  1193→
+  1194→---
+  1195→
+  1196→## Current Codebase Stats
+  1197→
+  1198→| Metric | Count |
+  1199→|--------|-------|
+  1200→| Services | 56 |
+  1201→| Providers | 54 |
+  1202→| Screens | 71 |
+  1203→| Routes | 65+ |
+  1204→| Custom Widgets | 14 |
+  1205→| Feature Flags | 27 |
+  1206→| Permissions | 80+ |
+  1207→| Event Types | 25+ |
+  1208→| User Roles | 8 → 11 (with expanded hierarchy) |
+  1209→| Firestore Indexes | 126 |
+  1210→| Cloud Functions | 17 |
+  1211→| RBAC Files (pending merge) | 15 |
+  1212→| LiveKit Files (pending merge) | 13 |
+  1213→| User Mgmt Files (pending merge) | 10 |
+  1214→| Cloud Functions TS (pending merge) | 25+ |
+  1215→
+  1216→---
+  1217→
+  1218→## Architecture Overview
+  1219→
+  1220→```
+  1221→┌──────────────────────────────────────────────────────────────────┐
+  1222→│                        Presentation Layer                         │
+  1223→│  Mobile App  ·  Web Dashboard  ·  Owner Platform  ·  Public Site│
+  1224→│  Screens (71+)  ·  Widgets (18)  ·  Shells (3+)                 │
+  1225→├──────────────────────────────────────────────────────────────────┤
+  1226→│                     Shared Packages (Monorepo)                    │
+  1227→│  auth  ·  permissions  ·  analytics  ·  notifications            │
+  1228→│  api_client  ·  design_system  ·  audit_logs  ·  common_models  │
+  1229→├──────────────────────────────────────────────────────────────────┤
+  1230→│                        State Management                           │
+  1231→│  Providers (54+)  ·  Riverpod  ·  StreamProviders               │
+  1232→├──────────────────────────────────────────────────────────────────┤
+  1233→│                        Business Logic                             │
+  1234→│  Services (56+)  ·  Event Bus  ·  Feature Flags                  │
+  1235→│  RBAC (15 files) ·  Permission Service  ·  Audit                 │
+  1236→│  Grading Engine  ·  LiveKit Repository  ·  Scope Validator       │
+  1237→├──────────────────────────────────────────────────────────────────┤
+  1238→│                        Data Layer                                 │
+  1239→│  Firebase Auth  ·  Firestore  ·  FCM  ·  Hive  ·  PDF           │
+  1240→│  Firebase Functions (25+ TS)  ·  LiveKit Server  ·  Storage      │
+  1241→│  Stripe (v2.6+)  ·  BigQuery (v2.5+)  ·  Algolia (v3.0+)        │
+  1242→└──────────────────────────────────────────────────────────────────┘
+  1243→```
+  1244→
+  1245→---
+  1246→
+  1247→## Key Implementation Principles
+  1248→
+  1249→1. **Use Design Tokens** — All colors, spacing, typography from `lib/core/tokens/`
+  1250→2. **Use Enterprise Components** — KlasivoButton, KlasivoCard, KlasivoBadge, etc.
+  1251→3. **Use Feature Flags** — Gate new features AND migration steps behind flags
+  1252→4. **Use Permission Gates** — `KlasivoPermissionGate`, `KlasivoRoleGate`
+  1253→5. **Use Event Bus** — Decouple feature modules via typed events
+  1254→6. **Follow Clean Architecture** — Services → Providers → Screens
+  1255→7. **Soft Delete** — All entities use `isArchived` + `archivedAt` pattern
+  1256→8. **Riverpod Functional Style** — Functional providers, not Notifiers (except where needed)
+  1257→9. **Firestore Security** — Role-based rules with field-level security
+  1258→10. **RBAC is Platform-Agnostic** — Permissions know role/permission/scope, not Web/Mobile/Dashboard
+  1259→11. **Fail-Closed Authorization** — Missing metadata = DENY. Unknown scope = DENY. Empty arrays = DENY.
+  1260→12. **Server-Side Role Determination** — Never trust client-sent role values; derive from auth claims
+  1261→13. **Shared Models, No Duplication** — Monorepo packages ensure single source of truth for all apps
+  1262→14. **Migration is Feature-Flagged** — Every migration step can be rolled back per-org without downtime
+  1263→15. **Immutable Audit Trail** — Every mutation logged, append-only, no deletion
+  1264→
