@@ -2,9 +2,9 @@
 
 **Status**: Approved — v1.x Implementation Roadmap  
 **Date**: 2026-06-13  
-**Sprint Target**: Sprint 5+ (after RBAC foundation + adoption features are complete)
+**Sprint Target**: Sprint 6+ (after RBAC foundation + adoption features + academic records are complete)
 
-> **Note (2026-06-15):** Roadmap re-prioritized. Dashboard and platform separation work is now scheduled after adoption-driving features (Teacher Approval, Assignments, Parent Engagement, Student Engagement). See `DEVELOPMENT_ROADMAP.md` for current priority order. Sprint 4 is now School Accounts, not Dashboard.
+> **Note (2026-06-15):** Roadmap re-prioritized. Dashboard and platform separation work is now scheduled after adoption-driving features AND the Academic Records & Gradebook phase (v2.5). Schools need gradebook/report cards before they need a web dashboard. See `DEVELOPMENT_ROADMAP.md` for current priority order. Sprint 4 is now Academic Records + SIS + Communication, Sprint 5 is School Accounts.
 
 ---
 
@@ -124,7 +124,13 @@ RBAC Infrastructure — Claims, Scopes, Rules, Password Flow, Audit Logs
 Scope Enforcement, Permission UI, Role Management
 
 ### Sprint 4
-Flutter Web Dashboard Skeleton at `dashboard.klasivo.app`
+Academic Records & Gradebook + Student Information System + Communication Hub (v2.5 + v2.6 + v2.7)
+
+### Sprint 5
+School Accounts + School Landing Pages + Migration Center (v2.8 + v2.9)
+
+### Sprint 6
+Flutter Web Dashboard Skeleton at `dashboard.klasivo.app` + Mobile-First Offline (v3.0 + v3.1)
 
 Pages:
 - `/dashboard` — Overview
@@ -133,13 +139,10 @@ Pages:
 - `/scopes` — Scope assignment
 - `/settings` — Organization settings
 
-### Sprint 5
-Analytics, Bulk Import, Audit Viewer, Reports
-
-### Sprint 6
+### Sprint 7
 Admin Mobile Companion (read-focused subset for admin roles)
 
-### Sprint 7
+### Sprint 8
 `platform.klasivo.app` — Super Admin Platform (separate from school dashboard)
 
 Capabilities:
