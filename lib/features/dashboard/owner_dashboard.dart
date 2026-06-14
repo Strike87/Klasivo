@@ -11,6 +11,7 @@ import '../../../providers/class_provider.dart';
 import '../../../providers/student_provider.dart';
 import '../../../core/rbac/roles.dart';
 import '../../../providers/feature_flag_provider.dart';
+import '../../../providers/exam_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_card.dart';

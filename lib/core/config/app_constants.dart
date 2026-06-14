@@ -77,6 +77,8 @@ class AppConstants {
   static const String announcementsCollection = 'announcements';
   static const String calendarEventsCollection = 'calendar_events';
   static const String gradebookCollection = 'gradebook';
+  static const String gradebookCategoriesCollection = 'gradebook_categories';
+  static const String gradebookEntriesCollection = 'gradebook_entries';
 
   // v1.9 ERP Collections
   static const String feesCollection = 'fees';

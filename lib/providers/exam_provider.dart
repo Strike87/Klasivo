@@ -125,7 +125,7 @@ class ExamData {
     this.questionCount = 0,
     this.isRandomized = false,
     this.allowRetake = false,
-    this.organizationId = AppConstants.defaultInstitutionId,
+    this.organizationId = 'default', // AppConstants.defaultInstitutionId is a getter, not a const
     this.createdAt,
     this.publishedAt,
   });

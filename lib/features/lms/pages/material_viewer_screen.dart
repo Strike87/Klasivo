@@ -290,7 +290,7 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
             onSelected: (value) {
               switch (value) {
                 case 'edit':
-                  context.go('/teacher/lms/materials/$materialId/edit');
+                  context.go('/teacher/lms/materials/${widget.materialId}/edit');
                   break;
                 case 'archive':
                   _archiveMaterial();

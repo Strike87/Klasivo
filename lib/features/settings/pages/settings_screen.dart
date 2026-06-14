@@ -20,7 +20,6 @@ import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
-import '../../../providers/theme_provider.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 

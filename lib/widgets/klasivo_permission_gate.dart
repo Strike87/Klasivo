@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/tokens/tokens.dart';
+import '../core/config/theme.dart'; // Klasivo* typedef aliases (KlasivoSpacing, KlasivoColors, etc.)
 import '../core/rbac/rbac.dart';
 import '../providers/rbac_provider.dart'; // RBAC v2.0 providers
 import '../providers/feature_flag_provider.dart';

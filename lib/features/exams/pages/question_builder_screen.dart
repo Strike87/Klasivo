@@ -232,10 +232,23 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
     return questions.fold(0, (sum, q) => sum + q.marks);
   }
 
+  String _getQuestionTypeLabel(String questionType) {
+    switch (questionType) {
+      case 'multiple_choice':
+        return 'Multiple Choice';
+      case 'true_false':
+        return 'True / False';
+      case 'short_answer':
+        return 'Short Answer';
+      default:
+        return 'Question';
+    }
+  }
+
   void _showAddQuestionDialog(BuildContext context, String questionType) {
     KlasivoModal.showForm(
       context: context,
-      title: 'Add $_typeLabel',
+      title: 'Add ${_getQuestionTypeLabel(questionType)}',
       child: _QuestionFormSheet(
         examId: widget.examId,
         questionType: questionType,
@@ -248,7 +261,7 @@ class _QuestionBuilderScreenState extends ConsumerState<QuestionBuilderScreen> {
   void _showEditQuestionDialog(BuildContext context, QuestionData question) {
     KlasivoModal.showForm(
       context: context,
-      title: 'Edit $_typeLabel',
+      title: 'Edit ${_getQuestionTypeLabel(question.questionType)}',
       child: _QuestionFormSheet(
         examId: widget.examId,
         questionType: question.questionType,

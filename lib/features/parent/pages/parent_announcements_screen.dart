@@ -176,7 +176,7 @@ class _ParentAnnouncementsListState extends State<_ParentAnnouncementsList> {
             final author = data['authorName'] as String? ?? data['author'] as String?;
             final isPinned = data['isPinned'] as bool? ?? false;
             final readBy = data['readBy'] as Map<String, dynamic>?;
-            final isRead = readBy?[widget.parentId] as bool? ?? false ||
+            final isRead = (readBy?[widget.parentId] as bool? ?? false) ||
                 _readAnnouncements.contains(announcementId);
             final dateFormat = DateFormat('MMM dd, yyyy');
 

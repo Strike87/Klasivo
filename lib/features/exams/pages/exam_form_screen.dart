@@ -166,17 +166,19 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       if (widget.isEditing) {
         await examService.updateExam(
           examId: widget.examData!.id,
-          title: _titleController.text.trim(),
-          classId: _selectedClassId!,
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-          durationMinutes: int.parse(_durationController.text.trim()),
-          startDate: _combinedStart,
-          endDate: _combinedEnd,
-          passingScore: int.parse(_passingScoreController.text.trim()),
-          isRandomized: _isRandomized,
-          allowRetake: _allowRetake,
+          updates: {
+            'title': _titleController.text.trim(),
+            'classId': _selectedClassId!,
+            'description': _descriptionController.text.trim().isEmpty
+                ? null
+                : _descriptionController.text.trim(),
+            'durationMinutes': int.parse(_durationController.text.trim()),
+            'startDate': _combinedStart,
+            'endDate': _combinedEnd,
+            'passingScore': int.parse(_passingScoreController.text.trim()),
+            'isRandomized': _isRandomized,
+            'allowRetake': _allowRetake,
+          },
         );
         if (mounted) {
           KlasivoToast.success(context, message: 'Exam updated successfully');
@@ -185,18 +187,20 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       } else {
         final teacherId = ref.read(userIdProvider) ?? '';
         final examId = await examService.createExam(
-          teacherId: teacherId,
-          title: _titleController.text.trim(),
-          classId: _selectedClassId!,
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-          durationMinutes: int.parse(_durationController.text.trim()),
-          startDate: _combinedStart,
-          endDate: _combinedEnd,
-          passingScore: int.parse(_passingScoreController.text.trim()),
-          isRandomized: _isRandomized,
-          allowRetake: _allowRetake,
+          examData: {
+            'teacherId': teacherId,
+            'title': _titleController.text.trim(),
+            'classId': _selectedClassId!,
+            'description': _descriptionController.text.trim().isEmpty
+                ? null
+                : _descriptionController.text.trim(),
+            'durationMinutes': int.parse(_durationController.text.trim()),
+            'startDate': _combinedStart,
+            'endDate': _combinedEnd,
+            'passingScore': int.parse(_passingScoreController.text.trim()),
+            'isRandomized': _isRandomized,
+            'allowRetake': _allowRetake,
+          },
         );
         if (mounted) {
           KlasivoToast.success(context, message: 'Exam created! Now add questions.');

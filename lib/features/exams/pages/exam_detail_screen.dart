@@ -11,6 +11,7 @@ import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_avatar.dart';
+import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 class ExamDetailScreen extends ConsumerWidget {

@@ -19,7 +19,7 @@ class QREnrollmentService {
     required String teacherId,
     required String className,
     String? grade,
-    String organizationId = AppConstants.defaultInstitutionId,
+    String? organizationId,
   }) {
     final data = {
       'type': 'enrollment',
@@ -27,7 +27,7 @@ class QREnrollmentService {
       'teacherId': teacherId,
       'className': className,
       'grade': grade,
-      'organizationId': organizationId,
+      'organizationId': organizationId ?? AppConstants.defaultInstitutionId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
     return jsonEncode(data);

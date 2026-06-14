@@ -63,7 +63,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             });
             return;
           }
-          final credential = EmailAuthProvider.emailPassword(
+          final credential = EmailAuthProvider.credential(
             email: user.email!,
             password: currentPassword,
           );

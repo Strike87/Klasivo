@@ -403,6 +403,6 @@ class UserManagementRepository {
     }
 
     final snapshot = await query.count().get();
-    return snapshot.count;
+    return snapshot.count ?? 0;
   }
 }

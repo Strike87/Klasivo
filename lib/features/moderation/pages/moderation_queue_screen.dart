@@ -10,6 +10,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/rbac_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_toast.dart';

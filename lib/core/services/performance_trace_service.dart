@@ -198,7 +198,11 @@ class PerformanceTraceService {
     String url,
     String method,
   ) async {
-    final metric = _performance.newHttpMetric(url, method);
+    final httpMethod = HttpMethod.values.firstWhere(
+      (e) => e.name.toLowerCase() == method.toLowerCase(),
+      orElse: () => HttpMethod.Get,
+    );
+    final metric = _performance.newHttpMetric(url, httpMethod);
     return metric;
   }
 

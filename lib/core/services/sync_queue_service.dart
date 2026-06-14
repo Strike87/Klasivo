@@ -249,7 +249,7 @@ class SyncQueueService {
 
     for (final raw in entries) {
       final json = Map<String, dynamic>.from(raw);
-      if (json['retryCount'] as int? ?? 0 >= maxRetryCount) {
+      if ((json['retryCount'] as int? ?? 0) >= maxRetryCount) {
         completedIds.add(json['id'] as String);
       }
     }

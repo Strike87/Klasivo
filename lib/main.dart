@@ -18,6 +18,7 @@ import 'core/config/app_constants.dart';
 import 'core/config/theme_provider.dart';
 import 'core/config/locale_provider.dart';
 import 'core/utils/rtl_helper.dart';
+import 'core/tokens/app_typography.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
@@ -136,7 +137,7 @@ Future<void> main() async {
   // ─── Initialize Firebase with environment-aware config ────────────────
   try {
     await Firebase.initializeApp(
-      options: FirebaseConfig.getOptions(AppEnvironment.current),
+      options: FirebaseConfig.getOptions(EnvironmentConfig.current.environment),
     );
 
     // Configure environment-specific Firebase settings
@@ -363,7 +364,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         localizationsDelegates: const [
           ...GlobalMaterialLocalizations.delegates,
           ...GlobalCupertinoLocalizations.delegates,
-          ...GlobalWidgetsLocalizations.delegates,
+          GlobalWidgetsLocalizations.delegate,
         ],
         home: Scaffold(
           body: Center(
@@ -400,16 +401,13 @@ class _MyAppState extends ConsumerState<MyApp> {
       localizationsDelegates: const [
         ...GlobalMaterialLocalizations.delegates,
         ...GlobalCupertinoLocalizations.delegates,
-        ...GlobalWidgetsLocalizations.delegates,
+        GlobalWidgetsLocalizations.delegate,
       ],
       builder: (context, child) {
         // Wrap with OfflineBanner for connectivity awareness
         return OfflineBanner(child: child!);
       },
       routerConfig: router,
-      navigatorObservers: [
-        FirebaseAnalyticsService.observer,
-      ],
     );
   }
 
@@ -462,6 +460,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     debugLogDiagnostics: true,
+    observers: [FirebaseAnalyticsService.observer],
     refreshListenable: notifier,
     redirect: (context, state) {
       final box = Hive.box(AppConstants.authBox);

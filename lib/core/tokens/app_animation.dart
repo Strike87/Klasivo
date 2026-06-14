@@ -33,7 +33,7 @@ class AppAnimation {
   // Standard Material motion curves
   static const Curve standard = Curves.easeInOut;
   static const Curve decelerate = Curves.decelerate;    // Incoming elements
-  static const Curve accelerate = Curves.accelerate;    // Outgoing elements
+  static const Curve accelerate = Curves.easeIn;       // Outgoing elements
   static const Curve linear = Curves.linear;            // Progress, loading
 
   // Custom Klasivo curves

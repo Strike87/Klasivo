@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../core/services/pagination_service.dart';
 import '../../../widgets/klasivo_paginated_list.dart';
 import '../../../widgets/common_widgets.dart';

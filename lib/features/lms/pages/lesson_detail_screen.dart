@@ -214,7 +214,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: 'Edit Lesson',
                     onPressed: () {
-                      context.go('/teacher/lms/lessons/$lessonId/edit');
+                      context.go('/teacher/lms/lessons/${widget.lessonId}/edit');
                     },
                   ),
                   // Overflow menu
@@ -525,7 +525,7 @@ class _YouTubeCardState extends State<_YouTubeCard> {
             videoUrl: widget.lesson.videoUrl,
             lessonId: widget.lesson.id,
             subjectId: widget.lesson.subjectId,
-            classId: widget.lesson.classId,
+            classId: '',
             organizationId: widget.lesson.organizationId,
           ),
 

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/services/progress_tracking_service.dart';
 import '../../../widgets/common_widgets.dart';
+import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
 
 // ─── Progress Service Provider ────────────────────────────────────────────────

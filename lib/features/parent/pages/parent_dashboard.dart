@@ -538,7 +538,6 @@ class _AttendanceAnalyticsCard extends ConsumerWidget {
             ),
           ),
         ),
-      ),
       error: (_, __) => const SizedBox.shrink(),
       data: (snapshot) {
         final docs = snapshot.docs;

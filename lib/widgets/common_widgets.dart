@@ -136,7 +136,7 @@ void showSnackBar(
   bool isError = false,
 }) {
   KlasivoToast.show(
-    context: context,
+    context,
     message: message,
     type: isError ? KlasivoToastType.error : KlasivoToastType.success,
   );

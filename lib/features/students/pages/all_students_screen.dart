@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/student_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../providers/paginated_providers.dart';
 import '../../../core/services/pagination_service.dart';
 import '../../../widgets/klasivo_paginated_list.dart';

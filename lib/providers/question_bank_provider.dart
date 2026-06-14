@@ -87,7 +87,7 @@ class QuestionBankData {
     this.tags = const [],
     this.imageUrl,
     this.usageCount = 0,
-    this.organizationId = AppConstants.defaultInstitutionId,
+    this.organizationId = 'default', // AppConstants.defaultInstitutionId is a getter, not a const
     this.createdAt,
   });
 

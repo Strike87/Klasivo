@@ -35,20 +35,20 @@ class LanguageScreen extends ConsumerWidget {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(vertical: KlasivoSpacing.sm),
           children: [
             // ─── Header ───────────────────────────────────────────────────
             Padding(
               padding: edgeInsetsWithStart(
                 context: context,
-                start: AppSpacing.lg,
-                end: AppSpacing.lg,
-                top: AppSpacing.md,
-                bottom: AppSpacing.xs,
+                start: KlasivoSpacing.lg,
+                end: KlasivoSpacing.lg,
+                top: KlasivoSpacing.md,
+                bottom: KlasivoSpacing.xs,
               ),
               child: Text(
                 'Select your preferred language',
-                style: AppTypography.bodyMedium.copyWith(
+                style: KlasivoTypography.bodyMedium.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -59,21 +59,21 @@ class LanguageScreen extends ConsumerWidget {
               Padding(
                 padding: edgeInsetsWithStart(
                   context: context,
-                  start: AppSpacing.lg,
-                  end: AppSpacing.lg,
-                  top: AppSpacing.xs,
-                  bottom: AppSpacing.sm,
+                  start: KlasivoSpacing.lg,
+                  end: KlasivoSpacing.lg,
+                  top: KlasivoSpacing.xs,
+                  bottom: KlasivoSpacing.sm,
                 ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
+                        horizontal: KlasivoSpacing.sm,
+                        vertical: KlasivoSpacing.xs,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.primarySurface,
-                        borderRadius: BorderRadius.circular(AppRadius.badge),
+                        color: KlasivoColors.primarySurface,
+                        borderRadius: BorderRadius.circular(KlasivoRadius.badge),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -81,30 +81,30 @@ class LanguageScreen extends ConsumerWidget {
                           Icon(
                             Icons.format_textdirection_r_to_l,
                             size: 14,
-                            color: AppColors.primary,
+                            color: KlasivoColors.primary,
                           ),
-                          const SizedBox(width: AppSpacing.xs),
+                          const SizedBox(width: KlasivoSpacing.xs),
                           Text(
                             'RTL',
-                            style: AppTypography.labelSmall.copyWith(
-                              color: AppColors.primary,
+                            style: KlasivoTypography.labelSmall.copyWith(
+                              color: KlasivoColors.primary,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
+                    const SizedBox(width: KlasivoSpacing.sm),
                     Text(
                       'Right-to-left layout active',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.primary,
+                      style: KlasivoTypography.bodySmall.copyWith(
+                        color: KlasivoColors.primary,
                       ),
                     ),
                   ],
                 ),
               ),
 
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: KlasivoSpacing.sm),
 
             // ─── Language options ──────────────────────────────────────────
             ...kSupportedLocales.map((locale) {
@@ -125,14 +125,14 @@ class LanguageScreen extends ConsumerWidget {
               );
             }),
 
-            const Divider(height: AppSpacing.xxl),
+            const Divider(height: KlasivoSpacing.xxl),
 
             // ─── Reset to system ──────────────────────────────────────────
             Padding(
               padding: edgeInsetsWithStart(
                 context: context,
-                start: AppSpacing.lg,
-                end: AppSpacing.lg,
+                start: KlasivoSpacing.lg,
+                end: KlasivoSpacing.lg,
               ),
               child: OutlinedButton.icon(
                 onPressed: () {
@@ -141,13 +141,13 @@ class LanguageScreen extends ConsumerWidget {
                 icon: const Icon(Icons.settings_backup_restore, size: 18),
                 label: const Text('Reset to System Language'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.lightTextSecondary,
-                  side: const BorderSide(color: AppColors.lightBorder),
+                  foregroundColor: KlasivoColors.lightTextSecondary,
+                  side: const BorderSide(color: KlasivoColors.lightBorder),
                 ),
               ),
             ),
 
-            const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: KlasivoSpacing.lg),
           ],
         ),
       ),
@@ -182,8 +182,8 @@ class _LanguageTile extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
+          horizontal: KlasivoSpacing.lg,
+          vertical: KlasivoSpacing.md,
         ),
         child: Row(
           children: [
@@ -193,10 +193,10 @@ class _LanguageTile extends StatelessWidget {
               height: 40,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primarySurface
+                    ? KlasivoColors.primarySurface
                     : theme.colorScheme.surfaceContainerHighest
-                        .withOpacity(0.5),
-                borderRadius: BorderRadius.circular(AppRadius.iconButton),
+                        .withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(KlasivoRadius.iconButton),
               ),
               child: Center(
                 child: Text(
@@ -206,7 +206,7 @@ class _LanguageTile extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(width: AppSpacing.md),
+            const SizedBox(width: KlasivoSpacing.md),
 
             // ─── Name + subtitle ────────────────────────────────────────
             Expanded(
@@ -215,9 +215,9 @@ class _LanguageTile extends StatelessWidget {
                 children: [
                   Text(
                     nativeName,
-                    style: AppTypography.titleMedium.copyWith(
+                    style: KlasivoTypography.titleMedium.copyWith(
                       color: isSelected
-                          ? AppColors.primary
+                          ? KlasivoColors.primary
                           : theme.colorScheme.onSurface,
                       fontWeight:
                           isSelected ? FontWeight.w700 : FontWeight.w500,
@@ -226,7 +226,7 @@ class _LanguageTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     _englishName(code),
-                    style: AppTypography.bodySmall.copyWith(
+                    style: KlasivoTypography.bodySmall.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -238,22 +238,22 @@ class _LanguageTile extends StatelessWidget {
             if (isRtl) ...[
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
+                  horizontal: KlasivoSpacing.sm,
                   vertical: 2,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.primarySurface,
-                  borderRadius: BorderRadius.circular(AppRadius.badge),
+                  color: KlasivoColors.primarySurface,
+                  borderRadius: BorderRadius.circular(KlasivoRadius.badge),
                 ),
                 child: Text(
                   'RTL',
-                  style: AppTypography.labelSmall.copyWith(
-                    color: AppColors.primary,
+                  style: KlasivoTypography.labelSmall.copyWith(
+                    color: KlasivoColors.primary,
                     fontSize: 9,
                   ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.sm),
+              const SizedBox(width: KlasivoSpacing.sm),
             ],
 
             // ─── Radio indicator ────────────────────────────────────────
@@ -261,7 +261,7 @@ class _LanguageTile extends StatelessWidget {
               value: code,
               groupValue: currentLocaleCode,
               onChanged: (_) => onTap(),
-              activeColor: AppColors.primary,
+              activeColor: KlasivoColors.primary,
               visualDensity: VisualDensity.compact,
             ),
           ],

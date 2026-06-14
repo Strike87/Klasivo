@@ -820,21 +820,21 @@ class AuthService implements IAuthService {
     required String email,
     required String password,
   }) =>
-      loginWithEmail(email: email, password: password, role: 'owner');
+      loginWithEmail(email: email, password: password);
 
   @override
   Future<Map<String, dynamic>> loginTeacher({
     required String email,
     required String password,
   }) =>
-      loginWithEmail(email: email, password: password, role: 'teacher');
+      loginWithEmail(email: email, password: password);
 
   @override
   Future<Map<String, dynamic>> loginParent({
     required String email,
     required String password,
   }) =>
-      loginWithEmail(email: email, password: password, role: 'parent');
+      loginWithEmail(email: email, password: password);
 
   @override
   Future<void> sendPasswordResetEmail({required String email}) =>
