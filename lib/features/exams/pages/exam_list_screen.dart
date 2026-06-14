@@ -158,7 +158,7 @@ class _PaginatedExamTab extends ConsumerWidget {
             );
             if (confirmed == true) {
               try {
-                await ref.read(examServiceProvider).deleteExam(exam.id);
+                await ref.read(examServiceProvider).deleteExam(examId: exam.id);
                 if (context.mounted) {
                   KlasivoToast.success(context, message: 'Exam deleted');
                 }

@@ -85,7 +85,7 @@ class ExamDetailScreen extends ConsumerWidget {
                         try {
                           await ref
                               .read(examServiceProvider)
-                              .deleteExam(examId);
+                              .deleteExam(examId: examId);
                           if (context.mounted) {
                             KlasivoToast.success(context, message: 'Exam deleted');
                             context.go('/teacher/exams');
@@ -298,7 +298,7 @@ class ExamDetailScreen extends ConsumerWidget {
                         try {
                           await ref
                               .read(examServiceProvider)
-                              .publishExam(examId);
+                              .publishExam(examId: examId);
                           if (context.mounted) {
                             KlasivoToast.success(context,
                                 message: 'Exam published successfully!');
@@ -333,7 +333,7 @@ class ExamDetailScreen extends ConsumerWidget {
                         try {
                           await ref
                               .read(examServiceProvider)
-                              .unpublishExam(examId);
+                              .unpublishExam(examId: examId);
                           if (context.mounted) {
                             KlasivoToast.success(context,
                                 message: 'Exam unpublished');

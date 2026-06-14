@@ -308,8 +308,7 @@ class _ParentAnnouncementsListState extends State<_ParentAnnouncementsList> {
                         ],
                       ),
                     ],
-                  ),
-              ),
+                ),
             );
           },
         );

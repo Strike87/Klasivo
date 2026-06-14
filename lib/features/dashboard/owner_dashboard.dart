@@ -228,7 +228,7 @@ class OwnerDashboard extends ConsumerWidget {
                               ),
                               const SizedBox(width: KlasivoSpacing.md),
                               _QuickActionChip(
-                                icon: Icons.moderator_outlined,
+                                icon: Icons.admin_panel_settings_outlined,
                                 label: 'Moderation',
                                 color: KlasivoColors.accent,
                                 onTap: () => context.go('/teacher/moderation'),

@@ -21,7 +21,7 @@ class ViolationService {
     String? ipAddress,
     int? questionIndex,
     int? timeElapsedSeconds,
-    String organizationId = AppConstants.defaultInstitutionId,
+    String organizationId = 'default',
   }) async {
     try {
       final docRef =
@@ -332,7 +332,7 @@ class ViolationData {
     this.ipAddress,
     this.questionIndex,
     this.timeElapsedSeconds,
-    this.organizationId = AppConstants.defaultInstitutionId,
+    this.organizationId = 'default',
     this.severity = 'medium',
     this.isReviewed = false,
     this.reviewedBy,

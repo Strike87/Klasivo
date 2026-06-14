@@ -888,7 +888,6 @@ class _ExamQuestionAnalysisCard extends ConsumerWidget {
               ),
             ),
           ],
-        ),
       ),
     );
   }
@@ -1136,7 +1135,6 @@ class _ScoreDistributionChart extends StatelessWidget {
               gridData: const FlGridData(show: false),
             ),
           ),
-        ),
       ),
     );
   }
@@ -1241,7 +1239,6 @@ class _PassFailChart extends StatelessWidget {
               ),
             ),
           ],
-        ),
       ),
     );
   }
@@ -1330,7 +1327,6 @@ class _ExamStatusChart extends StatelessWidget {
               ),
             ),
           ],
-        ),
       ),
     );
   }

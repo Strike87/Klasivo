@@ -268,7 +268,7 @@ class ExamStatsService {
 
         for (final aDoc in questionAnswers) {
           final data = aDoc.data();
-          if (data['isCorrect'] as bool? ?? false) {
+          if ((data as Map<String, dynamic>)['isCorrect'] as bool? ?? false) {
             correctAttempts++;
           }
         }
@@ -566,7 +566,7 @@ class ExamStatsData {
     required this.id,
     required this.examId,
     required this.classId,
-    this.organizationId = AppConstants.defaultInstitutionId,
+    this.organizationId = 'default',
     this.totalStudents = 0,
     this.submittedStudents = 0,
     this.absentStudents = 0,

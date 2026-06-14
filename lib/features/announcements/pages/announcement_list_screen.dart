@@ -196,37 +196,35 @@ class _AnnouncementCard extends ConsumerWidget {
                   size: KlasivoAvatarSize.sm,
                   backgroundColor: KlasivoColors.primary.withOpacity(0.1),
                 ),
-                    const SizedBox(width: KlasivoSpacing.xs),
-                    Text(
-                      announcement.createdByName!,
-                      style: KlasivoTypography.bodySmall.copyWith(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(width: KlasivoSpacing.md),
-                  ],
-                  if (announcement.createdAt != null)
-                    Text(
-                      timeago.format(announcement.createdAt!),
-                      style: KlasivoTypography.bodySmall.copyWith(
-                        color: theme.brightness == Brightness.dark
-                            ? KlasivoColors.darkTextTertiary
-                            : KlasivoColors.lightTextTertiary,
-                      ),
-                    ),
-                  const Spacer(),
-                  if (!isRead)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: KlasivoColors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
-              ),
+                const SizedBox(width: KlasivoSpacing.xs),
+                Text(
+                  announcement.createdByName!,
+                  style: KlasivoTypography.bodySmall.copyWith(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: KlasivoSpacing.md),
+              ],
+              if (announcement.createdAt != null)
+                Text(
+                  timeago.format(announcement.createdAt!),
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: theme.brightness == Brightness.dark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+              const Spacer(),
+              if (!isRead)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: KlasivoColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

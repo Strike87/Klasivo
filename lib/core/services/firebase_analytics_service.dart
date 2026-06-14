@@ -193,7 +193,7 @@ class FirebaseAnalyticsService {
   }) async {
     await _analytics.logScreenView(
       screenName: screenName,
-      screenClassOverride: screenClass,
+      screenClass: screenClass,
     );
   }
 

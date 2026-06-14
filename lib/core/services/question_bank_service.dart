@@ -18,7 +18,7 @@ class QuestionBankService {
     int marks = 1,
     List<String>? tags,
     String? imageUrl,
-    String organizationId = AppConstants.defaultInstitutionId,
+    String organizationId = 'default',
   }) async {
     try {
       final docRef = await _firestore.collection(AppConstants.questionBankCollection).add({
