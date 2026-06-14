@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 const db = admin.firestore();
 
@@ -9,8 +9,9 @@ export const onUserDeleted = functions
   .runWith({ secrets: ['SENTRY_DSN'], memory: '256MB', timeoutSeconds: 120 })
   .auth.user().onDelete(async (user) => {
     initSentry();
-    Sentry.setTag('service', 'auth');
-    Sentry.setTag('function', 'onUserDeleted');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'auth');
+    scope.setTag('function', 'onUserDeleted');
 
     const uid = user.uid;
     console.log(`User deleted: ${uid}`);
@@ -48,6 +49,7 @@ export const onUserDeleted = functions
       Sentry.captureException(error);
       throw error;
     }
+    }); // withIsolatedScope
   });
 
 async function deleteOrganizationData(orgId: string): Promise<void> {

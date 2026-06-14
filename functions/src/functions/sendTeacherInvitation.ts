@@ -4,15 +4,16 @@ import * as Sentry from '@sentry/node';
 import { queueEmail } from '../services/queueService';
 import { isValidEmail, missingField } from '../utils/validators';
 import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 import { verifyOrgBoundary, INVITATION_ROLES } from '../utils/rbac';
 
 export const sendTeacherInvitation = onCall(
   { secrets: ['SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
   async (request) => {
     initSentry();
-    Sentry.setTag('service', 'email');
-    Sentry.setTag('function', 'sendTeacherInvitation');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'email');
+    scope.setTag('function', 'sendTeacherInvitation');
 
     if (!request.auth) throw new Error('User must be authenticated.');
 
@@ -55,4 +56,5 @@ export const sendTeacherInvitation = onCall(
       Sentry.captureException(err);
       throw new Error('Failed to queue teacher invitation');
     }
+    }); // withIsolatedScope
   });

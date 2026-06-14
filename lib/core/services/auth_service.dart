@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
+import 'sentry_service.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
 import 'invite_code_service.dart';
@@ -303,17 +304,44 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    final transaction = KlasivoSentry.transactions.loginFlow('email');
+
     try {
+      KlasivoSentry.breadcrumb.auth('login_started', data: {
+        'method': 'email',
+        'email': email,
+      });
+
       final userCredential =
           await FirebaseService.loginWithEmail(email, password);
       final user = userCredential.user!;
 
+      KlasivoSentry.breadcrumb.auth('auth_user_authenticated', data: {
+        'uid': user.uid,
+        'method': 'email',
+      });
+
+      // Set Sentry user context immediately after auth
+      await KlasivoSentry.userContext.setUser(
+        uid: user.uid,
+        email: email,
+      );
+
+      final readUserSpan = transaction.startChild('read_user_doc');
       final userDoc = await _firestore
           .collection(AppConstants.usersCollection)
           .doc(user.uid)
           .get();
+      await readUserSpan.finish();
 
       if (!userDoc.exists) {
+        KlasivoSentry.breadcrumb.auth('login_failed_user_doc_missing', data: {
+          'uid': user.uid,
+        });
+        await Sentry.captureMessage(
+          'Login failed: users/${user.uid} document does not exist',
+          level: SentryLevel.error,
+        );
         throw Exception('User data not found. Please contact your administrator.');
       }
 
@@ -321,16 +349,38 @@ class AuthService {
       final role = userData['role'] as String?;
       final isActive = userData['isActive'] as bool? ?? true;
 
+      // Update Sentry context with role and org
+      await KlasivoSentry.userContext.setRole(role ?? 'unknown');
+      final orgId = userData['organizationId'] as String?;
+      if (orgId != null && orgId.isNotEmpty) {
+        await KlasivoSentry.userContext.setOrganizationId(orgId);
+      }
+
       if (!isActive) {
         await _auth.signOut();
+        KlasivoSentry.breadcrumb.auth('login_failed_account_deactivated', data: {
+          'uid': user.uid,
+          'role': role,
+        });
         throw Exception('Your account has been deactivated. Contact your administrator.');
       }
 
       // Students should NOT use email login — they use student code login
       if (role == AppConstants.roleStudent) {
         await _auth.signOut();
+        KlasivoSentry.breadcrumb.auth('login_failed_student_email_login', data: {
+          'uid': user.uid,
+        });
         throw Exception('Students must login with their student code.');
       }
+
+      KlasivoSentry.breadcrumb.auth('login_success', data: {
+        'uid': user.uid,
+        'role': role ?? 'unknown',
+        'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+      });
+
+      transaction.status = const SpanStatus.ok();
 
       return {
         'id': user.uid,
@@ -342,8 +392,19 @@ class AuthService {
         'isEmailVerified': user.emailVerified,
         'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
       };
-    } catch (e) {
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'email_login');
+          scope.setTag('step', 'login_with_email');
+        },
+      );
       rethrow;
+    } finally {
+      await transaction.finish();
     }
   }
 
@@ -356,16 +417,27 @@ class AuthService {
     required String studentCode,
     required String password,
   }) async {
+    final transaction = KlasivoSentry.transactions.loginFlow('student');
+
     try {
+      KlasivoSentry.breadcrumb.auth('login_started', data: {
+        'method': 'student_code',
+      });
+
       // Step 1: Find user by studentCode
+      final findUserSpan = transaction.startChild('find_user_by_code');
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: studentCode)
           .where('role', isEqualTo: AppConstants.roleStudent)
           .limit(1)
           .get();
+      await findUserSpan.finish();
 
       if (snapshot.docs.isEmpty) {
+        KlasivoSentry.breadcrumb.auth('login_failed_student_not_found', data: {
+          'method': 'student_code',
+        });
         throw Exception('Student not found. Please check your student code.');
       }
 
@@ -392,11 +464,19 @@ class AuthService {
       }
 
       if (!passwordMatches) {
+        KlasivoSentry.breadcrumb.auth('login_failed_invalid_password', data: {
+          'method': 'student_code',
+          'userId': userDoc.id,
+        });
         throw Exception('Invalid password. Please try again.');
       }
 
       final isActive = student['isActive'] as bool? ?? true;
       if (!isActive) {
+        KlasivoSentry.breadcrumb.auth('login_failed_account_deactivated', data: {
+          'userId': userDoc.id,
+          'role': 'student',
+        });
         throw Exception('Your account has been deactivated.');
       }
 
@@ -408,10 +488,42 @@ class AuthService {
             email: internalEmail,
             password: password,
           );
+          KlasivoSentry.breadcrumb.auth('student_auth_signed_in', data: {
+            'userId': userDoc.id,
+          });
         } catch (authError) {
           // Graceful fallback — still allow login even if Firebase Auth fails
+          KlasivoSentry.breadcrumb.auth('student_auth_signin_failed_fallback', data: {
+            'userId': userDoc.id,
+            'error': authError.toString().substring(0, (authError.toString().length).clamp(0, 100)),
+          });
         }
       }
+
+      // Set Sentry user context
+      await KlasivoSentry.userContext.setUser(
+        uid: userDoc.id,
+        email: internalEmail ?? '',
+        role: AppConstants.roleStudent,
+        organizationId: student['organizationId'] as String?,
+      );
+
+      KlasivoSentry.breadcrumb.auth('login_success', data: {
+        'uid': userDoc.id,
+        'role': 'student',
+        'method': 'student_code',
+      });
+
+      // Log doc ID audit — student uses Firestore doc ID (not auth UID)
+      KlasivoSentry.docIdAudit.logUserCreation(
+        flow: 'student_code_login',
+        collection: AppConstants.usersCollection,
+        docIdStrategy: userDoc.id.length > 28 ? 'auto_id' : 'uid',
+        actualDocId: userDoc.id,
+        authUid: _auth.currentUser?.uid,
+      );
+
+      transaction.status = const SpanStatus.ok();
 
       return {
         'id': userDoc.id,
@@ -423,8 +535,20 @@ class AuthService {
         'classId': student['classId'],
         'hasCompletedSetup': true,
       };
-    } catch (e) {
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'student_login');
+          scope.setTag('step', 'login_student');
+          scope.setTag('method', 'student_code');
+        },
+      );
       rethrow;
+    } finally {
+      await transaction.finish();
     }
   }
 
@@ -1154,9 +1278,23 @@ class AuthService {
 
   Future<void> logout() async {
     try {
+      KlasivoSentry.breadcrumb.auth('logout_started');
+
       await GoogleSignIn().signOut();
       await FirebaseService.logout();
-    } catch (e) {
+
+      // Clear Sentry user context
+      await KlasivoSentry.userContext.clearUser();
+
+      KlasivoSentry.breadcrumb.auth('logout_success');
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'logout');
+        },
+      );
       rethrow;
     }
   }
@@ -1172,7 +1310,13 @@ class AuthService {
   // ─── Password Reset ────────────────────────────────────────────────────────
 
   Future<void> sendPasswordReset(String email) async {
+    final transaction = KlasivoSentry.transactions.passwordReset();
+
     try {
+      KlasivoSentry.breadcrumb.auth('password_reset_started', data: {
+        'email': email,
+      });
+
       final actionCodeSettings = ActionCodeSettings(
         url: AppConstants.appBaseUrl,
         handleCodeInApp: true,
@@ -1187,8 +1331,25 @@ class AuthService {
         email: email,
         actionCodeSettings: actionCodeSettings,
       );
-    } catch (e) {
+
+      KlasivoSentry.breadcrumb.auth('password_reset_email_sent', data: {
+        'email': email,
+      });
+
+      transaction.status = const SpanStatus.ok();
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'password_reset');
+          scope.setTag('step', 'send_reset_email');
+        },
+      );
       rethrow;
+    } finally {
+      await transaction.finish();
     }
   }
 

@@ -8,9 +8,12 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
+import 'core/config/app_environment.dart';
+import 'core/services/sentry_service.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
@@ -105,27 +108,103 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ─── Resolve environment & package info early ──────────────────────────
+  final envConfig = EnvironmentConfig.current;
+  late final PackageInfo packageInfo;
+  try {
+    packageInfo = await PackageInfo.fromPlatform();
+  } catch (_) {
+    // Fallback if package_info_plus is unavailable (e.g. desktop test)
+    packageInfo = PackageInfo(
+      appName: envConfig.appName,
+      packageName: 'com.klasivo.app',
+      version: '2.0.0',
+      buildNumber: '7',
+    );
+  }
+
+  final releaseTag = 'klasivo@${packageInfo.version}+${packageInfo.buildNumber}';
+
+  // ─── Sentry before-send callback: sanitize sensitive data ──────────────
+  SentryEvent? beforeSendCallback(SentryEvent event) {
+    // Strip sensitive data from breadcrumbs
+    if (event.breadcrumbs != null) {
+      for (int i = 0; i < event.breadcrumbs!.length; i++) {
+        final crumb = event.breadcrumbs![i];
+        if (crumb.data != null) {
+          final sanitized = <String, dynamic>{};
+          crumb.data!.forEach((key, value) {
+            sanitized[key] = _SentrySanitizer.isSensitive(key)
+                ? '[REDACTED]'
+                : value;
+          });
+          event.breadcrumbs![i] = Breadcrumb(
+            category: crumb.category,
+            message: crumb.message,
+            data: sanitized,
+            level: crumb.level,
+            timestamp: crumb.timestamp,
+            type: crumb.type,
+          );
+        }
+      }
+    }
+
+    // Strip sensitive data from extra fields
+    if (event.extra != null) {
+      final sanitized = <String, dynamic>{};
+      event.extra!.forEach((key, value) {
+        sanitized[key] = _SentrySanitizer.isSensitive(key)
+            ? '[REDACTED]'
+            : value;
+      });
+      event.extra = sanitized;
+    }
+
+    // Strip sensitive data from request headers
+    if (event.request?.headers != null) {
+      final sanitized = <String, String>{};
+      event.request!.headers!.forEach((key, value) {
+        final lower = key.toLowerCase();
+        if (lower.contains('authorization') ||
+            lower.contains('cookie') ||
+            lower.contains('token')) {
+          sanitized[key] = '[REDACTED]';
+        } else {
+          sanitized[key] = value;
+        }
+      });
+      event.request = SentryRequest(headers: sanitized);
+    }
+
+    return event;
+  }
+
   // ─── Initialize Firebase with error handling ────────────────────────
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // ── Flutter Framework Errors → BOTH Crashlytics + Sentry ──────────
     FlutterError.onError = (details) {
       FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-      // Also report to Sentry for cross-platform visibility
-      Sentry.captureException(details.exception, stackTrace: details.stack);
+      Sentry.captureException(
+        details.exception,
+        stackTrace: details.stack,
+      );
     };
 
+    // ── Platform/Async Errors → BOTH Crashlytics + Sentry ─────────────
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      // Also report to Sentry for cross-platform visibility
       Sentry.captureException(error, stackTrace: stack);
       return true;
     };
 
+    // Use EnvironmentConfig for Crashlytics (respects dev/staging/prod)
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-      !kDebugMode,
+      envConfig.crashlyticsEnabled,
     );
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
@@ -148,22 +227,105 @@ Future<void> main() async {
     debugPrint('Notification initialization failed: $e');
   }
 
-  // ─── Initialize Sentry ──────────────────────────────────────────────
-  // DSN is read from --dart-define=SENTRY_DSN=... at build time.
-  // If not provided, Sentry is disabled (safe no-op).
+  // ─── Initialize Sentry (production-grade) ──────────────────────────
   final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
 
   await SentryFlutter.init(
     (options) {
       options.dsn = sentryDsn;
-      options.tracesSampleRate = 1.0; // Capture 100% of transactions for registration debugging
-      options.environment = kDebugMode ? 'development' : 'production';
-      options.sendDefaultPii = false;
-      // Attach Crashlytics breadcrumbs to Sentry for cross-referencing
+
+      // ── Environment from EnvironmentConfig ──────────────────────────
+      options.environment = envConfig.environment.name;
+
+      // ── Release tracking ────────────────────────────────────────────
+      options.release = releaseTag;
+
+      // ── Sampling rates (environment-aware) ──────────────────────────
+      if (envConfig.isDev) {
+        options.tracesSampleRate = 1.0; // 100% in dev for debugging
+        options.profilesSampleRate = 1.0;
+      } else if (envConfig.isStaging) {
+        options.tracesSampleRate = 0.5; // 50% in staging
+        options.profilesSampleRate = 0.5;
+      } else {
+        options.tracesSampleRate = 0.2; // 20% in prod (cost control)
+        options.profilesSampleRate = 0.2;
+      }
+
+      // ── PII / Privacy ──────────────────────────────────────────────
+      options.sendDefaultPii = false; // Never send PII by default
+
+      // ── Before-send callback: sanitize all events ───────────────────
+      options.beforeSend = beforeSendCallback;
+
+      // ── Auto breadcrumb tracking ────────────────────────────────────
       options.enableAutoBreadcrumbTracking = true;
+
+      // ── Attach screenshots to error events ──────────────────────────
+      options.attachScreenshot = true;
+      options.screenshotQuality = SentryScreenshotQuality.low;
+      options.attachViewHierarchy = true;
+
+      // ── Session Replay ──────────────────────────────────────────────
+      // Mask sensitive fields — passwords, emails, phone numbers, OTPs
+      options.replay.sessionSampleRate = envConfig.isDev ? 1.0 : 0.1;
+      options.replay.onErrorSampleRate = 1.0; // Always capture on error
+
+      // ── Max breadcrumbs ─────────────────────────────────────────────
+      options.maxBreadcrumbs = 200;
+
+      // ── Diagnostic level ────────────────────────────────────────────
+      options.diagnosticLevel = envConfig.isDev ? SentryLevel.debug : SentryLevel.error;
+
+      // ── Enable swizzle (iOS) ────────────────────────────────────────
+      options.enableSwizzle = true;
+
+      // ── ANR (Application Not Responding) ────────────────────────────
+      options.anrEnabled = true;
+      options.anrTimeoutIntervalInSeconds = 5;
     },
-    appRunner: () => runApp(const ProviderScope(child: MyApp())),
+    appRunner: () {
+      // ── Set app version tags on Sentry scope ────────────────────────
+      SentryUserContext.setAppVersion(
+        version: packageInfo.version,
+        buildNumber: packageInfo.buildNumber,
+      );
+
+      // ── Wrap entire app in runZonedGuarded ──────────────────────────
+      // Catches async errors that PlatformDispatcher misses
+      runZonedGuarded<Future<void>>(
+        () async {
+          runApp(const ProviderScope(child: MyApp()));
+        },
+        (error, stack) {
+          FirebaseCrashlytics.instance.recordError(
+            error,
+            stack,
+            fatal: true,
+          );
+          Sentry.captureException(error, stackTrace: stack);
+        },
+      );
+    },
   );
+}
+
+// ─── Sentry Sanitization Helper ──────────────────────────────────────────────
+
+class _SentrySanitizer {
+  static const Set<String> _sensitiveKeys = {
+    'password', 'passwordHash', 'confirmPassword', 'newPassword',
+    'accessToken', 'refreshToken', 'idToken', 'otp', 'otpCode',
+    'inviteCode', 'secret', 'apiKey', 'authEmail', 'studentCode',
+  };
+
+  static bool isSensitive(String key) {
+    final lower = key.toLowerCase();
+    for (final s in _sensitiveKeys) {
+      if (lower.contains(s.toLowerCase())) return true;
+    }
+    return false;
+  }
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -294,6 +456,59 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     debugLogDiagnostics: true,
     refreshListenable: notifier,
+    // ── Navigation error builder — catches route errors and reports to Sentry ──
+    errorBuilder: (context, state) {
+      final error = state.error;
+      if (error != null) {
+        Sentry.captureException(
+          error,
+          withScope: (scope) {
+            scope.setTag('source', 'go_router');
+            scope.setTag('route', state.matchedLocation);
+            scope.setExtra('uri', state.uri.toString());
+          },
+        );
+        KlasivoSentry.breadcrumb.navigation(
+          state.matchedLocation,
+          action: 'error',
+          data: {'error': error.toString()},
+        );
+      }
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: KlasivoColors.error),
+              const SizedBox(height: KlasivoSpacing.lg),
+              Text(
+                'Page not found',
+                style: KlasivoTypography.headlineMedium.copyWith(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? KlasivoColors.darkTextPrimary
+                      : KlasivoColors.lightTextPrimary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.sm),
+              Text(
+                'The page you are looking for does not exist.',
+                style: KlasivoTypography.bodyMedium.copyWith(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: KlasivoSpacing.xl),
+              ElevatedButton(
+                onPressed: () => context.go('/'),
+                child: const Text('Go Home'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
     redirect: (context, state) {
       final box = Hive.box(AppConstants.authBox);
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;

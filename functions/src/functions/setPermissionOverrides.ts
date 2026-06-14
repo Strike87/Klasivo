@@ -1,5 +1,6 @@
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
+import * as Sentry from '@sentry/node';
 
 import {
   OVERRIDE_ASSIGNMENT_ROLES,
@@ -7,6 +8,7 @@ import {
   verifyOrgBoundary,
   type KlasivoRole,
 } from '../utils/rbac';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO RBAC v2.0 — setPermissionOverrides (v2 callable)
@@ -55,6 +57,11 @@ export const setPermissionOverrides = onCall(
     concurrency: 80,
   },
   async (request: CallableRequest<SetPermissionOverridesData>) => {
+    initSentry();
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'rbac');
+    scope.setTag('function', 'setPermissionOverrides');
+
     // ─── Auth Check ─────────────────────────────────────────────────────
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be authenticated.');
@@ -167,4 +174,5 @@ export const setPermissionOverrides = onCall(
       overrides: finalOverrides,
       overrideCount: Object.keys(finalOverrides).length,
     };
+    }); // withIsolatedScope
   });

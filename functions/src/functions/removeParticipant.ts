@@ -18,7 +18,7 @@ import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 import { RoomServiceClient } from 'livekit-server-sdk';
 
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 // ─── Secrets ──────────────────────────────────────────────────
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -46,8 +46,9 @@ export const removeParticipant = onCall(
   },
   async (request: CallableRequest<RemoveParticipantRequest>) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('function', 'removeParticipant');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'livekit');
+    scope.setTag('function', 'removeParticipant');
 
     // ── Auth check ───────────────────────────────────────────
     if (!request.auth) {
@@ -86,8 +87,8 @@ export const removeParticipant = onCall(
       throw new Error('You can only remove participants from rooms in your organization.');
     }
 
-    Sentry.setTag('room', roomName);
-    Sentry.setUser({ id: callerUid });
+    scope.setTag('room', roomName);
+    scope.setUser({ id: callerUid });
 
     // ── Remove participant via LiveKit SDK ────────────────────
     const livekitUrl = roomDoc.data()?.['metadata']?.['livekitUrl'] as string
@@ -148,5 +149,6 @@ export const removeParticipant = onCall(
     });
 
     return { success: true, removedIdentity: participantIdentity };
+    }); // withIsolatedScope
   },
 );

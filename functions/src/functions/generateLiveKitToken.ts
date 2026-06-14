@@ -28,7 +28,7 @@ import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 import { AccessToken } from 'livekit-server-sdk';
 
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 import { verifyOrgBoundary, verifyScopeAuthorization, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
@@ -60,8 +60,9 @@ export const generateLiveKitToken = onCall(
   },
   async (request: CallableRequest<LiveKitTokenRequest>): Promise<LiveKitTokenResponse> => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('function', 'generateLiveKitToken');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'livekit');
+    scope.setTag('function', 'generateLiveKitToken');
 
     // ── Auth check ───────────────────────────────────────────
     if (!request.auth) {
@@ -98,8 +99,8 @@ export const generateLiveKitToken = onCall(
       throw new Error('Invalid room name in document. Use 1-128 chars: letters, digits, hyphens, underscores.');
     }
 
-    Sentry.setTag('room', sanitizedRoomName);
-    Sentry.setUser({ id: uid });
+    scope.setTag('room', sanitizedRoomName);
+    scope.setUser({ id: uid });
 
     // ── Org boundary check ───────────────────────────────────
     const callerOrgId = (request.auth.token.organizationId as string) || '';
@@ -171,6 +172,7 @@ export const generateLiveKitToken = onCall(
     });
 
     return { token: jwt };
+    }); // withIsolatedScope
   },
 );
 

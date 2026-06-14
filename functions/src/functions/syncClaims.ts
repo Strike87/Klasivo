@@ -1,5 +1,6 @@
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
+import * as Sentry from '@sentry/node';
 
 import {
   ROLE_ASSIGNMENT_ROLES,
@@ -7,6 +8,7 @@ import {
   verifyOrgBoundary,
   type KlasivoRole,
 } from '../utils/rbac';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO RBAC v2.0 — syncClaims (v2 callable)
@@ -39,6 +41,11 @@ export const syncClaims = onCall(
     concurrency: 80,
   },
   async (request: CallableRequest<SyncClaimsData>) => {
+    initSentry();
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'rbac');
+    scope.setTag('function', 'syncClaims');
+
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
@@ -102,4 +109,5 @@ export const syncClaims = onCall(
       organizationId,
       scopeAccessLevel: customClaims.scopeAccessLevel,
     };
+    }); // withIsolatedScope
   });

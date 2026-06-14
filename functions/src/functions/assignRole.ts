@@ -1,5 +1,6 @@
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
+import * as Sentry from '@sentry/node';
 
 import {
   VALID_ROLES,
@@ -8,6 +9,7 @@ import {
   verifyOrgBoundary,
   type KlasivoRole,
 } from '../utils/rbac';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO RBAC v2.0 — assignRole (v2 callable)
@@ -40,6 +42,11 @@ export const assignRole = onCall(
     concurrency: 80,
   },
   async (request: CallableRequest<AssignRoleData>) => {
+    initSentry();
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'rbac');
+    scope.setTag('function', 'assignRole');
+
     // ─── Auth Check ─────────────────────────────────────────────────────
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be authenticated.');
@@ -144,4 +151,5 @@ export const assignRole = onCall(
       newRole,
       scopeAccessLevel: customClaims.scopeAccessLevel,
     };
+    }); // withIsolatedScope
   });

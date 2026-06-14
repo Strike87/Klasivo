@@ -1,0 +1,795 @@
+     1→     1→import 'dart:async';
+     2→     2→import 'package:flutter/material.dart';
+     3→     3→import 'package:flutter_riverpod/flutter_riverpod.dart';
+     4→     4→import 'package:firebase_auth/firebase_auth.dart';
+     5→     5→import 'package:go_router/go_router.dart';
+     6→     6→import 'package:hive_flutter/hive_flutter.dart';
+     7→     7→
+     8→     8→import '../core/config/app_constants.dart';
+     9→     9→import '../core/config/theme.dart';
+    10→    10→import '../core/services/feature_flag_service.dart';
+    11→    11→import '../core/services/permission_service.dart';
+    12→    12→import '../features/livekit/pages/scheduled_classes_screen.dart';
+    13→    13→import '../features/livekit/pages/session_analytics_dashboard.dart';
+    14→    14→import '../features/user_management/pages/people_hub_screen.dart';
+    15→    15→import '../features/user_management/pages/user_detail_screen.dart';
+    16→    16→import '../features/user_management/pages/role_matrix_screen.dart';
+    17→    17→import '../providers/auth_provider.dart';
+    18→    18→import '../providers/feature_flag_provider.dart';
+    19→    19→import '../providers/permission_provider.dart';
+    20→    20→
+    21→    21→// ─── Auth Change Notifier for GoRouter refresh ──────────────────────────────
+    22→    22→
+    23→    23→class AuthChangeNotifier extends ChangeNotifier {
+    24→    24→  StreamSubscription<User?>? _firebaseSub;
+    25→    25→  StreamSubscription? _hiveSub;
+    26→    26→
+    27→    27→  AuthChangeNotifier() {
+    28→    28→    _firebaseSub = FirebaseAuth.instance.authStateChanges().listen(
+    29→    29→      (_) => notifyListeners(),
+    30→    30→      onError: (_) => notifyListeners(),
+    31→    31→    );
+    32→    32→    _startHiveWatch();
+    33→    33→  }
+    34→    34→
+    35→    35→  void _startHiveWatch() {
+    36→    36→    _hiveSub = Hive.box(AppConstants.authBox).watch().listen((event) {
+    37→    37→      notifyListeners();
+    38→    38→    });
+    39→    39→  }
+    40→    40→
+    41→    41→  @override
+    42→    42→  void dispose() {
+    43→    43→    _firebaseSub?.cancel();
+    44→    44→    _hiveSub?.cancel();
+    45→    45→    super.dispose();
+    46→    46→  }
+    47→    47→}
+    48→    48→
+    49→    49→final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
+    50→    50→  final notifier = AuthChangeNotifier();
+    51→    51→  ref.onDispose(() => notifier.dispose());
+    52→    52→  return notifier;
+    53→    53→});
+    54→    54→
+    55→    55→// ─── GoRouter Provider ──────────────────────────────────────────────────────
+    56→    56→
+    57→    57→final klasivoRouterProvider = Provider<GoRouter>((ref) {
+    58→    58→  final notifier = ref.watch(authChangeNotifierProvider);
+    59→    59→
+    60→    60→  return GoRouter(
+    61→    61→    initialLocation: '/',
+    62→    62→    debugLogDiagnostics: true,
+    63→    63→    refreshListenable: notifier,
+    64→    64→    redirect: (context, state) {
+    65→    65→      final box = Hive.box(AppConstants.authBox);
+    66→    66→      final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
+    67→    67→      final userRole = box.get('userRole', defaultValue: '') as String;
+    68→    68→      final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
+    69→    69→
+    70→    70→      final isOnSplash = state.matchedLocation == '/';
+    71→    71→      final isOnAuth = state.matchedLocation.startsWith('/auth');
+    72→    72→      final isOnWelcome = state.matchedLocation == '/welcome';
+    73→    73→      final isOnDashboard = state.matchedLocation.startsWith('/dashboard') ||
+    74→    74→          state.matchedLocation.startsWith('/academic') ||
+    75→    75→          state.matchedLocation.startsWith('/people') ||
+    76→    76→          state.matchedLocation.startsWith('/inbox') ||
+    77→    77→          state.matchedLocation.startsWith('/settings') ||
+    78→    78→          state.matchedLocation.startsWith('/teacher') ||
+    79→    79→          state.matchedLocation.startsWith('/lms');
+    80→    80→      final isOnStudent = state.matchedLocation.startsWith('/student');
+    81→    81→      final isOnParent = state.matchedLocation.startsWith('/parent') ||
+    82→    82→          state.matchedLocation.startsWith('/auth/parent');
+    83→    83→
+    84→    84→      // Splash → redirect based on auth state
+    85→    85→      if (isOnSplash) {
+    86→    86→        if (isLoggedIn && userRole.isNotEmpty) {
+    87→    87→          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+    88→    88→            return '/welcome';
+    89→    89→          }
+    90→    90→          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+    91→    91→            return '/dashboard';
+    92→    92→          }
+    93→    93→          if (userRole == AppConstants.roleStudent) return '/student';
+    94→    94→          if (userRole == AppConstants.roleParent) return '/parent';
+    95→    95→        }
+    96→    96→        return '/auth';
+    97→    97→      }
+    98→    98→
+    99→    99→      // Welcome screen — only accessible to logged-in owners who haven't completed setup
+   100→   100→      if (isOnWelcome) {
+   101→   101→        if (!isLoggedIn) return '/auth';
+   102→   102→        if (userRole != AppConstants.roleOwner) return '/dashboard';
+   103→   103→        if (hasCompletedSetup) return '/dashboard';
+   104→   104→        return null;
+   105→   105→      }
+   106→   106→
+   107→   107→      // Auth screens → redirect if already logged in
+   108→   108→      if (isOnAuth) {
+   109→   109→        if (isLoggedIn && userRole.isNotEmpty) {
+   110→   110→          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+   111→   111→            return '/welcome';
+   112→   112→          }
+   113→   113→          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+   114→   114→            return '/dashboard';
+   115→   115→          }
+   116→   116→          if (userRole == AppConstants.roleStudent) return '/student';
+   117→   117→          if (userRole == AppConstants.roleParent) return '/parent';
+   118→   118→        }
+   119→   119→        return null;
+   120→   120→      }
+   121→   121→
+   122→   122→      // Protected screens → require login
+   123→   123→      if (isOnDashboard || isOnStudent || isOnParent) {
+   124→   124→        if (!isLoggedIn) return '/auth';
+   125→   125→        if (userRole.isEmpty) return '/auth';
+   126→   126→
+   127→   127→        if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
+   128→   128→          return '/welcome';
+   129→   129→        }
+   130→   130→
+   131→   131→        // ─── Feature Flag Gates ───────────────────────────────────────────
+   132→   132→        // LMS routes require lms flag
+   133→   133→        if (state.matchedLocation.startsWith('/lms')) {
+   134→   134→          final flagService = ref.read(featureFlagServiceProvider);
+   135→   135→          if (!flagService.isEnabled(FeatureFlags.lms)) {
+   136→   136→            return '/dashboard';
+   137→   137→          }
+   138→   138→        }
+   139→   139→
+   140→   140→        // LiveKit routes require livekit flag
+   141→   141→        if (state.matchedLocation.startsWith('/live-classes')) {
+   142→   142→          final flagService = ref.read(featureFlagServiceProvider);
+   143→   143→          if (!flagService.isEnabled(FeatureFlags.livekit)) {
+   144→   144→            return '/dashboard';
+   145→   145→          }
+   146→   146→        }
+   147→   147→
+   148→   148→        // People Hub requires userManagement flag
+   149→   149→        if (state.matchedLocation.startsWith('/people')) {
+   150→   150→          final flagService = ref.read(featureFlagServiceProvider);
+   151→   151→          if (!flagService.isEnabled(FeatureFlags.userManagement)) {
+   152→   152→            return '/dashboard';
+   153→   153→          }
+   154→   154→        }
+   155→   155→
+   156→   156→        // Parent portal requires parentPortal flag
+   157→   157→        if (state.matchedLocation.startsWith('/parent') ||
+   158→   158→            state.matchedLocation.startsWith('/auth/parent')) {
+   159→   159→          final flagService = ref.read(featureFlagServiceProvider);
+   160→   160→          if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
+   161→   161→            if (userRole == AppConstants.roleParent) return '/auth';
+   162→   162→            return '/dashboard';
+   163→   163→          }
+   164→   164→        }
+   165→   165→
+   166→   166→        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
+   167→   167→            isOnDashboard) {
+   168→   168→          return null;
+   169→   169→        }
+   170→   170→        if (userRole == AppConstants.roleStudent && isOnStudent) {
+   171→   171→          return null;
+   172→   172→        }
+   173→   173→        if (userRole == AppConstants.roleParent && isOnParent) {
+   174→   174→          return null;
+   175→   175→        }
+   176→   176→
+   177→   177→        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+   178→   178→          return '/dashboard';
+   179→   179→        }
+   180→   180→        if (userRole == AppConstants.roleStudent) return '/student';
+   181→   181→        if (userRole == AppConstants.roleParent) return '/parent';
+   182→   182→      }
+   183→   183→
+   184→   184→      return null;
+   185→   185→    },
+   186→   186→    routes: [
+   187→   187→      // ─── Splash ──────────────────────────────────────────────────────
+   188→   188→      GoRoute(
+   189→   189→        path: '/',
+   190→   190→        builder: (context, state) => const _SplashPlaceholder(),
+   191→   191→      ),
+   192→   192→
+   193→   193→      // ─── Auth Routes ─────────────────────────────────────────────────
+   194→   194→      GoRoute(
+   195→   195→        path: '/auth',
+   196→   196→        builder: (context, state) => const _AuthPlaceholder(),
+   197→   197→        routes: [
+   198→   198→          GoRoute(
+   199→   199→            path: 'teacher-login',
+   200→   200→            builder: (context, state) => const _AuthPlaceholder(),
+   201→   201→          ),
+   202→   202→          GoRoute(
+   203→   203→            path: 'teacher-register',
+   204→   204→            builder: (context, state) => const _AuthPlaceholder(),
+   205→   205→          ),
+   206→   206→          GoRoute(
+   207→   207→            path: 'student-login',
+   208→   208→            builder: (context, state) => const _AuthPlaceholder(),
+   209→   209→          ),
+   210→   210→          GoRoute(
+   211→   211→            path: 'parent-login',
+   212→   212→            builder: (context, state) => const _AuthPlaceholder(),
+   213→   213→          ),
+   214→   214→          GoRoute(
+   215→   215→            path: 'parent-register',
+   216→   216→            builder: (context, state) => const _AuthPlaceholder(),
+   217→   217→          ),
+   218→   218→          GoRoute(
+   219→   219→            path: 'forgot-password',
+   220→   220→            builder: (context, state) => const _AuthPlaceholder(),
+   221→   221→          ),
+   222→   222→          GoRoute(
+   223→   223→            path: 'owner-register',
+   224→   224→            builder: (context, state) => const _AuthPlaceholder(),
+   225→   225→          ),
+   226→   226→        ],
+   227→   227→      ),
+   228→   228→
+   229→   229→      // ─── Welcome / Org Naming ────────────────────────────────────────
+   230→   230→      GoRoute(
+   231→   231→        path: '/welcome',
+   232→   232→        builder: (context, state) => const _WelcomePlaceholder(),
+   233→   233→      ),
+   234→   234→
+   235→   235→      // ─── Parent Link Screen ──────────────────────────────────────────
+   236→   236→      GoRoute(
+   237→   237→        path: '/auth/parent-link',
+   238→   238→        builder: (context, state) => const _AuthPlaceholder(),
+   239→   239→      ),
+   240→   240→
+   241→   241→      // ─── Owner/Teacher Shell Navigation ──────────────────────────────
+   242→   242→      ShellRoute(
+   243→   243→        builder: (context, state, child) {
+   244→   244→          // Shell wrapper — will be replaced with OwnerShell/TeacherShell
+   245→   245→          return child;
+   246→   246→        },
+   247→   247→        routes: [
+   248→   248→          // Dashboard
+   249→   249→          GoRoute(
+   250→   250→            path: '/dashboard',
+   251→   251→            builder: (context, state) => const _DashboardPlaceholder(),
+   252→   252→          ),
+   253→   253→
+   254→   254→          // Academic
+   255→   255→          GoRoute(
+   256→   256→            path: '/academic',
+   257→   257→            builder: (context, state) => const _AcademicPlaceholder(),
+   258→   258→            routes: [
+   259→   259→              GoRoute(
+   260→   260→                path: 'stages/:stageId/classes',
+   261→   261→                builder: (context, state) {
+   262→   262→                  final stageId = state.pathParameters['stageId']!;
+   263→   263→                  return _ClassesPlaceholder(stageId: stageId);
+   264→   264→                },
+   265→   265→                routes: [
+   266→   266→                  GoRoute(
+   267→   267→                    path: 'create',
+   268→   268→                    builder: (context, state) {
+   269→   269→                      final stageId = state.extra as String? ??
+   270→   270→                          state.pathParameters['stageId'] ?? '';
+   271→   271→                      return _ClassFormPlaceholder(stageId: stageId);
+   272→   272→                    },
+   273→   273→                  ),
+   274→   274→                ],
+   275→   275→              ),
+   276→   276→            ],
+   277→   277→          ),
+   278→   278→
+   279→   279→          // People Hub (Sprint 1+2 — User Management + RBAC)
+   280→   280→          GoRoute(
+   281→   281→            path: '/people',
+   282→   282→            builder: (context, state) => const PeopleHubScreen(),
+   283→   283→            routes: [
+   284→   284→              GoRoute(
+   285→   285→                path: 'users/:userId',
+   286→   286→                builder: (context, state) {
+   287→   287→                  final userId = state.pathParameters['userId']!;
+   288→   288→                  return UserDetailScreen(userId: userId);
+   289→   289→                },
+   290→   290→              ),
+   291→   291→              GoRoute(
+   292→   292→                path: 'roles',
+   293→   293→                builder: (context, state) => const RoleMatrixScreen(),
+   294→   294→              ),
+   295→   295→            ],
+   296→   296→          ),
+   297→   297→
+   298→   298→          // Inbox
+   299→   299→          GoRoute(
+   300→   300→            path: '/inbox',
+   301→   301→            builder: (context, state) => const _InboxPlaceholder(),
+   302→   302→            routes: [
+   303→   303→              GoRoute(
+   304→   304→                path: 'notifications',
+   305→   305→                builder: (context, state) => const _InboxPlaceholder(),
+   306→   306→              ),
+   307→   307→              GoRoute(
+   308→   308→                path: 'notifications/:id',
+   309→   309→                builder: (context, state) {
+   310→   310→                  final notificationId = state.pathParameters['id']!;
+   311→   311→                  return _NotificationDetailPlaceholder(notificationId: notificationId);
+   312→   312→                },
+   313→   313→              ),
+   314→   314→              GoRoute(
+   315→   315→                path: 'messages',
+   316→   316→                builder: (context, state) => const _MessagesPlaceholder(),
+   317→   317→                routes: [
+   318→   318→                  GoRoute(
+   319→   319→                    path: ':conversationId',
+   320→   320→                    builder: (context, state) {
+   321→   321→                      final conversationId = state.pathParameters['conversationId']!;
+   322→   322→                      return _ChatPlaceholder(conversationId: conversationId);
+   323→   323→                    },
+   324→   324→                  ),
+   325→   325→                ],
+   326→   326→              ),
+   327→   327→              GoRoute(
+   328→   328→                path: 'announcements',
+   329→   329→                builder: (context, state) => const _AnnouncementsPlaceholder(),
+   330→   330→              ),
+   331→   331→              GoRoute(
+   332→   332→                path: 'announcements/create',
+   333→   333→                builder: (context, state) => const _AnnouncementFormPlaceholder(),
+   334→   334→              ),
+   335→   335→              GoRoute(
+   336→   336→                path: 'announcements/:id',
+   337→   337→                builder: (context, state) {
+   338→   338→                  final id = state.pathParameters['id']!;
+   339→   339→                  return _AnnouncementDetailPlaceholder(announcementId: id);
+   340→   340→                },
+   341→   341→              ),
+   342→   342→            ],
+   343→   343→          ),
+   344→   344→
+   345→   345→          // Settings
+   346→   346→          GoRoute(
+   347→   347→            path: '/settings',
+   348→   348→            builder: (context, state) => const _SettingsPlaceholder(),
+   349→   349→            routes: [
+   350→   350→              GoRoute(
+   351→   351→                path: 'organization',
+   352→   352→                builder: (context, state) => const _SettingsPlaceholder(),
+   353→   353→              ),
+   354→   354→              GoRoute(
+   355→   355→                path: 'profile',
+   356→   356→                builder: (context, state) => const _SettingsPlaceholder(),
+   357→   357→              ),
+   358→   358→              GoRoute(
+   359→   359→                path: 'feature-flags',
+   360→   360→                builder: (context, state) => const _SettingsPlaceholder(),
+   361→   361→              ),
+   362→   362→            ],
+   363→   363→          ),
+   364→   364→        ],
+   365→   365→      ),
+   366→   366→
+   367→   367→      // ─── LMS Routes ───────────────────────────────────────────────────
+   368→   368→      GoRoute(
+   369→   369→        path: '/lms/subject/:subjectId',
+   370→   370→        builder: (context, state) {
+   371→   371→          final subjectId = state.pathParameters['subjectId']!;
+   372→   372→          final subjectName = state.uri.queryParameters['name'] ?? 'Subject';
+   373→   373→          final classId = state.uri.queryParameters['classId'] ?? '';
+   374→   374→          return _LmsPlaceholder(
+   375→   375→            subjectId: subjectId,
+   376→   376→            subjectName: subjectName,
+   377→   377→            classId: classId,
+   378→   378→          );
+   379→   379→        },
+   380→   380→      ),
+   381→   381→      GoRoute(
+   382→   382→        path: '/lms/lessons/:lessonId',
+   383→   383→        builder: (context, state) {
+   384→   384→          final lessonId = state.pathParameters['lessonId']!;
+   385→   385→          return _LmsLessonPlaceholder(lessonId: lessonId);
+   386→   386→        },
+   387→   387→      ),
+   388→   388→      GoRoute(
+   389→   389→        path: '/lms/materials/:materialId',
+   390→   390→        builder: (context, state) {
+   391→   391→          final materialId = state.pathParameters['materialId']!;
+   392→   392→          return _LmsMaterialPlaceholder(materialId: materialId);
+   393→   393→        },
+   394→   394→      ),
+   395→   395→
+   396→   396→      // ─── LiveKit Routes (Sprint 1+2) ────────────────────────────────
+   397→   397→      GoRoute(
+   398→   398→        path: '/live-classes',
+   399→   399→        builder: (context, state) => const _LiveClassesWrapper(),
+   400→   400→      ),
+   401→   401→      GoRoute(
+   402→   402→        path: '/live-classes/analytics',
+   403→   403→        builder: (context, state) => const _SessionAnalyticsWrapper(),
+   404→   404→      ),
+   405→   405→
+   406→   406→      // ─── Student Shell Navigation ─────────────────────────────────────
+   407→   407→      ShellRoute(
+   408→   408→        builder: (context, state, child) => child,
+   409→   409→        routes: [
+   410→   410→          GoRoute(
+   411→   411→            path: '/student',
+   412→   412→            builder: (context, state) => const _StudentDashboardPlaceholder(),
+   413→   413→          ),
+   414→   414→        ],
+   415→   415→      ),
+   416→   416→
+   417→   417→      // ─── Parent Shell Navigation ──────────────────────────────────────
+   418→   418→      ShellRoute(
+   419→   419→        builder: (context, state, child) => child,
+   420→   420→        routes: [
+   421→   421→          GoRoute(
+   422→   422→            path: '/parent',
+   423→   423→            builder: (context, state) => const _ParentDashboardPlaceholder(),
+   424→   424→          ),
+   425→   425→          GoRoute(
+   426→   426→            path: '/parent/results',
+   427→   427→            builder: (context, state) => const _ParentResultsPlaceholder(),
+   428→   428→          ),
+   429→   429→          GoRoute(
+   430→   430→            path: '/parent/attendance',
+   431→   431→            builder: (context, state) => const _ParentAttendancePlaceholder(),
+   432→   432→          ),
+   433→   433→          GoRoute(
+   434→   434→            path: '/parent/assignments',
+   435→   435→            builder: (context, state) => const _ParentAssignmentsPlaceholder(),
+   436→   436→          ),
+   437→   437→          GoRoute(
+   438→   438→            path: '/parent/progress',
+   439→   439→            builder: (context, state) => const _ParentProgressPlaceholder(),
+   440→   440→          ),
+   441→   441→          GoRoute(
+   442→   442→            path: '/parent/announcements',
+   443→   443→            builder: (context, state) => const _ParentAnnouncementsPlaceholder(),
+   444→   444→          ),
+   445→   445→        ],
+   446→   446→      ),
+   447→   447→
+   448→   448→      // ─── Student Settings Route ───────────────────────────────────────
+   449→   449→      GoRoute(
+   450→   450→        path: '/student/settings',
+   451→   451→        builder: (context, state) => const _SettingsPlaceholder(),
+   452→   452→      ),
+   453→   453→
+   454→   454→      // ─── Student Deep Routes ──────────────────────────────────────────
+   455→   455→      GoRoute(
+   456→   456→        path: '/student/exams',
+   457→   457→        builder: (context, state) => const _StudentExamsPlaceholder(),
+   458→   458→        routes: [
+   459→   459→          GoRoute(
+   460→   460→            path: ':examId/take',
+   461→   461→            builder: (context, state) {
+   462→   462→              final examId = state.pathParameters['examId']!;
+   463→   463→              return _ExamTakingPlaceholder(examId: examId);
+   464→   464→            },
+   465→   465→          ),
+   466→   466→        ],
+   467→   467→      ),
+   468→   468→      GoRoute(
+   469→   469→        path: '/student/results',
+   470→   470→        builder: (context, state) => const _StudentResultsPlaceholder(),
+   471→   471→      ),
+   472→   472→      GoRoute(
+   473→   473→        path: '/student/scan-qr',
+   474→   474→        builder: (context, state) => const _QrScanPlaceholder(),
+   475→   475→      ),
+   476→   476→      GoRoute(
+   477→   477→        path: '/student/notifications',
+   478→   478→        builder: (context, state) => const _InboxPlaceholder(),
+   479→   479→      ),
+   480→   480→    ],
+   481→   481→  );
+   482→   482→});
+   483→   483→
+   484→   484→// ─── Exported router instance for app.dart ──────────────────────────────────
+   485→   485→GoRouter get klasivoRouter => _routerInstance;
+   486→   486→
+   487→   487→// This would normally be obtained via provider scope; here we provide
+   488→   488→// a late-initialized instance that gets set by the provider system.
+   489→   489→late final GoRouter _routerInstance;
+   490→   490→
+   491→   491→/// Initialize the router — called from main.dart after ProviderScope is ready.
+   492→   492→void initializeRouter(GoRouter router) {
+   493→   493→  _routerInstance = router;
+   494→   494→}
+   495→   495→
+   496→   496→// ─── Placeholder Screens ────────────────────────────────────────────────────
+   497→   497→// These are temporary screens that will be replaced by actual feature screens
+   498→   498→// when the v2.0 migration is complete. They exist so the router compiles.
+   499→   499→
+   500→   500→class _SplashPlaceholder extends StatelessWidget {
+   501→   501→  const _SplashPlaceholder();
+   502→   502→  @override
+   503→   503→  Widget build(BuildContext context) {
+   504→   504→    return const Scaffold(body: Center(child: Text('Splash Screen')));
+   505→   505→  }
+   506→   506→}
+   507→   507→
+   508→   508→class _AuthPlaceholder extends StatelessWidget {
+   509→   509→  const _AuthPlaceholder();
+   510→   510→  @override
+   511→   511→  Widget build(BuildContext context) {
+   512→   512→    return const Scaffold(body: Center(child: Text('Auth Screen')));
+   513→   513→  }
+   514→   514→}
+   515→   515→
+   516→   516→class _WelcomePlaceholder extends StatelessWidget {
+   517→   517→  const _WelcomePlaceholder();
+   518→   518→  @override
+   519→   519→  Widget build(BuildContext context) {
+   520→   520→    return const Scaffold(body: Center(child: Text('Welcome Screen')));
+   521→   521→  }
+   522→   522→}
+   523→   523→
+   524→   524→class _DashboardPlaceholder extends StatelessWidget {
+   525→   525→  const _DashboardPlaceholder();
+   526→   526→  @override
+   527→   527→  Widget build(BuildContext context) {
+   528→   528→    return const Scaffold(body: Center(child: Text('Dashboard')));
+   529→   529→  }
+   530→   530→}
+   531→   531→
+   532→   532→class _AcademicPlaceholder extends StatelessWidget {
+   533→   533→  const _AcademicPlaceholder();
+   534→   534→  @override
+   535→   535→  Widget build(BuildContext context) {
+   536→   536→    return const Scaffold(body: Center(child: Text('Academic')));
+   537→   537→  }
+   538→   538→}
+   539→   539→
+   540→   540→class _ClassesPlaceholder extends StatelessWidget {
+   541→   541→  final String stageId;
+   542→   542→  const _ClassesPlaceholder({required this.stageId});
+   543→   543→  @override
+   544→   544→  Widget build(BuildContext context) {
+   545→   545→    return Scaffold(body: Center(child: Text('Classes for Stage: $stageId')));
+   546→   546→  }
+   547→   547→}
+   548→   548→
+   549→   549→class _ClassFormPlaceholder extends StatelessWidget {
+   550→   550→  final String stageId;
+   551→   551→  const _ClassFormPlaceholder({required this.stageId});
+   552→   552→  @override
+   553→   553→  Widget build(BuildContext context) {
+   554→   554→    return Scaffold(body: Center(child: Text('Class Form for Stage: $stageId')));
+   555→   555→  }
+   556→   556→}
+   557→   557→
+   558→   558→class _PeoplePlaceholder extends StatelessWidget {
+   559→   559→  const _PeoplePlaceholder();
+   560→   560→  @override
+   561→   561→  Widget build(BuildContext context) {
+   562→   562→    return const Scaffold(body: Center(child: Text('People')));
+   563→   563→  }
+   564→   564→}
+   565→   565→
+   566→   566→class _InboxPlaceholder extends StatelessWidget {
+   567→   567→  const _InboxPlaceholder();
+   568→   568→  @override
+   569→   569→  Widget build(BuildContext context) {
+   570→   570→    return const Scaffold(body: Center(child: Text('Inbox')));
+   571→   571→  }
+   572→   572→}
+   573→   573→
+   574→   574→class _NotificationDetailPlaceholder extends StatelessWidget {
+   575→   575→  final String notificationId;
+   576→   576→  const _NotificationDetailPlaceholder({required this.notificationId});
+   577→   577→  @override
+   578→   578→  Widget build(BuildContext context) {
+   579→   579→    return Scaffold(body: Center(child: Text('Notification: $notificationId')));
+   580→   580→  }
+   581→   581→}
+   582→   582→
+   583→   583→class _MessagesPlaceholder extends StatelessWidget {
+   584→   584→  const _MessagesPlaceholder();
+   585→   585→  @override
+   586→   586→  Widget build(BuildContext context) {
+   587→   587→    return const Scaffold(body: Center(child: Text('Messages')));
+   588→   588→  }
+   589→   589→}
+   590→   590→
+   591→   591→class _ChatPlaceholder extends StatelessWidget {
+   592→   592→  final String conversationId;
+   593→   593→  const _ChatPlaceholder({required this.conversationId});
+   594→   594→  @override
+   595→   595→  Widget build(BuildContext context) {
+   596→   596→    return Scaffold(body: Center(child: Text('Chat: $conversationId')));
+   597→   597→  }
+   598→   598→}
+   599→   599→
+   600→   600→class _AnnouncementsPlaceholder extends StatelessWidget {
+   601→   601→  const _AnnouncementsPlaceholder();
+   602→   602→  @override
+   603→   603→  Widget build(BuildContext context) {
+   604→   604→    return const Scaffold(body: Center(child: Text('Announcements')));
+   605→   605→  }
+   606→   606→}
+   607→   607→
+   608→   608→class _AnnouncementFormPlaceholder extends StatelessWidget {
+   609→   609→  const _AnnouncementFormPlaceholder();
+   610→   610→  @override
+   611→   611→  Widget build(BuildContext context) {
+   612→   612→    return const Scaffold(body: Center(child: Text('Create Announcement')));
+   613→   613→  }
+   614→   614→}
+   615→   615→
+   616→   616→class _AnnouncementDetailPlaceholder extends StatelessWidget {
+   617→   617→  final String announcementId;
+   618→   618→  const _AnnouncementDetailPlaceholder({required this.announcementId});
+   619→   619→  @override
+   620→   620→  Widget build(BuildContext context) {
+   621→   621→    return Scaffold(body: Center(child: Text('Announcement: $announcementId')));
+   622→   622→  }
+   623→   623→}
+   624→   624→
+   625→   625→class _SettingsPlaceholder extends StatelessWidget {
+   626→   626→  const _SettingsPlaceholder();
+   627→   627→  @override
+   628→   628→  Widget build(BuildContext context) {
+   629→   629→    return const Scaffold(body: Center(child: Text('Settings')));
+   630→   630→  }
+   631→   631→}
+   632→   632→
+   633→   633→class _LmsPlaceholder extends StatelessWidget {
+   634→   634→  final String subjectId;
+   635→   635→  final String subjectName;
+   636→   636→  final String classId;
+   637→   637→  const _LmsPlaceholder({
+   638→   638→    required this.subjectId,
+   639→   639→    required this.subjectName,
+   640→   640→    required this.classId,
+   641→   641→  });
+   642→   642→  @override
+   643→   643→  Widget build(BuildContext context) {
+   644→   644→    return Scaffold(body: Center(child: Text('LMS: $subjectName')));
+   645→   645→  }
+   646→   646→}
+   647→   647→
+   648→   648→class _LmsLessonPlaceholder extends StatelessWidget {
+   649→   649→  final String lessonId;
+   650→   650→  const _LmsLessonPlaceholder({required this.lessonId});
+   651→   651→  @override
+   652→   652→  Widget build(BuildContext context) {
+   653→   653→    return Scaffold(body: Center(child: Text('Lesson: $lessonId')));
+   654→   654→  }
+   655→   655→}
+   656→   656→
+   657→   657→class _LmsMaterialPlaceholder extends StatelessWidget {
+   658→   658→  final String materialId;
+   659→   659→  const _LmsMaterialPlaceholder({required this.materialId});
+   660→   660→  @override
+   661→   661→  Widget build(BuildContext context) {
+   662→   662→    return Scaffold(body: Center(child: Text('Material: $materialId')));
+   663→   663→  }
+   664→   664→}
+   665→   665→
+   666→   666→class _StudentDashboardPlaceholder extends StatelessWidget {
+   667→   667→  const _StudentDashboardPlaceholder();
+   668→   668→  @override
+   669→   669→  Widget build(BuildContext context) {
+   670→   670→    return const Scaffold(body: Center(child: Text('Student Dashboard')));
+   671→   671→  }
+   672→   672→}
+   673→   673→
+   674→   674→class _StudentExamsPlaceholder extends StatelessWidget {
+   675→   675→  const _StudentExamsPlaceholder();
+   676→   676→  @override
+   677→   677→  Widget build(BuildContext context) {
+   678→   678→    return const Scaffold(body: Center(child: Text('Student Exams')));
+   679→   679→  }
+   680→   680→}
+   681→   681→
+   682→   682→class _ExamTakingPlaceholder extends StatelessWidget {
+   683→   683→  final String examId;
+   684→   684→  const _ExamTakingPlaceholder({required this.examId});
+   685→   685→  @override
+   686→   686→  Widget build(BuildContext context) {
+   687→   687→    return Scaffold(body: Center(child: Text('Taking Exam: $examId')));
+   688→   688→  }
+   689→   689→}
+   690→   690→
+   691→   691→class _StudentResultsPlaceholder extends StatelessWidget {
+   692→   692→  const _StudentResultsPlaceholder();
+   693→   693→  @override
+   694→   694→  Widget build(BuildContext context) {
+   695→   695→    return const Scaffold(body: Center(child: Text('Student Results')));
+   696→   696→  }
+   697→   697→}
+   698→   698→
+   699→   699→class _QrScanPlaceholder extends StatelessWidget {
+   700→   700→  const _QrScanPlaceholder();
+   701→   701→  @override
+   702→   702→  Widget build(BuildContext context) {
+   703→   703→    return const Scaffold(body: Center(child: Text('QR Scanner')));
+   704→   704→  }
+   705→   705→}
+   706→   706→
+   707→   707→class _ParentDashboardPlaceholder extends StatelessWidget {
+   708→   708→  const _ParentDashboardPlaceholder();
+   709→   709→  @override
+   710→   710→  Widget build(BuildContext context) {
+   711→   711→    return const Scaffold(body: Center(child: Text('Parent Dashboard')));
+   712→   712→  }
+   713→   713→}
+   714→   714→
+   715→   715→class _ParentResultsPlaceholder extends StatelessWidget {
+   716→   716→  const _ParentResultsPlaceholder();
+   717→   717→  @override
+   718→   718→  Widget build(BuildContext context) {
+   719→   719→    return const Scaffold(body: Center(child: Text('Parent Results')));
+   720→   720→  }
+   721→   721→}
+   722→   722→
+   723→   723→class _ParentAttendancePlaceholder extends StatelessWidget {
+   724→   724→  const _ParentAttendancePlaceholder();
+   725→   725→  @override
+   726→   726→  Widget build(BuildContext context) {
+   727→   727→    return const Scaffold(body: Center(child: Text('Parent Attendance')));
+   728→   728→  }
+   729→   729→}
+   730→   730→
+   731→   731→class _ParentAssignmentsPlaceholder extends StatelessWidget {
+   732→   732→  const _ParentAssignmentsPlaceholder();
+   733→   733→  @override
+   734→   734→  Widget build(BuildContext context) {
+   735→   735→    return const Scaffold(body: Center(child: Text('Parent Assignments')));
+   736→   736→  }
+   737→   737→}
+   738→   738→
+   739→   739→class _ParentProgressPlaceholder extends StatelessWidget {
+   740→   740→  const _ParentProgressPlaceholder();
+   741→   741→  @override
+   742→   742→  Widget build(BuildContext context) {
+   743→   743→    return const Scaffold(body: Center(child: Text('Parent Progress')));
+   744→   744→  }
+   745→   745→}
+   746→   746→
+   747→   747→class _ParentAnnouncementsPlaceholder extends StatelessWidget {
+   748→   748→  const _ParentAnnouncementsPlaceholder();
+   749→   749→  @override
+   750→   750→  Widget build(BuildContext context) {
+   751→   751→    return const Scaffold(body: Center(child: Text('Parent Announcements')));
+   752→   752→  }
+   753→   753→}
+   754→   754→
+   755→   755→// ─── LiveKit Wrapper Screens (Sprint 1+2) ───────────────────────────────────
+   756→   756→// These wrappers read runtime context from providers and pass to the
+   757→   757→// actual LiveKit screens, which require orgId/userId/displayName.
+   758→   758→
+   759→   759→class _LiveClassesWrapper extends ConsumerWidget {
+   760→   760→  const _LiveClassesWrapper();
+   761→   761→
+   762→   762→  @override
+   763→   763→  Widget build(BuildContext context, WidgetRef ref) {
+   764→   764→    final box = Hive.box(AppConstants.authBox);
+   765→   765→    final orgId = box.get('organizationId', defaultValue: '') as String;
+   766→   766→    final userId = box.get('userId', defaultValue: '') as String;
+   767→   767→    final displayName = box.get('displayName', defaultValue: '') as String;
+   768→   768→    final role = box.get('userRole', defaultValue: '') as String;
+   769→   769→    final isTeacher = role == AppConstants.roleTeacher || role == AppConstants.roleOwner;
+   770→   770→
+   771→   771→    return ScheduledClassesScreen(
+   772→   772→      orgId: orgId,
+   773→   773→      userId: userId,
+   774→   774→      displayName: displayName,
+   775→   775→      isTeacher: isTeacher,
+   776→   776→    );
+   777→   777→  }
+   778→   778→}
+   779→   779→
+   780→   780→class _SessionAnalyticsWrapper extends ConsumerWidget {
+   781→   781→  const _SessionAnalyticsWrapper();
+   782→   782→
+   783→   783→  @override
+   784→   784→  Widget build(BuildContext context, WidgetRef ref) {
+   785→   785→    final box = Hive.box(AppConstants.authBox);
+   786→   786→    final orgId = box.get('organizationId', defaultValue: '') as String;
+   787→   787→    final userId = box.get('userId', defaultValue: '') as String;
+   788→   788→
+   789→   789→    return SessionAnalyticsDashboard(
+   790→   790→      orgId: orgId,
+   791→   791→      teacherId: userId,
+   792→   792→    );
+   793→   793→  }
+   794→   794→}
+   795→   795→

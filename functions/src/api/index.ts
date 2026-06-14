@@ -35,7 +35,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 import { verifyOrgBoundary, verifyScopeAuthorization, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
@@ -57,6 +57,21 @@ declare global {
 // ─── Express setup ──────────────────────────────────────────────
 const app = express();
 app.use(express.json());
+
+// ─── Sentry scope isolation middleware ──────────────────────────────
+// CRITICAL: Cloud Functions v2 with concurrency means a single instance
+// handles multiple requests. Without scope isolation, Sentry tags and
+// user context from one request leak into the next.
+app.use((_req: Request, _res: Response, next: NextFunction) => {
+  initSentry();
+  // Each request gets its own isolated Sentry scope
+  Sentry.withIsolationScope((scope) => {
+    scope.clear();
+    // Store the scope on the request for route handlers to use
+    (_req as any).sentryScope = scope;
+    next();
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // Middleware
@@ -256,8 +271,9 @@ app.post(
   verifyAuthToken,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('endpoint', '/v1/livekit/token');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'livekit');
+    scope?.setTag('endpoint', '/v1/livekit/token');
 
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required.' });
@@ -371,8 +387,9 @@ app.post(
   requireAdmin,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('endpoint', '/v1/livekit/remove');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'livekit');
+    scope?.setTag('endpoint', '/v1/livekit/remove');
 
     const { roomName, participantIdentity, roomId } = req.body ?? {};
 
@@ -456,8 +473,9 @@ app.post(
   requireAdmin,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('endpoint', '/v1/livekit/mute');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'livekit');
+    scope?.setTag('endpoint', '/v1/livekit/mute');
 
     const { roomName, participantIdentity, mute, roomId } = req.body ?? {};
 
@@ -514,8 +532,9 @@ app.post(
   requireAdmin,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('endpoint', '/v1/livekit/endRoom');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'livekit');
+    scope?.setTag('endpoint', '/v1/livekit/endRoom');
 
     const { roomName, roomId } = req.body ?? {};
 
@@ -591,8 +610,9 @@ app.post(
   verifyAuthToken,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'storage');
-    Sentry.setTag('endpoint', '/v1/storage/upload-url');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'storage');
+    scope?.setTag('endpoint', '/v1/storage/upload-url');
 
     const { filePath, contentType } = req.body ?? {};
 
@@ -682,8 +702,9 @@ app.post(
   verifyAuthToken,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'analytics');
-    Sentry.setTag('endpoint', '/v1/analytics/event');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'analytics');
+    scope?.setTag('endpoint', '/v1/analytics/event');
 
     const { event, metadata } = req.body ?? {};
 
@@ -742,8 +763,9 @@ app.get(
   requireAdmin,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'admin');
-    Sentry.setTag('endpoint', '/v1/admin/users');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'admin');
+    scope?.setTag('endpoint', '/v1/admin/users');
 
     if (!req.userOrgId) {
       res.status(400).json({ error: 'User is not associated with an organization.' });
@@ -812,8 +834,9 @@ app.get(
   verifyAuthToken,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'admin');
-    Sentry.setTag('endpoint', '/v1/admin/schools');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'admin');
+    scope?.setTag('endpoint', '/v1/admin/schools');
 
     // Only owners/admins can list schools
     if (!['owner', 'admin'].includes(req.userRole ?? '')) {
@@ -867,8 +890,9 @@ app.get(
   requireAdmin,
   async (req: Request, res: Response) => {
     initSentry();
-    Sentry.setTag('service', 'admin');
-    Sentry.setTag('endpoint', '/v1/admin/reports/summary');
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    scope?.setTag('service', 'admin');
+    scope?.setTag('endpoint', '/v1/admin/reports/summary');
 
     if (!req.userOrgId) {
       res.status(400).json({ error: 'User is not associated with an organization.' });

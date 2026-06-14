@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../core/tokens/tokens.dart';
+import '../core/services/sentry_service.dart';
 import 'klasivo_button.dart';
 import 'klasivo_toast.dart';
 import 'klasivo_modal.dart';
@@ -8,6 +11,11 @@ import 'klasivo_modal.dart';
 // KLASIVO ERROR BOUNDARY — Global error boundary wrapper widget
 // Catches Flutter errors and displays a user-friendly recovery UI
 // instead of crashing the app.
+//
+// IMPORTANT: This widget does NOT overwrite FlutterError.onError.
+// The global handler (set in main.dart) continues to report to both
+// Crashlytics and Sentry. This widget only provides a recovery UI
+// for widget-level errors.
 //
 // Usage:
 // ```dart
@@ -38,27 +46,37 @@ class _KlasivoErrorBoundaryState extends State<KlasivoErrorBoundary> {
   @override
   void initState() {
     super.initState();
-    // Capture Flutter framework errors
-    FlutterError.onError = (details) {
-      _handleError(details);
-    };
+    // NOTE: We do NOT overwrite FlutterError.onError here.
+    // The global error handler in main.dart already reports to
+    // both Crashlytics and Sentry. Overwriting it would break
+    // error reporting for the entire app.
   }
 
   void _handleError(FlutterErrorDetails details) {
     if (!mounted) return;
+
+    // Report to Sentry and Crashlytics (belt-and-suspenders with global handler)
+    Sentry.captureException(
+      details.exception,
+      stackTrace: details.stack,
+    );
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+
+    KlasivoSentry.breadcrumb.auth(
+      'error_boundary_caught',
+      data: {'exception': details.exceptionAsString()},
+    );
+
     setState(() {
       _errorDetails = details;
     });
-    // Also report to error reporting service in production
-    debugPrint(
-      'KlasivoErrorBoundary caught: ${details.exceptionAsString()}',
-    );
   }
 
   void _recover() {
     setState(() {
       _errorDetails = null;
     });
+    KlasivoSentry.breadcrumb.auth('error_boundary_recovered');
   }
 
   @override
@@ -150,34 +168,60 @@ class _DefaultErrorView extends StatelessWidget {
   }
 }
 
-/// Async error handler for wrapping async operations
+/// Async error handler for wrapping async operations.
 /// Provides consistent error handling with KlasivoToast feedback
+/// AND Sentry/Crashlytics reporting.
+///
+/// IMPORTANT: Previous version silently swallowed errors (debugPrint only).
+/// This version reports every error to Sentry and Crashlytics.
 class KlasivoErrorHandler {
   KlasivoErrorHandler._();
 
-  /// Run an async operation with error handling
-  /// Returns the result on success, null on failure (shows toast)
+  /// Run an async operation with error handling.
+  /// Returns the result on success, null on failure (shows toast).
+  /// Every failure is reported to both Sentry and Crashlytics.
   static Future<T?> run<T>({
     required BuildContext context,
     required Future<T> Function() operation,
     String? errorMessage,
     bool showToast = true,
+    String? operationName,
+    Map<String, String>? tags,
   }) async {
     try {
       return await operation();
-    } catch (e) {
+    } catch (e, st) {
+      // Report to Sentry with scope tags
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('source', 'klasivo_error_handler');
+          if (operationName != null) {
+            scope.setTag('operation', operationName);
+          }
+          tags?.forEach(scope.setTag);
+        },
+      );
+
+      // Also report to Crashlytics
+      FirebaseCrashlytics.instance.recordError(
+        e,
+        st,
+        reason: operationName ?? 'KlasivoErrorHandler.run',
+      );
+
       if (showToast && context.mounted) {
         KlasivoToast.error(
           context,
           message: errorMessage ?? 'An error occurred. Please try again.',
         );
       }
-      debugPrint('KlasivoErrorHandler: $e');
       return null;
     }
   }
 
-  /// Run an async operation with confirmation dialog first
+  /// Run an async operation with confirmation dialog first.
   static Future<T?> runWithConfirm<T>({
     required BuildContext context,
     required Future<T> Function() operation,
@@ -186,6 +230,8 @@ class KlasivoErrorHandler {
     String confirmLabel = 'Confirm',
     bool isDangerous = false,
     String? errorMessage,
+    String? operationName,
+    Map<String, String>? tags,
   }) async {
     final confirmed = await KlasivoModal.confirm(
       context: context,
@@ -201,6 +247,8 @@ class KlasivoErrorHandler {
       context: context,
       operation: operation,
       errorMessage: errorMessage,
+      operationName: operationName,
+      tags: tags,
     );
   }
 }

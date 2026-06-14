@@ -14,7 +14,7 @@ import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/fire
 import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 const db = admin.firestore();
 
@@ -31,8 +31,9 @@ export const onLiveKitRoomCreated = onDocumentCreated(
   },
   async (event) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('function', 'onLiveKitRoomCreated');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'livekit');
+    scope.setTag('function', 'onLiveKitRoomCreated');
 
     const snapshot = event.data;
     if (!snapshot) return;
@@ -164,6 +165,7 @@ export const onLiveKitRoomCreated = onDocumentCreated(
       console.error(`Failed to send class start notifications: ${msg}`);
       Sentry.captureException(error);
     }
+    }); // withIsolatedScope
   },
 );
 
@@ -180,8 +182,9 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
   },
   async (event) => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('function', 'onLiveKitRoomUpdated');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'livekit');
+    scope.setTag('function', 'onLiveKitRoomUpdated');
 
     const beforeData = event.data?.before.data();
     const afterData = event.data?.after.data();
@@ -310,6 +313,7 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
         console.error(`Failed to finalize attendance/analytics for room ${roomId}: ${msg}`);
       }
     }
+    }); // withIsolatedScope
   },
 );
 

@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../config/app_constants.dart';
+import 'sentry_service.dart';
 
 /// Service for QR code-based student enrollment
 /// QR codes contain encoded class/teacher information that allows
@@ -52,53 +54,115 @@ class QREnrollmentService {
   /// Enroll a student into a class via QR code data
   /// Creates a new student record with auto-generated code and default password
   /// Returns the new student document ID
+  ///
+  /// WARNING: This method uses `.doc()` (auto-generated ID) instead of
+  /// `.doc(user.uid)`. The Firestore security rule requires
+  /// `request.auth.uid == userId`, which means auto-ID docs will ALWAYS
+  /// be blocked. QR enrollment is currently broken in production.
   Future<String> enrollViaQR({
     required Map<String, dynamic> qrData,
     required String fullName,
     required String password,
     String Function(String)? hashPassword,
   }) async {
-    final classId = qrData['classId'] as String;
-    final teacherId = qrData['teacherId'] as String;
-    final className = qrData['className'] as String? ?? '';
-    final grade = qrData['grade'] as String? ?? '';
-    final organizationId = qrData['organizationId'] as String? ?? AppConstants.defaultInstitutionId;
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
 
-    // Verify class exists
-    final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
-    if (!classDoc.exists) {
-      throw Exception('Class not found. The QR code may be outdated.');
+    try {
+      KlasivoSentry.breadcrumb.registration('qr_enrollment_started', data: {
+        'classId': qrData['classId'],
+        'teacherId': qrData['teacherId'],
+        'fullName': fullName,
+      });
+
+      final classId = qrData['classId'] as String;
+      final teacherId = qrData['teacherId'] as String;
+      final className = qrData['className'] as String? ?? '';
+      final grade = qrData['grade'] as String? ?? '';
+      final organizationId = qrData['organizationId'] as String? ?? AppConstants.defaultInstitutionId;
+
+      // Verify class exists
+      final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
+      if (!classDoc.exists) {
+        KlasivoSentry.breadcrumb.registration('qr_enrollment_failed_class_not_found', data: {
+          'classId': classId,
+        });
+        throw Exception('Class not found. The QR code may be outdated.');
+      }
+
+      // Generate unique student code
+      final studentCode = await _generateStudentCode(teacherId);
+
+      // Create student document (students ARE users — stored in usersCollection)
+      // BUG: Uses auto-ID instead of user.uid — blocked by security rules
+      final docRef = _firestore.collection(AppConstants.usersCollection).doc();
+
+      KlasivoSentry.breadcrumb.firestore(
+        'create',
+        collection: AppConstants.usersCollection,
+        docId: docRef.id,
+        data: {
+          'flow': 'qr_enrollment',
+          'docIdStrategy': 'auto_id',
+          'WARNING': 'auto_id will be blocked by security rules',
+        },
+      );
+
+      // Log the doc ID audit trail — this is a known broken path
+      KlasivoSentry.docIdAudit.logUserCreation(
+        flow: 'qr_enrollment',
+        collection: AppConstants.usersCollection,
+        docIdStrategy: 'auto_id',
+        actualDocId: docRef.id,
+      );
+
+      await docRef.set({
+        'organizationId': organizationId,
+        'role': AppConstants.roleStudent,
+        'id': docRef.id,
+        'teacherId': teacherId,
+        'classId': classId,
+        'className': className,
+        'fullName': fullName,
+        'studentCode': studentCode,
+        'passwordHash': hashPassword != null ? hashPassword(password) : password,
+        'grade': grade,
+        'enrolledVia': 'qr',
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update class student count
+      final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
+      await _firestore.collection(AppConstants.classesCollection).doc(classId).update({
+        'studentCount': currentCount + 1,
+      });
+
+      KlasivoSentry.breadcrumb.registration('qr_enrollment_success', data: {
+        'docId': docRef.id,
+        'studentCode': studentCode,
+        'classId': classId,
+      });
+
+      transaction.status = const SpanStatus.ok();
+
+      return docRef.id;
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'qr_enrollment');
+          scope.setTag('step', 'enroll_via_qr');
+          scope.setTag('collection', AppConstants.usersCollection);
+          scope.setTag('docIdStrategy', 'auto_id');
+        },
+      );
+      rethrow;
+    } finally {
+      await transaction.finish();
     }
-
-    // Generate unique student code
-    final studentCode = await _generateStudentCode(teacherId);
-
-    // Create student document (students ARE users — stored in usersCollection)
-    final docRef = _firestore.collection(AppConstants.usersCollection).doc();
-    await docRef.set({
-      'organizationId': organizationId,
-      'role': AppConstants.roleStudent,
-      'id': docRef.id,
-      'teacherId': teacherId,
-      'classId': classId,
-      'className': className,
-      'fullName': fullName,
-      'studentCode': studentCode,
-      'passwordHash': hashPassword != null ? hashPassword(password) : password,
-      'grade': grade,
-      'enrolledVia': 'qr',
-      'isActive': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
-    // Update class student count
-    final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
-    await _firestore.collection(AppConstants.classesCollection).doc(classId).update({
-      'studentCount': currentCount + 1,
-    });
-
-    return docRef.id;
   }
 
   /// Generates a unique student code (STU-XXXXXX format)

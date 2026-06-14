@@ -10,7 +10,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 const db = admin.firestore();
 
@@ -27,8 +27,9 @@ export const scheduledClassReminder = onSchedule(
   },
   async () => {
     initSentry();
-    Sentry.setTag('service', 'livekit');
-    Sentry.setTag('function', 'scheduledClassReminder');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'livekit');
+    scope.setTag('function', 'scheduledClassReminder');
 
     const now = new Date();
     const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
@@ -115,5 +116,6 @@ export const scheduledClassReminder = onSchedule(
       console.error(`Scheduled class reminder failed: ${msg}`);
       Sentry.captureException(error);
     }
+    }); // withIsolatedScope
   },
 );

@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 
 import { queueEmail } from '../services/queueService';
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 const db = admin.firestore();
 
@@ -12,8 +12,9 @@ export const onUserCreated = functions
   .auth.user()
   .onCreate(async (user) => {
     initSentry();
-    Sentry.setTag('service', 'email');
-    Sentry.setTag('function', 'onUserCreated');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'email');
+    scope.setTag('function', 'onUserCreated');
 
     const uid = user.uid;
     const email = user.email;
@@ -52,4 +53,5 @@ export const onUserCreated = functions
       Sentry.captureException(err);
       return null;
     }
+    }); // withIsolatedScope
   });

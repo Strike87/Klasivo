@@ -5,7 +5,7 @@ import * as Sentry from '@sentry/node';
 import type { QueueStatus } from '../types/queue';
 import type { EmailResult } from '../types/email';
 import { SENDER } from '../types/email';
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 import { sendEmail } from '../services/emailService';
 import { buildWelcomeHtml } from '../templates/welcomeEmail';
 import { buildTeacherInvitationHtml } from '../templates/teacherInvitation';
@@ -56,8 +56,9 @@ export const emailWorker = onDocumentWritten(
   { document: 'emailQueue/{queueId}', secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], region: 'us-central1', memory: '256MiB', timeoutSeconds: 60, minInstances: 0 },
   async (event) => {
     initSentry();
-    Sentry.setTag('service', 'email');
-    Sentry.setTag('function', 'emailWorker');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'email');
+    scope.setTag('function', 'emailWorker');
 
     const change = event.data;
     if (!change) return;
@@ -76,7 +77,7 @@ export const emailWorker = onDocumentWritten(
     const attempts = afterData['attempts'] as number | undefined;
     const maxAttempts = afterData['maxAttempts'] as number | undefined;
 
-    Sentry.setContext('emailQueue', { queueId, type: type ?? 'unknown', recipientCount: Array.isArray(to) ? to.length : to ? 1 : 0, attempts: attempts ?? 0, maxAttempts: maxAttempts ?? 5 });
+    scope.setContext('emailQueue', { queueId, type: type ?? 'unknown', recipientCount: Array.isArray(to) ? to.length : to ? 1 : 0, attempts: attempts ?? 0, maxAttempts: maxAttempts ?? 5 });
 
     let claimed = false;
     try {
@@ -121,4 +122,5 @@ export const emailWorker = onDocumentWritten(
       Sentry.captureException(err);
       await handleFailure(docRef, attempts ?? 0, maxAttempts ?? 5, msg);
     }
+    }); // withIsolatedScope
   });

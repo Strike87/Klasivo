@@ -1,8 +1,10 @@
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
+import * as Sentry from '@sentry/node';
 
 import { verifyOrgBoundary, PASSWORD_RESET_ROLES } from '../utils/rbac';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 interface ChangePasswordData {
   currentPassword?: string;
@@ -26,6 +28,11 @@ export const changeUserPassword = onCall(
     concurrency: 80,
   },
   async (request: CallableRequest<ChangePasswordData>) => {
+    initSentry();
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'rbac');
+    scope.setTag('function', 'changeUserPassword');
+
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
@@ -151,4 +158,5 @@ export const changeUserPassword = onCall(
 
     // Google auth users shouldn't have passwords
     throw new HttpsError('failed-precondition', 'Cannot change password for this auth provider.');
+    }); // withIsolatedScope
   });

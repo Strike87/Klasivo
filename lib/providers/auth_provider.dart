@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/auth_service.dart';
+import '../core/services/sentry_service.dart';
 import '../core/services/event_bus.dart';
 import '../core/services/notification_service.dart';
 
@@ -129,6 +131,12 @@ Future<void> saveTeacherAuthData({
   String authProvider = 'password',
   WidgetRef? ref,
 }) async {
+  KlasivoSentry.breadcrumb.hive('save_auth_data_start', data: {
+    'role': role,
+    'userId': userId,
+    'authProvider': authProvider,
+  });
+
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
   await box.put('userRole', role);
@@ -167,6 +175,11 @@ Future<void> saveTeacherAuthData({
     role: role,
     organizationId: organizationId,
   );
+
+  KlasivoSentry.breadcrumb.hive('save_auth_data_success', data: {
+    'role': role,
+    'userId': userId,
+  });
 }
 
 // ─── Helper: Save auth data locally (for STUDENT login) ──────────────────────
@@ -181,6 +194,11 @@ Future<void> saveStudentAuthData({
   String? organizationId,
   WidgetRef? ref,
 }) async {
+  KlasivoSentry.breadcrumb.hive('save_student_auth_data_start', data: {
+    'userId': userId,
+    'role': 'student',
+  });
+
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
   await box.put('userRole', AppConstants.roleStudent);
@@ -223,6 +241,11 @@ Future<void> saveStudentAuthData({
     organizationId: organizationId,
     classId: classId,
   );
+
+  KlasivoSentry.breadcrumb.hive('save_student_auth_data_success', data: {
+    'userId': userId,
+    'role': 'student',
+  });
 }
 
 // ─── Helper: Save auth data locally (for PARENT login) ───────────────────────
@@ -276,6 +299,10 @@ Future<void> clearAuthData() async {
 
   // Fire logout event before clearing data
   final userId = box.get('userId') as String?;
+  KlasivoSentry.breadcrumb.auth('clear_auth_data_start', data: {
+    'userId': userId ?? 'null',
+  });
+
   if (userId != null) {
     KlasivoEventBus.instance.fire(UserLoggedOutEvent(userId: userId));
   }
@@ -292,8 +319,14 @@ Future<void> clearAuthData() async {
   await box.delete('authMethod');
   await box.delete('organizationId');
   await box.delete('hasCompletedSetup');
+
   // Also sign out Firebase Auth + Google Sign-In
   try {
     await FirebaseAuth.instance.signOut();
   } catch (_) {}
+
+  // Clear Sentry user context
+  await KlasivoSentry.userContext.clearUser();
+
+  KlasivoSentry.breadcrumb.auth('clear_auth_data_success');
 }

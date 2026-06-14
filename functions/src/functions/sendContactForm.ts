@@ -6,14 +6,15 @@ import { buildContactFormHtml } from '../templates/contactForm';
 import { SENDER } from '../types/email';
 import { isValidEmail, missingField } from '../utils/validators';
 import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
-import { initSentry } from '../config/sentry';
+import { initSentry, withIsolatedScope } from '../config/sentry';
 
 export const sendContactForm = onCall(
   { secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
   async (request) => {
     initSentry();
-    Sentry.setTag('service', 'email');
-    Sentry.setTag('function', 'sendContactForm');
+    return withIsolatedScope(async (scope) => {
+    scope.setTag('service', 'email');
+    scope.setTag('function', 'sendContactForm');
 
     const data = request.data;
     const missing = missingField(data ?? {}, ['name', 'email', 'subject', 'message']);
@@ -41,4 +42,5 @@ export const sendContactForm = onCall(
       throw new Error(result.error ?? 'Unknown error');
     }
     return { success: true, id: result.id };
+    }); // withIsolatedScope
   });
