@@ -1,0 +1,870 @@
+     1→     1→import 'dart:convert';
+     2→     2→import 'package:crypto/crypto.dart';
+     3→     3→import 'package:firebase_auth/firebase_auth.dart';
+     4→     4→import 'package:cloud_firestore/cloud_firestore.dart';
+     5→     5→import 'package:google_sign_in/google_sign_in.dart';
+     6→     6→import 'package:hive_flutter/hive_flutter.dart';
+     7→     7→import '../config/app_constants.dart';
+     8→     8→import '../rbac/roles.dart';
+     9→     9→import 'firebase_service.dart';
+    10→    10→import 'organization_service.dart';
+    11→    11→import 'invite_code_service.dart';
+    12→    12→import 'interfaces/i_auth_service.dart';
+    13→    13→
+    14→    14→// ─── Auth Provider Constants ─────────────────────────────────────────────────
+    15→    15→// Tracks which authentication method a user registered with.
+    16→    16→
+    17→    17→class AuthProviders {
+    18→    18→  static const String password = 'password';
+    19→    19→  static const String google = 'google';
+    20→    20→  static const String studentCode = 'student_code';
+    21→    21→}
+    22→    22→
+    23→    23→/// Production authentication service.
+    24→    24→///
+    25→    25→/// Implements [IAuthService] for testability via dependency injection.
+    26→    26→/// Call-sites that need to be testable should depend on [IAuthService];
+    27→    27→/// call-sites that need extra methods (Google registration, setup completion)
+    28→    28→/// can import [AuthService] directly.
+    29→    29→class AuthService implements IAuthService {
+    30→    30→  final FirebaseAuth _auth = FirebaseAuth.instance;
+    31→    31→  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+    32→    32→
+    33→    33→  /// Hash a password using SHA-256
+    34→    34→  static String hashPassword(String password) {
+    35→    35→    final bytes = utf8.encode(password);
+    36→    36→    final digest = sha256.convert(bytes);
+    37→    37→    return digest.toString();
+    38→    38→  }
+    39→    39→
+    40→    40→  // ─── Owner Registration (Email + Password) ────────────────────────────────
+    41→    41→
+    42→    42→  /// Register a new owner with email and password.
+    43→    43→  /// Organization is auto-created with a temporary default name.
+    44→    44→  /// After login, the owner is redirected to the Welcome/Org Naming screen.
+    45→    45→  Future<Map<String, dynamic>> registerOwner({
+    46→    46→    required String email,
+    47→    47→    required String password,
+    48→    48→    required String fullName,
+    49→    49→  }) async {
+    50→    50→    try {
+    51→    51→      final userCredential =
+    52→    52→          await FirebaseService.registerWithEmail(email, password);
+    53→    53→      final user = userCredential.user!;
+    54→    54→
+    55→    55→      // Email verification: Firebase auto-sends verification for password sign-up
+    56→    56→      // Google Sign-In emails are pre-verified by Google
+    57→    57→      final isEmailVerified = user.emailVerified;
+    58→    58→
+    59→    59→      // Create user document FIRST with a placeholder orgId.
+    60→    60→      // This ensures isTeacherOrOwner() can resolve in Firestore rules
+    61→    61→      // when the org document is created/updated immediately after.
+    62→    62→      await _firestore
+    63→    63→          .collection(AppConstants.usersCollection)
+    64→    64→          .doc(user.uid)
+    65→    65→          .set({
+    66→    66→        'organizationId': '', // Placeholder — updated below after org creation
+    67→    67→        'role': KlasivoRole.owner,
+    68→    68→        'authProvider': AuthProviders.password,
+    69→    69→        'fullName': fullName,
+    70→    70→        'email': email,
+    71→    71→        'photoUrl': null,
+    72→    72→        'phoneNumber': null,
+    73→    73→        'isActive': true,
+    74→    74→        'isEmailVerified': isEmailVerified,
+    75→    75→        'hasCompletedSetup': false,
+    76→    76→        'createdAt': FieldValue.serverTimestamp(),
+    77→    77→        'updatedAt': FieldValue.serverTimestamp(),
+    78→    78→      });
+    79→    79→
+    80→    80→      // Now create the organization — rules can verify the user is an owner
+    81→    81→      final orgService = OrganizationService();
+    82→    82→      final orgId = await orgService.createOrganization(
+    83→    83→        ownerId: user.uid,
+    84→    84→        name: "$fullName's Workspace",
+    85→    85→      );
+    86→    86→
+    87→    87→      // Patch the user doc with the real organizationId
+    88→    88→      await _firestore
+    89→    89→          .collection(AppConstants.usersCollection)
+    90→    90→          .doc(user.uid)
+    91→    91→          .update({
+    92→    92→        'organizationId': orgId,
+    93→    93→        'updatedAt': FieldValue.serverTimestamp(),
+    94→    94→      });
+    95→    95→
+    96→    96→      return {
+    97→    97→        'id': user.uid,
+    98→    98→        'organizationId': orgId,
+    99→    99→        'role': KlasivoRole.owner,
+   100→   100→        'authProvider': AuthProviders.password,
+   101→   101→        'fullName': fullName,
+   102→   102→        'email': email,
+   103→   103→        'isEmailVerified': isEmailVerified,
+   104→   104→        'hasCompletedSetup': false,
+   105→   105→      };
+   106→   106→    } catch (e) {
+   107→   107→      rethrow;
+   108→   108→    }
+   109→   109→  }
+   110→   110→
+   111→   111→  // ─── Owner Registration (Google Sign-In) ──────────────────────────────────
+   112→   112→
+   113→   113→  /// Register a new owner via Google Sign-In.
+   114→   114→  /// If user already exists, logs them in instead.
+   115→   115→  Future<Map<String, dynamic>> registerOwnerWithGoogle() async {
+   116→   116→    return _signInWithGoogle(
+   117→   117→      expectedRole: KlasivoRole.owner,
+   118→   118→      isNewUser: true,
+   119→   119→    );
+   120→   120→  }
+   121→   121→
+   122→   122→  // ─── Complete Owner Setup — Name the workspace ────────────────────────────
+   123→   123→
+   124→   124→  Future<void> completeOwnerSetup({
+   125→   125→    required String userId,
+   126→   126→    required String organizationId,
+   127→   127→    required String workspaceName,
+   128→   128→  }) async {
+   129→   129→    try {
+   130→   130→      await _firestore
+   131→   131→          .collection(AppConstants.organizationsCollection)
+   132→   132→          .doc(organizationId)
+   133→   133→          .update({
+   134→   134→        'name': workspaceName,
+   135→   135→        'updatedAt': FieldValue.serverTimestamp(),
+   136→   136→      });
+   137→   137→
+   138→   138→      await _firestore
+   139→   139→          .collection(AppConstants.usersCollection)
+   140→   140→          .doc(userId)
+   141→   141→          .update({
+   142→   142→        'hasCompletedSetup': true,
+   143→   143→        'updatedAt': FieldValue.serverTimestamp(),
+   144→   144→      });
+   145→   145→    } catch (e) {
+   146→   146→      rethrow;
+   147→   147→    }
+   148→   148→  }
+   149→   149→
+   150→   150→  // ─── Generate workspace name auto-suggest ─────────────────────────────────
+   151→   151→
+   152→   152→  List<String> generateWorkspaceSuggestions(String fullName) {
+   153→   153→    final firstName = fullName.split(' ').first;
+   154→   154→    return [
+   155→   155→      '$firstName Academy',
+   156→   156→      '$firstName\'s Classroom',
+   157→   157→      '$firstName Learning Center',
+   158→   158→      '$firstName Education',
+   159→   159→      '$firstName Institute',
+   160→   160→    ];
+   161→   161→  }
+   162→   162→
+   163→   163→  // ─── Teacher/Owner/Parent Login (Email + Password) ────────────────────────
+   164→   164→
+   165→   165→  /// Unified email+password login for owners, teachers, and parents.
+   166→   166→  Future<Map<String, dynamic>> loginWithEmail({
+   167→   167→    required String email,
+   168→   168→    required String password,
+   169→   169→  }) async {
+   170→   170→    try {
+   171→   171→      final userCredential =
+   172→   172→          await FirebaseService.loginWithEmail(email, password);
+   173→   173→      final user = userCredential.user!;
+   174→   174→
+   175→   175→      final userDoc = await _firestore
+   176→   176→          .collection(AppConstants.usersCollection)
+   177→   177→          .doc(user.uid)
+   178→   178→          .get();
+   179→   179→
+   180→   180→      if (!userDoc.exists) {
+   181→   181→        throw Exception('User data not found. Please contact your administrator.');
+   182→   182→      }
+   183→   183→
+   184→   184→      final userData = userDoc.data()!;
+   185→   185→      final role = userData['role'] as String?;
+   186→   186→      final isActive = userData['isActive'] as bool? ?? true;
+   187→   187→
+   188→   188→      if (!isActive) {
+   189→   189→        await _auth.signOut();
+   190→   190→        throw Exception('Your account has been deactivated. Contact your administrator.');
+   191→   191→      }
+   192→   192→
+   193→   193→      // Students should NOT use email login — they use student code login
+   194→   194→      if (role == KlasivoRole.student) {
+   195→   195→        await _auth.signOut();
+   196→   196→        throw Exception('Students must login with their student code.');
+   197→   197→      }
+   198→   198→
+   199→   199→      return {
+   200→   200→        'id': user.uid,
+   201→   201→        'organizationId': userData['organizationId'] ?? '',
+   202→   202→        'role': role ?? KlasivoRole.teacher,
+   203→   203→        'authProvider': AuthProviders.password,
+   204→   204→        'fullName': userData['fullName'] ?? 'User',
+   205→   205→        'email': userData['email'] ?? email,
+   206→   206→        'isEmailVerified': user.emailVerified,
+   207→   207→        'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+   208→   208→      };
+   209→   209→    } catch (e) {
+   210→   210→      rethrow;
+   211→   211→    }
+   212→   212→  }
+   213→   213→
+   214→   214→  // ─── Student Login (Student Code + Password) ──────────────────────────────
+   215→   215→
+   216→   216→  /// Student login using student code + password.
+   217→   217→  /// Internally maps to Firebase Auth for push notifications,
+   218→   218→  /// multi-device, password reset, security rules, and analytics.
+   219→   219→  Future<Map<String, dynamic>> loginStudent({
+   220→   220→    required String code,
+   221→   221→    required String password,
+   222→   222→  }) async {
+   223→   223→    try {
+   224→   224→      // Step 1: Find user by studentCode
+   225→   225→      final snapshot = await _firestore
+   226→   226→          .collection(AppConstants.usersCollection)
+   227→   227→          .where('studentCode', isEqualTo: code)
+   228→   228→          .where('role', isEqualTo: KlasivoRole.student)
+   229→   229→          .limit(1)
+   230→   230→          .get();
+   231→   231→
+   232→   232→      if (snapshot.docs.isEmpty) {
+   233→   233→        throw Exception('Student not found. Please check your student code.');
+   234→   234→      }
+   235→   235→
+   236→   236→      final userDoc = snapshot.docs.first;
+   237→   237→      final student = userDoc.data();
+   238→   238→
+   239→   239→      // Step 2: Verify password
+   240→   240→      final storedPasswordHash = student['passwordHash'] as String?;
+   241→   241→      final storedPlaintext = student['password'] as String?;
+   242→   242→      final inputHash = hashPassword(password);
+   243→   243→
+   244→   244→      bool passwordMatches = false;
+   245→   245→      if (storedPasswordHash != null && storedPasswordHash.isNotEmpty) {
+   246→   246→        passwordMatches = inputHash == storedPasswordHash;
+   247→   247→      } else if (storedPlaintext != null) {
+   248→   248→        passwordMatches = password == storedPlaintext;
+   249→   249→        // Migrate to hash on successful login
+   250→   250→        if (passwordMatches) {
+   251→   251→          await _firestore
+   252→   252→              .collection(AppConstants.usersCollection)
+   253→   253→              .doc(userDoc.id)
+   254→   254→              .update({'passwordHash': inputHash});
+   255→   255→        }
+   256→   256→      }
+   257→   257→
+   258→   258→      if (!passwordMatches) {
+   259→   259→        throw Exception('Invalid password. Please try again.');
+   260→   260→      }
+   261→   261→
+   262→   262→      final isActive = student['isActive'] as bool? ?? true;
+   263→   263→      if (!isActive) {
+   264→   264→        throw Exception('Your account has been deactivated.');
+   265→   265→      }
+   266→   266→
+   267→   267→      // Step 3: Sign in via Firebase Auth using the student's internal email
+   268→   268→      final internalEmail = student['authEmail'] as String?;
+   269→   269→      if (internalEmail != null && internalEmail.isNotEmpty) {
+   270→   270→        try {
+   271→   271→          await _auth.signInWithEmailAndPassword(
+   272→   272→            email: internalEmail,
+   273→   273→            password: password,
+   274→   274→          );
+   275→   275→        } catch (authError) {
+   276→   276→          // Graceful fallback — still allow login even if Firebase Auth fails
+   277→   277→        }
+   278→   278→      }
+   279→   279→
+   280→   280→      return {
+   281→   281→        'id': userDoc.id,
+   282→   282→        'organizationId': student['organizationId'] ?? '',
+   283→   283→        'role': KlasivoRole.student,
+   284→   284→        'authProvider': AuthProviders.studentCode,
+   285→   285→        'fullName': student['fullName'] ?? 'Student',
+   286→   286→        'studentCode': student['studentCode'],
+   287→   287→        'classId': student['classId'],
+   288→   288→        'hasCompletedSetup': true,
+   289→   289→      };
+   290→   290→    } catch (e) {
+   291→   291→      rethrow;
+   292→   292→    }
+   293→   293→  }
+   294→   294→
+   295→   295→  // ─── Teacher Registration via Invite Code ──────────────────────────────────
+   296→   296→
+   297→   297→  Future<Map<String, dynamic>> registerTeacherWithInvite({
+   298→   298→    required String email,
+   299→   299→    required String password,
+   300→   300→    required String fullName,
+   301→   301→    required String inviteCode,
+   302→   302→  }) async {
+   303→   303→    try {
+   304→   304→      // Validate invite code
+   305→   305→      final inviteService = InviteCodeService();
+   306→   306→      final codeData = await inviteService.validateInviteCode(inviteCode);
+   307→   307→
+   308→   308→      if (codeData == null) {
+   309→   309→        throw Exception('Invalid or expired invite code.');
+   310→   310→      }
+   311→   311→
+   312→   312→      if (codeData['type'] != AppConstants.inviteTypeTeacher) {
+   313→   313→        throw Exception('This invite code is not for teachers.');
+   314→   314→      }
+   315→   315→
+   316→   316→      final organizationId = codeData['organizationId'] as String;
+   317→   317→
+   318→   318→      // Create Firebase Auth account
+   319→   319→      final userCredential =
+   320→   320→          await FirebaseService.registerWithEmail(email, password);
+   321→   321→      final user = userCredential.user!;
+   322→   322→
+   323→   323→      final isEmailVerified = user.emailVerified;
+   324→   324→
+   325→   325→      // Create user document with teacher role
+   326→   326→      await _firestore
+   327→   327→          .collection(AppConstants.usersCollection)
+   328→   328→          .doc(user.uid)
+   329→   329→          .set({
+   330→   330→        'organizationId': organizationId,
+   331→   331→        'role': KlasivoRole.teacher,
+   332→   332→        'authProvider': AuthProviders.password,
+   333→   333→        'fullName': fullName,
+   334→   334→        'email': email,
+   335→   335→        'photoUrl': null,
+   336→   336→        'phoneNumber': null,
+   337→   337→        'isActive': true,
+   338→   338→        'isEmailVerified': isEmailVerified,
+   339→   339→        'hasCompletedSetup': true,
+   340→   340→        'createdAt': FieldValue.serverTimestamp(),
+   341→   341→        'updatedAt': FieldValue.serverTimestamp(),
+   342→   342→      });
+   343→   343→
+   344→   344→      // Mark invite code as used
+   345→   345→      await _firestore
+   346→   346→          .collection(AppConstants.inviteCodesCollection)
+   347→   347→          .doc(codeData['id'])
+   348→   348→          .update({
+   349→   349→        'isUsed': true,
+   350→   350→        'usedBy': user.uid,
+   351→   351→        'usedAt': FieldValue.serverTimestamp(),
+   352→   352→        'useCount': FieldValue.increment(1),
+   353→   353→      });
+   354→   354→
+   355→   355→      return {
+   356→   356→        'id': user.uid,
+   357→   357→        'organizationId': organizationId,
+   358→   358→        'role': KlasivoRole.teacher,
+   359→   359→        'authProvider': AuthProviders.password,
+   360→   360→        'fullName': fullName,
+   361→   361→        'email': email,
+   362→   362→        'isEmailVerified': isEmailVerified,
+   363→   363→        'hasCompletedSetup': true,
+   364→   364→      };
+   365→   365→    } catch (e) {
+   366→   366→      rethrow;
+   367→   367→    }
+   368→   368→  }
+   369→   369→
+   370→   370→  // ─── Teacher Registration via Google Sign-In ───────────────────────────────
+   371→   371→
+   372→   372→  /// Register a teacher via Google Sign-In with an invite code.
+   373→   373→  Future<Map<String, dynamic>> registerTeacherWithGoogle({
+   374→   374→    required String inviteCode,
+   375→   375→  }) async {
+   376→   376→    try {
+   377→   377→      // Validate invite code first
+   378→   378→      final inviteService = InviteCodeService();
+   379→   379→      final codeData = await inviteService.validateInviteCode(inviteCode);
+   380→   380→
+   381→   381→      if (codeData == null) {
+   382→   382→        throw Exception('Invalid or expired invite code.');
+   383→   383→      }
+   384→   384→
+   385→   385→      if (codeData['type'] != AppConstants.inviteTypeTeacher) {
+   386→   386→        throw Exception('This invite code is not for teachers.');
+   387→   387→      }
+   388→   388→
+   389→   389→      final organizationId = codeData['organizationId'] as String;
+   390→   390→
+   391→   391→      // Trigger Google Sign-In
+   392→   392→      final googleUser = await GoogleSignIn().signIn();
+   393→   393→      if (googleUser == null) {
+   394→   394→        throw Exception('Google sign-in was cancelled.');
+   395→   395→      }
+   396→   396→
+   397→   397→      final googleAuth = await googleUser.authentication;
+   398→   398→      final credential = GoogleAuthProvider.credential(
+   399→   399→        accessToken: googleAuth.accessToken,
+   400→   400→        idToken: googleAuth.idToken,
+   401→   401→      );
+   402→   402→
+   403→   403→      final userCredential = await _auth.signInWithCredential(credential);
+   404→   404→      final user = userCredential.user!;
+   405→   405→
+   406→   406→      // Check if user document already exists
+   407→   407→      final userDoc = await _firestore
+   408→   408→          .collection(AppConstants.usersCollection)
+   409→   409→          .doc(user.uid)
+   410→   410→          .get();
+   411→   411→
+   412→   412→      if (userDoc.exists) {
+   413→   413→        // Existing user — log them in
+   414→   414→        final userData = userDoc.data()!;
+   415→   415→        final isActive = userData['isActive'] as bool? ?? true;
+   416→   416→        if (!isActive) {
+   417→   417→          await _auth.signOut();
+   418→   418→          throw Exception('Your account has been deactivated.');
+   419→   419→        }
+   420→   420→        return {
+   421→   421→          'id': user.uid,
+   422→   422→          'organizationId': userData['organizationId'] ?? organizationId,
+   423→   423→          'role': userData['role'] ?? KlasivoRole.teacher,
+   424→   424→          'authProvider': AuthProviders.google,
+   425→   425→          'fullName': userData['fullName'] ?? user.displayName ?? 'Teacher',
+   426→   426→          'email': userData['email'] ?? user.email ?? '',
+   427→   427→          'isEmailVerified': user.emailVerified,
+   428→   428→          'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+   429→   429→        };
+   430→   430→      }
+   431→   431→
+   432→   432→      // New user — create teacher document
+   433→   433→      final fullName = user.displayName ?? 'Teacher';
+   434→   434→      final email = user.email ?? '';
+   435→   435→      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
+   436→   436→
+   437→   437→      await _firestore
+   438→   438→          .collection(AppConstants.usersCollection)
+   439→   439→          .doc(user.uid)
+   440→   440→          .set({
+   441→   441→        'organizationId': organizationId,
+   442→   442→        'role': KlasivoRole.teacher,
+   443→   443→        'authProvider': AuthProviders.google,
+   444→   444→        'fullName': fullName,
+   445→   445→        'email': email,
+   446→   446→        'photoUrl': user.photoURL,
+   447→   447→        'phoneNumber': null,
+   448→   448→        'isActive': true,
+   449→   449→        'isEmailVerified': isEmailVerified,
+   450→   450→        'hasCompletedSetup': true,
+   451→   451→        'createdAt': FieldValue.serverTimestamp(),
+   452→   452→        'updatedAt': FieldValue.serverTimestamp(),
+   453→   453→      });
+   454→   454→
+   455→   455→      // Mark invite code as used
+   456→   456→      await _firestore
+   457→   457→          .collection(AppConstants.inviteCodesCollection)
+   458→   458→          .doc(codeData['id'])
+   459→   459→          .update({
+   460→   460→        'isUsed': true,
+   461→   461→        'usedBy': user.uid,
+   462→   462→        'usedAt': FieldValue.serverTimestamp(),
+   463→   463→        'useCount': FieldValue.increment(1),
+   464→   464→      });
+   465→   465→
+   466→   466→      return {
+   467→   467→        'id': user.uid,
+   468→   468→        'organizationId': organizationId,
+   469→   469→        'role': KlasivoRole.teacher,
+   470→   470→        'authProvider': AuthProviders.google,
+   471→   471→        'fullName': fullName,
+   472→   472→        'email': email,
+   473→   473→        'hasCompletedSetup': true,
+   474→   474→      };
+   475→   475→    } catch (e) {
+   476→   476→      rethrow;
+   477→   477→    }
+   478→   478→  }
+   479→   479→
+   480→   480→  // ─── Parent Registration (Email + Password) ───────────────────────────────
+   481→   481→
+   482→   482→  /// Register a parent with email, password, and an invite code to link child.
+   483→   483→  @override
+   484→   484→  Future<Map<String, dynamic>> registerParent({
+   485→   485→    required String email,
+   486→   486→    required String password,
+   487→   487→    required String fullName,
+   488→   488→  }) async {
+   489→   489→    try {
+   490→   490→      final userCredential =
+   491→   491→          await FirebaseService.registerWithEmail(email, password);
+   492→   492→      final user = userCredential.user!;
+   493→   493→
+   494→   494→      // Create user document with parent role
+   495→   495→      // Parents need to link a child after registration
+   496→   496→      final isEmailVerified = user.emailVerified;
+   497→   497→
+   498→   498→      await _firestore
+   499→   499→          .collection(AppConstants.usersCollection)
+   500→   500→          .doc(user.uid)
+   501→   501→          .set({
+   502→   502→        'organizationId': null, // Set when parent links a child
+   503→   503→        'role': KlasivoRole.parent,
+   504→   504→        'authProvider': AuthProviders.password,
+   505→   505→        'fullName': fullName,
+   506→   506→        'email': email,
+   507→   507→        'photoUrl': null,
+   508→   508→        'phoneNumber': null,
+   509→   509→        'isActive': true,
+   510→   510→        'isEmailVerified': isEmailVerified,
+   511→   511→        'hasCompletedSetup': false, // Needs to link child
+   512→   512→        'createdAt': FieldValue.serverTimestamp(),
+   513→   513→        'updatedAt': FieldValue.serverTimestamp(),
+   514→   514→      });
+   515→   515→
+   516→   516→      return {
+   517→   517→        'id': user.uid,
+   518→   518→        'organizationId': null,
+   519→   519→        'role': KlasivoRole.parent,
+   520→   520→        'authProvider': AuthProviders.password,
+   521→   521→        'fullName': fullName,
+   522→   522→        'email': email,
+   523→   523→        'isEmailVerified': isEmailVerified,
+   524→   524→        'hasCompletedSetup': false,
+   525→   525→      };
+   526→   526→    } catch (e) {
+   527→   527→      rethrow;
+   528→   528→    }
+   529→   529→  }
+   530→   530→
+   531→   531→  // ─── Parent Registration (Google Sign-In) ─────────────────────────────────
+   532→   532→
+   533→   533→  /// Register a parent via Google Sign-In.
+   534→   534→  Future<Map<String, dynamic>> registerParentWithGoogle() async {
+   535→   535→    return _signInWithGoogle(
+   536→   536→      expectedRole: KlasivoRole.parent,
+   537→   537→      isNewUser: true,
+   538→   538→    );
+   539→   539→  }
+   540→   540→
+   541→   541→  // ─── Google Sign-In (Unified — Owner / Teacher / Parent) ──────────────────
+   542→   542→
+   543→   543→  /// Sign in with Google. Works for owners, teachers, and parents.
+   544→   544→  /// If the user already exists, logs them in.
+   545→   545→  /// If the user is new, creates an account based on [expectedRole]:
+   546→   546→  ///   - owner: auto-creates organization (hasCompletedSetup=false)
+   547→   547→  ///   - teacher: needs invite code (handled separately via registerTeacherWithGoogle)
+   548→   548→  ///   - parent: creates parent account (hasCompletedSetup=false, needs to link child)
+   549→   549→  Future<Map<String, dynamic>> loginWithGoogle({
+   550→   550→    String? expectedRole,
+   551→   551→  }) async {
+   552→   552→    return _signInWithGoogle(
+   553→   553→      expectedRole: expectedRole,
+   554→   554→      isNewUser: false,
+   555→   555→    );
+   556→   556→  }
+   557→   557→
+   558→   558→  Future<Map<String, dynamic>> _signInWithGoogle({
+   559→   559→    String? expectedRole,
+   560→   560→    bool isNewUser = false,
+   561→   561→  }) async {
+   562→   562→    try {
+   563→   563→      final googleUser = await GoogleSignIn().signIn();
+   564→   564→      if (googleUser == null) {
+   565→   565→        throw Exception('Google sign-in was cancelled.');
+   566→   566→      }
+   567→   567→
+   568→   568→      final googleAuth = await googleUser.authentication;
+   569→   569→      final credential = GoogleAuthProvider.credential(
+   570→   570→        accessToken: googleAuth.accessToken,
+   571→   571→        idToken: googleAuth.idToken,
+   572→   572→      );
+   573→   573→
+   574→   574→      final userCredential = await _auth.signInWithCredential(credential);
+   575→   575→      final user = userCredential.user!;
+   576→   576→
+   577→   577→      // Check if user document already exists
+   578→   578→      final userDoc = await _firestore
+   579→   579→          .collection(AppConstants.usersCollection)
+   580→   580→          .doc(user.uid)
+   581→   581→          .get();
+   582→   582→
+   583→   583→      if (userDoc.exists) {
+   584→   584→        // Existing user — log them in
+   585→   585→        final userData = userDoc.data()!;
+   586→   586→        final role = userData['role'] as String?;
+   587→   587→        final isActive = userData['isActive'] as bool? ?? true;
+   588→   588→
+   589→   589→        if (!isActive) {
+   590→   590→          await _auth.signOut();
+   591→   591→          throw Exception('Your account has been deactivated.');
+   592→   592→        }
+   593→   593→
+   594→   594→        // Students cannot use Google Sign-In
+   595→   595→        if (role == KlasivoRole.student) {
+   596→   596→          await _auth.signOut();
+   597→   597→          throw Exception('Students must login with their student code.');
+   598→   598→        }
+   599→   599→
+   600→   600→        return {
+   601→   601→          'id': user.uid,
+   602→   602→          'organizationId': userData['organizationId'] ?? '',
+   603→   603→          'role': role ?? expectedRole ?? KlasivoRole.owner,
+   604→   604→          'authProvider': AuthProviders.google,
+   605→   605→          'fullName': userData['fullName'] ?? user.displayName ?? 'User',
+   606→   606→          'email': userData['email'] ?? user.email ?? '',
+   607→   607→          'isEmailVerified': user.emailVerified,
+   608→   608→          'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
+   609→   609→        };
+   610→   610→      }
+   611→   611→
+   612→   612→      // New user — create account based on expected role
+   613→   613→      final fullName = user.displayName ?? 'User';
+   614→   614→      final email = user.email ?? '';
+   615→   615→      final role = expectedRole ?? KlasivoRole.owner;
+   616→   616→      final isEmailVerified = user.emailVerified; // Google emails are pre-verified
+   617→   617→
+   618→   618→      String? organizationId;
+   619→   619→      bool hasCompletedSetup = true;
+   620→   620→
+   621→   621→      if (role == KlasivoRole.owner) {
+   622→   622→        // Create user doc FIRST with placeholder orgId so isTeacherOrOwner() resolves
+   623→   623→        await _firestore
+   624→   624→            .collection(AppConstants.usersCollection)
+   625→   625→            .doc(user.uid)
+   626→   626→            .set({
+   627→   627→          'organizationId': '', // Placeholder — updated below
+   628→   628→          'role': KlasivoRole.owner,
+   629→   629→          'authProvider': AuthProviders.google,
+   630→   630→          'fullName': fullName,
+   631→   631→          'email': email,
+   632→   632→          'photoUrl': user.photoURL,
+   633→   633→          'phoneNumber': null,
+   634→   634→          'isActive': true,
+   635→   635→          'isEmailVerified': isEmailVerified,
+   636→   636→          'hasCompletedSetup': false,
+   637→   637→          'createdAt': FieldValue.serverTimestamp(),
+   638→   638→          'updatedAt': FieldValue.serverTimestamp(),
+   639→   639→        });
+   640→   640→
+   641→   641→        // Now create the organization — rules can verify user is an owner
+   642→   642→        final orgService = OrganizationService();
+   643→   643→        organizationId = await orgService.createOrganization(
+   644→   644→          ownerId: user.uid,
+   645→   645→          name: "$fullName's Workspace",
+   646→   646→        );
+   647→   647→
+   648→   648→        // Patch the user doc with the real organizationId
+   649→   649→        await _firestore
+   650→   650→            .collection(AppConstants.usersCollection)
+   651→   651→            .doc(user.uid)
+   652→   652→            .update({
+   653→   653→          'organizationId': organizationId,
+   654→   654→          'updatedAt': FieldValue.serverTimestamp(),
+   655→   655→        });
+   656→   656→
+   657→   657→        hasCompletedSetup = false; // Needs to name workspace
+   658→   658→      } else if (role == KlasivoRole.parent) {
+   659→   659→        organizationId = null; // Set when parent links a child
+   660→   660→        hasCompletedSetup = false; // Needs to link child
+   661→   661→      }
+   662→   662→
+   663→   663→      // For non-owner roles, write the user doc normally (owner doc already created above)
+   664→   664→      if (role != KlasivoRole.owner) {
+   665→   665→        await _firestore
+   666→   666→            .collection(AppConstants.usersCollection)
+   667→   667→            .doc(user.uid)
+   668→   668→            .set({
+   669→   669→          'organizationId': organizationId,
+   670→   670→          'role': role,
+   671→   671→          'authProvider': AuthProviders.google,
+   672→   672→          'fullName': fullName,
+   673→   673→          'email': email,
+   674→   674→          'photoUrl': user.photoURL,
+   675→   675→          'phoneNumber': null,
+   676→   676→          'isActive': true,
+   677→   677→          'isEmailVerified': isEmailVerified,
+   678→   678→          'hasCompletedSetup': hasCompletedSetup,
+   679→   679→          'createdAt': FieldValue.serverTimestamp(),
+   680→   680→          'updatedAt': FieldValue.serverTimestamp(),
+   681→   681→        });
+   682→   682→      }
+   683→   683→
+   684→   684→      return {
+   685→   685→        'id': user.uid,
+   686→   686→        'organizationId': organizationId,
+   687→   687→        'role': role,
+   688→   688→        'authProvider': AuthProviders.google,
+   689→   689→        'fullName': fullName,
+   690→   690→        'email': email,
+   691→   691→        'isEmailVerified': isEmailVerified,
+   692→   692→        'hasCompletedSetup': hasCompletedSetup,
+   693→   693→      };
+   694→   694→    } catch (e) {
+   695→   695→      rethrow;
+   696→   696→    }
+   697→   697→  }
+   698→   698→
+   699→   699→  // ─── Sync Email Verification Status ────────────────────────────────────────
+   700→   700→
+   701→   701→  /// Updates the isEmailVerified field in Firestore if it has changed.
+   702→   702→  /// Called after every successful login to keep the field accurate.
+   703→   703→  /// Google Sign-In users are always verified. Password users may verify later.
+   704→   704→  Future<void> syncEmailVerification(String userId, bool isVerified) async {
+   705→   705→    try {
+   706→   706→      await _firestore
+   707→   707→          .collection(AppConstants.usersCollection)
+   708→   708→          .doc(userId)
+   709→   709→          .update({
+   710→   710→        'isEmailVerified': isVerified,
+   711→   711→        'updatedAt': FieldValue.serverTimestamp(),
+   712→   712→      });
+   713→   713→    } catch (_) {
+   714→   714→      // Non-critical — don't block login if this fails
+   715→   715→    }
+   716→   716→  }
+   717→   717→
+   718→   718→  // ─── Logout ────────────────────────────────────────────────────────────────
+   719→   719→
+   720→   720→  Future<void> logout() async {
+   721→   721→    try {
+   722→   722→      await GoogleSignIn().signOut();
+   723→   723→      await FirebaseService.logout();
+   724→   724→    } catch (e) {
+   725→   725→      rethrow;
+   726→   726→    }
+   727→   727→  }
+   728→   728→
+   729→   729→  // ─── Get Current User ──────────────────────────────────────────────────────
+   730→   730→
+   731→   731→  User? get currentUser => FirebaseService.currentUser;
+   732→   732→
+   733→   733→  // ─── Check if user is logged in ────────────────────────────────────────────
+   734→   734→
+   735→   735→  bool get isLoggedIn => _auth.currentUser != null;
+   736→   736→
+   737→   737→  // ─── Password Reset ────────────────────────────────────────────────────────
+   738→   738→
+   739→   739→  Future<void> sendPasswordReset(String email) async {
+   740→   740→    try {
+   741→   741→      final actionCodeSettings = ActionCodeSettings(
+   742→   742→        url: AppConstants.appBaseUrl,
+   743→   743→        handleCodeInApp: true,
+   744→   744→        iOSBundleId: AppConstants.iosBundleId,
+   745→   745→        androidPackageName: AppConstants.androidPackageName,
+   746→   746→        androidInstallApp: true,
+   747→   747→        androidMinimumVersion: '21',
+   748→   748→        dynamicLinkDomain: AppConstants.dynamicLinkDomain,
+   749→   749→      );
+   750→   750→
+   751→   751→      await _auth.sendPasswordResetEmail(
+   752→   752→        email: email,
+   753→   753→        actionCodeSettings: actionCodeSettings,
+   754→   754→      );
+   755→   755→    } catch (e) {
+   756→   756→      rethrow;
+   757→   757→    }
+   758→   758→  }
+   759→   759→
+   760→   760→  // ─── Check if current user needs setup ─────────────────────────────────────
+   761→   761→
+   762→   762→  Future<bool> needsSetup() async {
+   763→   763→    try {
+   764→   764→      final user = _auth.currentUser;
+   765→   765→      if (user == null) return false;
+   766→   766→
+   767→   767→      final userDoc = await _firestore
+   768→   768→          .collection(AppConstants.usersCollection)
+   769→   769→          .doc(user.uid)
+   770→   770→          .get();
+   771→   771→
+   772→   772→      if (!userDoc.exists) return false;
+   773→   773→
+   774→   774→      final data = userDoc.data()!;
+   775→   775→      final role = data['role'] as String?;
+   776→   776→      final hasCompletedSetup = data['hasCompletedSetup'] as bool? ?? true;
+   777→   777→
+   778→   778→      // Owners need workspace naming, parents need child linking
+   779→   779→      if ((role == KlasivoRole.owner || role == KlasivoRole.parent) &&
+   780→   780→          !hasCompletedSetup) {
+   781→   781→        return true;
+   782→   782→      }
+   783→   783→
+   784→   784→      return false;
+   785→   785→    } catch (e) {
+   786→   786→      return false;
+   787→   787→    }
+   788→   788→  }
+   789→   789→
+   790→   790→  // ══════════════════════════════════════════════════════════════════════════
+   791→   791→  // IAuthService Contract — Adapter Methods
+   792→   792→  //
+   793→   793→  // These methods satisfy the IAuthService interface by delegating
+   794→   794→  // to the existing concrete methods with compatible signatures.
+   795→   795→  // ══════════════════════════════════════════════════════════════════════════
+   796→   796→
+   797→   797→  @override
+   798→   798→  Future<Map<String, dynamic>> registerTeacher({
+   799→   799→    required String email,
+   800→   800→    required String password,
+   801→   801→    required String fullName,
+   802→   802→    required String inviteCode,
+   803→   803→  }) =>
+   804→   804→      registerTeacherWithInvite(
+   805→   805→        email: email,
+   806→   806→        password: password,
+   807→   807→        fullName: fullName,
+   808→   808→        inviteCode: inviteCode,
+   809→   809→      );
+   810→   810→
+   811→   811→  @override
+   812→   812→  Future<Map<String, dynamic>> registerStudent({
+   813→   813→    required String code,
+   814→   814→    required String password,
+   815→   815→  }) =>
+   816→   816→      loginStudent(code: code, password: password);
+   817→   817→
+   818→   818→  @override
+   819→   819→  Future<Map<String, dynamic>> loginOwner({
+   820→   820→    required String email,
+   821→   821→    required String password,
+   822→   822→  }) =>
+   823→   823→      loginWithEmail(email: email, password: password);
+   824→   824→
+   825→   825→  @override
+   826→   826→  Future<Map<String, dynamic>> loginTeacher({
+   827→   827→    required String email,
+   828→   828→    required String password,
+   829→   829→  }) =>
+   830→   830→      loginWithEmail(email: email, password: password);
+   831→   831→
+   832→   832→  @override
+   833→   833→  Future<Map<String, dynamic>> loginParent({
+   834→   834→    required String email,
+   835→   835→    required String password,
+   836→   836→  }) =>
+   837→   837→      loginWithEmail(email: email, password: password);
+   838→   838→
+   839→   839→  @override
+   840→   840→  Future<void> sendPasswordResetEmail({required String email}) =>
+   841→   841→      sendPasswordReset(email);
+   842→   842→
+   843→   843→  @override
+   844→   844→  bool isEmailVerified() {
+   845→   845→    final user = _auth.currentUser;
+   846→   846→    return user?.emailVerified ?? false;
+   847→   847→  }
+   848→   848→
+   849→   849→  String _mapAuthError(FirebaseAuthException e) {
+   850→   850→    switch (e.code) {
+   851→   851→      case 'email-already-in-use':
+   852→   852→        return 'This email is already registered. Try logging in instead.';
+   853→   853→      case 'invalid-email':
+   854→   854→        return 'Please enter a valid email address.';
+   855→   855→      case 'weak-password':
+   856→   856→        return 'Password is too weak. Use at least 6 characters.';
+   857→   857→      case 'user-not-found':
+   858→   858→        return 'No account found with this email.';
+   859→   859→      case 'wrong-password':
+   860→   860→        return 'Incorrect password. Please try again.';
+   861→   861→      case 'invalid-credential':
+   862→   862→        return 'Invalid credentials. Please check your email and password.';
+   863→   863→      case 'too-many-requests':
+   864→   864→        return 'Too many attempts. Please try again later.';
+   865→   865→      default:
+   866→   866→        return e.message ?? 'Authentication error. Please try again.';
+   867→   867→    }
+   868→   868→  }
+   869→   869→}
+   870→   870→
