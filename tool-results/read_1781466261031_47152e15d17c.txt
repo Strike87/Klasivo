@@ -1,0 +1,1224 @@
+     1→// ═══════════════════════════════════════════════════════════════════════════════
+     2→// KLASIVO — User Detail Screen
+     3→//
+     4→// 5-tab RBAC profile for a single user:
+     5→//   Overview | Scope | Overrides | Effective Permissions | Audit History
+     6→//
+     7→// Each tab embeds the relevant editor/viewer inline.
+     8→// Quick-action FABs for role assignment, scope assignment, and override editing.
+     9→//
+    10→// Route: /people/users/:userId
+    11→// ═══════════════════════════════════════════════════════════════════════════════
+    12→
+    13→import 'package:flutter/material.dart';
+    14→import 'package:flutter_riverpod/flutter_riverpod.dart';
+    15→import 'package:timeago/timeago.dart' as timeago;
+    16→
+    17→import '../../../core/config/theme.dart';
+    18→import '../../../core/rbac/roles.dart';
+    19→import '../../../core/rbac/permissions.dart';
+    20→import '../../../core/rbac/role_hierarchy.dart';
+    21→import '../../../core/rbac/permission_overrides.dart';
+    22→import '../../../core/rbac/permission_groups.dart';
+    23→import '../../../widgets/klasivo_card.dart';
+    24→import '../../../widgets/klasivo_button.dart';
+    25→import '../../../widgets/klasivo_badge.dart';
+    26→import '../../../widgets/klasivo_avatar.dart';
+    27→import '../../../widgets/klasivo_permission_gate.dart';
+    28→import '../../../widgets/klasivo_components.dart';
+    29→import '../data/user_management_repository.dart';
+    30→import '../providers/user_management_providers.dart';
+    31→import 'role_assignment_sheet.dart';
+    32→import 'scope_assignment_screen.dart';
+    33→import 'permission_override_screen.dart';
+    34→import 'effective_permissions_screen.dart';
+    35→
+    36→enum _DetailTab {
+    37→  overview('Overview', Icons.person_rounded),
+    38→  scope('Scope', Icons.account_tree_rounded),
+    39→  overrides('Overrides', Icons.tune_rounded),
+    40→  effective('Effective', Icons.verified_user_rounded),
+    41→  audit('Audit History', Icons.history_rounded);
+    42→
+    43→  final String label;
+    44→  final IconData icon;
+    45→  const _DetailTab(this.label, this.icon);
+    46→}
+    47→
+    48→class UserDetailScreen extends ConsumerStatefulWidget {
+    49→  final String userId;
+    50→
+    51→  const UserDetailScreen({Key? key, required this.userId}) : super(key: key);
+    52→
+    53→  @override
+    54→  ConsumerState<UserDetailScreen> createState() => _UserDetailScreenState();
+    55→}
+    56→
+    57→class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
+    58→    with SingleTickerProviderStateMixin {
+    59→  late TabController _tabController;
+    60→
+    61→  @override
+    62→  void initState() {
+    63→    super.initState();
+    64→    _tabController = TabController(
+    65→      length: _DetailTab.values.length,
+    66→      vsync: this,
+    67→    );
+    68→  }
+    69→
+    70→  @override
+    71→  void dispose() {
+    72→    _tabController.dispose();
+    73→    super.dispose();
+    74→  }
+    75→
+    76→  @override
+    77→  Widget build(BuildContext context) {
+    78→    final theme = Theme.of(context);
+    79→    final isDark = theme.brightness == Brightness.dark;
+    80→    final profileAsync = ref.watch(userRbacProfileProvider(widget.userId));
+    81→
+    82→    return profileAsync.when(
+    83→      loading: () => Scaffold(
+    84→        appBar: AppBar(title: const Text('User Details')),
+    85→        body: const Center(child: KlasivoLoading()),
+    86→      ),
+    87→      error: (e, _) => Scaffold(
+    88→        appBar: AppBar(title: const Text('User Details')),
+    89→        body: Center(child: Text('Error: $e')),
+    90→      ),
+    91→      data: (profile) {
+    92→        final user = profile.user;
+    93→
+    94→        return Scaffold(
+    95→          appBar: AppBar(
+    96→            title: Text(user.fullName),
+    97→            bottom: TabBar(
+    98→              controller: _tabController,
+    99→              isScrollable: true,
+   100→              tabAlignment: TabAlignment.start,
+   101→              labelColor: isDark ? AppColors.primaryLight : AppColors.primary,
+   102→              unselectedLabelColor: isDark
+   103→                  ? AppColors.lightTextTertiary
+   104→                  : AppColors.darkTextTertiary,
+   105→              indicatorColor:
+   106→                  isDark ? AppColors.primaryLight : AppColors.primary,
+   107→              tabs: _DetailTab.values
+   108→                  .map((tab) => Tab(
+   109→                        icon: Icon(tab.icon, size: 16),
+   110→                        text: tab.label,
+   111→                      ))
+   112→                  .toList(),
+   113→            ),
+   114→          ),
+   115→          body: TabBarView(
+   116→            controller: _tabController,
+   117→            children: [
+   118→              _OverviewTab(profile: profile),
+   119→              _ScopeTab(profile: profile),
+   120→              _OverridesTab(profile: profile),
+   121→              _EffectiveTab(profile: profile),
+   122→              _AuditTab(userId: widget.userId),
+   123→            ],
+   124→          ),
+   125→          // ─── Quick Action FAB ────────────────────────────────────
+   126→          floatingActionButton: KlasivoPermissionGate(
+   127→            permission: Permission.userAssignRole,
+   128→            fallback: const SizedBox.shrink(),
+   129→            child: FloatingActionButton.extended(
+   130→              onPressed: () => _showRoleAssignment(context, profile),
+   131→              icon: const Icon(Icons.shield_rounded),
+   132→              label: const Text('Change Role'),
+   133→            ),
+   134→          ),
+   135→        );
+   136→      },
+   137→    );
+   138→  }
+   139→
+   140→  void _showRoleAssignment(BuildContext context, UserRbacProfile profile) {
+   141→    showModalBottomSheet(
+   142→      context: context,
+   143→      isScrollControlled: true,
+   144→      useSafeArea: true,
+   145→      shape: const RoundedRectangleBorder(
+   146→        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+   147→      ),
+   148→      builder: (context) => RoleAssignmentSheet(
+   149→        userId: profile.user.id,
+   150→        currentRole: profile.user.role,
+   151→        userName: profile.user.fullName,
+   152→      ),
+   153→    );
+   154→  }
+   155→}
+   156→
+   157→// ═══════════════════════════════════════════════════════════════════════════════
+   158→// OVERVIEW TAB
+   159→// ═══════════════════════════════════════════════════════════════════════════════
+   160→
+   161→class _OverviewTab extends ConsumerWidget {
+   162→  final UserRbacProfile profile;
+   163→
+   164→  const _OverviewTab({required this.profile});
+   165→
+   166→  @override
+   167→  Widget build(BuildContext context, WidgetRef ref) {
+   168→    final theme = Theme.of(context);
+   169→    final isDark = theme.brightness == Brightness.dark;
+   170→    final user = profile.user;
+   171→
+   172→    return ListView(
+   173→      padding: const EdgeInsets.all(16),
+   174→      children: [
+   175→        // ─── User Identity Card ─────────────────────────────────────
+   176→        KlasivoCard(
+   177→          child: Padding(
+   178→            padding: const EdgeInsets.all(16),
+   179→            child: Row(
+   180→              children: [
+   181→                KlasivoAvatar(
+   182→                  name: user.fullName,
+   183→                  imageUrl: user.photoUrl,
+   184→                  size: KlasivoAvatarSize.lg,
+   185→                ),
+   186→                const SizedBox(width: 16),
+   187→                Expanded(
+   188→                  child: Column(
+   189→                    crossAxisAlignment: CrossAxisAlignment.start,
+   190→                    children: [
+   191→                      Text(user.fullName,
+   192→                          style: theme.textTheme.titleLarge),
+   193→                      const SizedBox(height: 4),
+   194→                      Text(user.email ?? 'No email',
+   195→                          style: theme.textTheme.bodyMedium?.copyWith(
+   196→                            color: isDark
+   197→                                ? AppColors.lightTextSecondary
+   198→                                : AppColors.darkTextSecondary,
+   199→                          )),
+   200→                      const SizedBox(height: 8),
+   201→                      _RoleBadge(role: user.role),
+   202→                    ],
+   203→                  ),
+   204→                ),
+   205→              ],
+   206→            ),
+   207→          ),
+   208→        ),
+   209→
+   210→        const SizedBox(height: 16),
+   211→
+   212→        // ─── RBAC Summary ──────────────────────────────────────────
+   213→        KlasivoCard(
+   214→          child: Padding(
+   215→            padding: const EdgeInsets.all(16),
+   216→            child: Column(
+   217→              crossAxisAlignment: CrossAxisAlignment.start,
+   218→              children: [
+   219→                Text('RBAC Summary',
+   220→                    style: theme.textTheme.titleMedium),
+   221→                const SizedBox(height: 12),
+   222→                _InfoRow(
+   223→                  label: 'Role',
+   224→                  value: KlasivoRole.displayName(user.role),
+   225→                  icon: Icons.shield_rounded,
+   226→                ),
+   227→                _InfoRow(
+   228→                  label: 'Scope Level',
+   229→                  value: user.scopeAccessLevel ?? 'Not set',
+   230→                  icon: Icons.account_tree_rounded,
+   231→                ),
+   232→                _InfoRow(
+   233→                  label: 'Scope Assigned',
+   234→                  value: user.hasScopeAssignment ? 'Yes' : 'No',
+   235→                  icon: Icons.check_circle_rounded,
+   236→                  valueColor: user.hasScopeAssignment
+   237→                      ? AppColors.success
+   238→                      : (KlasivoRole.isScoped(user.role)
+   239→                          ? AppColors.warning
+   240→                          : null),
+   241→                ),
+   242→                _InfoRow(
+   243→                  label: 'Permission Overrides',
+   244→                  value: user.hasOverrides
+   245→                      ? '${user.permissionOverrides.length} active'
+   246→                      : 'None',
+   247→                  icon: Icons.tune_rounded,
+   248→                ),
+   249→                _InfoRow(
+   250→                  label: 'Role Version',
+   251→                  value: '${profile.roleVersion}',
+   252→                  icon: Icons.update_rounded,
+   253→                ),
+   254→              ],
+   255→            ),
+   256→          ),
+   257→        ),
+   258→
+   259→        const SizedBox(height: 16),
+   260→
+   261→        // ─── Role Description ───────────────────────────────────────
+   262→        KlasivoCard(
+   263→          child: Padding(
+   264→            padding: const EdgeInsets.all(16),
+   265→            child: Column(
+   266→              crossAxisAlignment: CrossAxisAlignment.start,
+   267→              children: [
+   268→                Text('Role Description',
+   269→                    style: theme.textTheme.titleMedium),
+   270→                const SizedBox(height: 8),
+   271→                Text(
+   272→                  KlasivoRole.scopeDescription(user.role),
+   273→                  style: theme.textTheme.bodyMedium?.copyWith(
+   274→                    color: isDark
+   275→                        ? AppColors.lightTextSecondary
+   276→                        : AppColors.darkTextSecondary,
+   277→                  ),
+   278→                ),
+   279→                const SizedBox(height: 12),
+   280→                // Show inherited roles
+   281→                Text('Inherits from:',
+   282→                    style: theme.textTheme.labelMedium),
+   283→                const SizedBox(height: 4),
+   284→                _InheritanceChain(role: user.role),
+   285→              ],
+   286→            ),
+   287→          ),
+   288→        ),
+   289→
+   290→        const SizedBox(height: 16),
+   291→
+   292→        // ─── Quick Stats ────────────────────────────────────────────
+   293→        Row(
+   294→          children: [
+   295→            Expanded(
+   296→              child: _StatCard(
+   297→                label: 'Default Perms',
+   298→                value:
+   299→                    '${RoleResolver.getEffectivePermissions(user.role).length}',
+   300→                icon: Icons.vpn_key_rounded,
+   301→                color: AppColors.primary,
+   302→              ),
+   303→            ),
+   304→            const SizedBox(width: 12),
+   305→            Expanded(
+   306→              child: _StatCard(
+   307→                label: 'Overrides',
+   308→                value: '${user.permissionOverrides.length}',
+   309→                icon: Icons.tune_rounded,
+   310→                color: user.hasOverrides ? AppColors.warning : AppColors.lightTextTertiary,
+   311→              ),
+   312→            ),
+   313→            const SizedBox(width: 12),
+   314→            Expanded(
+   315→              child: _StatCard(
+   316→                label: 'Effective',
+   317→                value:
+   318→                    '${PermissionOverrides.applyToRole(user.role, Map<String, bool>.from(user.permissionOverrides)).length}',
+   319→                icon: Icons.verified_user_rounded,
+   320→                color: AppColors.success,
+   321→              ),
+   322→            ),
+   323→          ],
+   324→        ),
+   325→      ],
+   326→    );
+   327→  }
+   328→}
+   329→
+   330→// ═══════════════════════════════════════════════════════════════════════════════
+   331→// SCOPE TAB
+   332→// ═══════════════════════════════════════════════════════════════════════════════
+   333→
+   334→class _ScopeTab extends ConsumerWidget {
+   335→  final UserRbacProfile profile;
+   336→
+   337→  const _ScopeTab({required this.profile});
+   338→
+   339→  @override
+   340→  Widget build(BuildContext context, WidgetRef ref) {
+   341→    final theme = Theme.of(context);
+   342→    final user = profile.user;
+   343→    final isScoped = KlasivoRole.isScoped(user.role);
+   344→
+   345→    return ListView(
+   346→      padding: const EdgeInsets.all(16),
+   347→      children: [
+   348→        // Scope level indicator
+   349→        KlasivoCard(
+   350→          child: Padding(
+   351→            padding: const EdgeInsets.all(16),
+   352→            child: Column(
+   353→              crossAxisAlignment: CrossAxisAlignment.start,
+   354→              children: [
+   355→                Row(
+   356→                  children: [
+   357→                    Icon(Icons.account_tree_rounded,
+   358→                        color: isScoped ? AppColors.warning : AppColors.success,
+   359→                        size: 20),
+   360→                    const SizedBox(width: 8),
+   361→                    Text('Scope Access Level',
+   362→                        style: theme.textTheme.titleMedium),
+   363→                  ],
+   364→                ),
+   365→                const SizedBox(height: 8),
+   366→                Text(
+   367→                  isScoped
+   368→                      ? 'This role requires scope assignment to access data'
+   369→                      : 'This role has full access within the organization',
+   370→                  style: theme.textTheme.bodySmall?.copyWith(
+   371→                    color: isScoped ? AppColors.warning : AppColors.success,
+   372→                  ),
+   373→                ),
+   374→              ],
+   375→            ),
+   376→          ),
+   377→        ),
+   378→
+   379→        const SizedBox(height: 16),
+   380→
+   381→        // Current scope assignments — hierarchical tree view
+   382→        if (user.hasScopeAssignment)
+   383→          KlasivoCard(
+   384→            child: Padding(
+   385→              padding: const EdgeInsets.all(16),
+   386→              child: _ReadOnlyScopeTree(user: user),
+   387→            ),
+   388→          ),
+   389→
+   390→        // Subjects remain as chips (no tree hierarchy for subjects)
+   391→        if (user.subjectIds.isNotEmpty)
+   392→          _ScopeChipList(
+   393→              label: 'Subjects', ids: user.subjectIds, type: 'subject'),
+   394→
+   395→        if (!user.hasScopeAssignment && isScoped)
+   396→          KlasivoCard(
+   397→            accentColor: AppColors.warning,
+   398→            child: Padding(
+   399→              padding: const EdgeInsets.all(16),
+   400→              child: Row(
+   401→                children: [
+   402→                  const Icon(Icons.warning_amber_rounded,
+   403→                      color: AppColors.warning),
+   404→                  const SizedBox(width: 12),
+   405→                  Expanded(
+   406→                    child: Text(
+   407→                      'No scope assigned. This user cannot access any data until scope is set.',
+   408→                      style: theme.textTheme.bodyMedium?.copyWith(
+   409→                        color: AppColors.warning,
+   410→                      ),
+   411→                    ),
+   412→                  ),
+   413→                ],
+   414→              ),
+   415→            ),
+   416→          ),
+   417→
+   418→        const SizedBox(height: 16),
+   419→
+   420→        // Edit scope button
+   421→        KlasivoPermissionGate(
+   422→          permission: Permission.userAssignRole,
+   423→          fallback: const SizedBox.shrink(),
+   424→          child: KlasivoButton(
+   425→            label: 'Edit Scope Assignment',
+   426→            icon: Icons.edit_rounded,
+   427→            variant: KlasivoButtonVariant.secondary,
+   428→            fullWidth: true,
+   429→            onPressed: () {
+   430→              Navigator.of(context).push(
+   431→                MaterialPageRoute(
+   432→                  builder: (_) => ScopeAssignmentScreen(
+   433→                    userId: user.id,
+   434→                    userName: user.fullName,
+   435→                    currentRole: user.role,
+   436→                    currentCampusIds: user.campusIds,
+   437→                    currentStageIds: user.stageIds,
+   438→                    currentClassIds: user.classIds,
+   439→                    currentSubjectIds: user.subjectIds,
+   440→                  ),
+   441→                ),
+   442→              );
+   443→            },
+   444→          ),
+   445→        ),
+   446→      ],
+   447→    );
+   448→  }
+   449→}
+   450→
+   451→// ═══════════════════════════════════════════════════════════════════════════════
+   452→// OVERRIDES TAB
+   453→// ═══════════════════════════════════════════════════════════════════════════════
+   454→
+   455→class _OverridesTab extends ConsumerWidget {
+   456→  final UserRbacProfile profile;
+   457→
+   458→  const _OverridesTab({required this.profile});
+   459→
+   460→  @override
+   461→  Widget build(BuildContext context, WidgetRef ref) {
+   462→    final theme = Theme.of(context);
+   463→    final user = profile.user;
+   464→    final overrides = Map<String, bool>.from(user.permissionOverrides);
+   465→    final diff = PermissionOverrides.getOverrideDiff(user.role, overrides);
+   466→
+   467→    return ListView(
+   468→      padding: const EdgeInsets.all(16),
+   469→      children: [
+   470→        // Diff summary card
+   471→        KlasivoCard(
+   472→          accentColor: diff.hasOverrides ? AppColors.warning : AppColors.success,
+   473→          child: Padding(
+   474→            padding: const EdgeInsets.all(16),
+   475→            child: Column(
+   476→              crossAxisAlignment: CrossAxisAlignment.start,
+   477→              children: [
+   478→                Text('Override Impact', style: theme.textTheme.titleMedium),
+   479→                const SizedBox(height: 8),
+   480→                Text(
+   481→                  diff.summary,
+   482→                  style: theme.textTheme.bodyMedium?.copyWith(
+   483→                    color: diff.hasOverrides ? AppColors.warning : AppColors.success,
+   484→                  ),
+   485→                ),
+   486→                if (diff.hasGrants) ...[
+   487→                  const SizedBox(height: 8),
+   488→                  Text('+${diff.grantedByOverrides.length} permissions granted',
+   489→                      style: theme.textTheme.bodySmall?.copyWith(
+   490→                          color: AppColors.success)),
+   491→                ],
+   492→                if (diff.hasDenials) ...[
+   493→                  const SizedBox(height: 4),
+   494→                  Text('-${diff.deniedByOverrides.length} permissions denied',
+   495→                      style: theme.textTheme.bodySmall?.copyWith(
+   496→                          color: AppColors.error)),
+   497→                ],
+   498→              ],
+   499→            ),
+   500→          ),
+   501→        ),
+   502→
+   503→        const SizedBox(height: 16),
+   504→
+   505→        // Edit overrides button
+   506→        KlasivoPermissionGate(
+   507→          permission: Permission.userAssignRole,
+   508→          fallback: const SizedBox.shrink(),
+   509→          child: KlasivoButton(
+   510→            label: 'Edit Permission Overrides',
+   511→            icon: Icons.tune_rounded,
+   512→            variant: KlasivoButtonVariant.secondary,
+   513→            fullWidth: true,
+   514→            onPressed: () {
+   515→              Navigator.of(context).push(
+   516→                MaterialPageRoute(
+   517→                  builder: (_) => PermissionOverrideScreen(
+   518→                    userId: user.id,
+   519→                    userName: user.fullName,
+   520→                    currentRole: user.role,
+   521→                    currentOverrides: overrides,
+   522→                  ),
+   523→                ),
+   524→              );
+   525→            },
+   526→          ),
+   527→        ),
+   528→
+   529→        const SizedBox(height: 16),
+   530→
+   531→        // List of current overrides
+   532→        if (overrides.isEmpty)
+   533→          KlasivoEmptyState(
+   534→            icon: Icons.tune_rounded,
+   535→            title: 'No overrides',
+   536→            subtitle: 'This user uses their role\'s default permissions',
+   537→          )
+   538→        else
+   539→          ...overrides.entries.map((entry) => _OverrideTile(
+   540→                permission: entry.key,
+   541→                isGranted: entry.value,
+   542→              )),
+   543→      ],
+   544→    );
+   545→  }
+   546→}
+   547→
+   548→// ═══════════════════════════════════════════════════════════════════════════════
+   549→// EFFECTIVE PERMISSIONS TAB
+   550→// ═══════════════════════════════════════════════════════════════════════════════
+   551→
+   552→class _EffectiveTab extends StatelessWidget {
+   553→  final UserRbacProfile profile;
+   554→
+   555→  const _EffectiveTab({required this.profile});
+   556→
+   557→  @override
+   558→  Widget build(BuildContext context) {
+   559→    return EffectivePermissionsViewer(
+   560→      role: profile.user.role,
+   561→      overrides: Map<String, bool>.from(profile.user.permissionOverrides),
+   562→    );
+   563→  }
+   564→}
+   565→
+   566→// ═══════════════════════════════════════════════════════════════════════════════
+   567→// AUDIT HISTORY TAB
+   568→// ═══════════════════════════════════════════════════════════════════════════════
+   569→
+   570→class _AuditTab extends ConsumerWidget {
+   571→  final String userId;
+   572→
+   573→  const _AuditTab({required this.userId});
+   574→
+   575→  @override
+   576→  Widget build(BuildContext context, WidgetRef ref) {
+   577→    final theme = Theme.of(context);
+   578→    final isDark = theme.brightness == Brightness.dark;
+   579→    final auditAsync = ref.watch(userAuditHistoryProvider(userId));
+   580→
+   581→    return auditAsync.when(
+   582→      loading: () => const Center(child: KlasivoLoading()),
+   583→      error: (e, _) => Center(child: Text('Error: $e')),
+   584→      data: (logs) {
+   585→        if (logs.isEmpty) {
+   586→          return const KlasivoEmptyState(
+   587→            icon: Icons.history_rounded,
+   588→            title: 'No audit history',
+   589→            subtitle: 'RBAC changes for this user will appear here',
+   590→          );
+   591→        }
+   592→
+   593→        return ListView.separated(
+   594→          padding: const EdgeInsets.all(16),
+   595→          itemCount: logs.length,
+   596→          separatorBuilder: (_, __) => const SizedBox(height: 4),
+   597→          itemBuilder: (context, index) {
+   598→            final log = logs[index];
+   599→            final action = log['action'] as String? ?? '';
+   600→            final targetType = log['targetType'] as String? ?? '';
+   601→            final details = log['details'] as String? ?? '';
+   602→            final userName = log['userName'] as String? ?? 'System';
+   603→            final timestamp = log['timestamp'];
+   604→
+   605→            final timeText = timestamp != null
+   606→                ? timeago.format((timestamp as dynamic).toDate() as DateTime)
+   607→                : '';
+   608→
+   609→            return KlasivoCard(
+   610→              child: Padding(
+   611→                padding:
+   612→                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+   613→                child: Row(
+   614→                  children: [
+   615→                    _AuditActionIcon(action: action),
+   616→                    const SizedBox(width: 12),
+   617→                    Expanded(
+   618→                      child: Column(
+   619→                        crossAxisAlignment: CrossAxisAlignment.start,
+   620→                        children: [
+   621→                          Text(
+   622→                            _auditDescription(action, targetType, details),
+   623→                            style: theme.textTheme.bodyMedium,
+   624→                          ),
+   625→                          const SizedBox(height: 2),
+   626→                          Text(
+   627→                            'By $userName · $timeText',
+   628→                            style: theme.textTheme.bodySmall?.copyWith(
+   629→                              color: isDark
+   630→                                  ? AppColors.lightTextTertiary
+   631→                                  : AppColors.darkTextTertiary,
+   632→                            ),
+   633→                          ),
+   634→                        ],
+   635→                      ),
+   636→                    ),
+   637→                  ],
+   638→                ),
+   639→              ),
+   640→            );
+   641→          },
+   642→        );
+   643→      },
+   644→    );
+   645→  }
+   646→
+   647→  String _auditDescription(String action, String targetType, String details) {
+   648→    if (details.isNotEmpty) return details;
+   649→    final verb = switch (action) {
+   650→      'create' => 'Created',
+   651→      'update' => 'Updated',
+   652→      'delete' => 'Deleted',
+   653→      'assign_role' => 'Role assigned',
+   654→      'assign_scope' => 'Scope assigned',
+   655→      'set_overrides' => 'Overrides set',
+   656→      _ => action,
+   657→    };
+   658→    return '$verb ${targetType.isNotEmpty ? targetType.replaceAll('_', ' ') : ''}'.trim();
+   659→  }
+   660→}
+   661→
+   662→// ═══════════════════════════════════════════════════════════════════════════════
+   663→// HELPER WIDGETS
+   664→// ═══════════════════════════════════════════════════════════════════════════════
+   665→
+   666→class _InfoRow extends StatelessWidget {
+   667→  final String label;
+   668→  final String value;
+   669→  final IconData icon;
+   670→  final Color? valueColor;
+   671→
+   672→  const _InfoRow({
+   673→    required this.label,
+   674→    required this.value,
+   675→    required this.icon,
+   676→    this.valueColor,
+   677→  });
+   678→
+   679→  @override
+   680→  Widget build(BuildContext context) {
+   681→    final theme = Theme.of(context);
+   682→    return Padding(
+   683→      padding: const EdgeInsets.symmetric(vertical: 4),
+   684→      child: Row(
+   685→        children: [
+   686→          Icon(icon, size: 16,
+   687→              color: valueColor ?? AppColors.lightTextTertiary),
+   688→          const SizedBox(width: 8),
+   689→          Text(label, style: theme.textTheme.bodySmall),
+   690→          const Spacer(),
+   691→          Text(value,
+   692→              style: theme.textTheme.bodyMedium?.copyWith(
+   693→                fontWeight: FontWeight.w600,
+   694→                color: valueColor,
+   695→              )),
+   696→        ],
+   697→      ),
+   698→    );
+   699→  }
+   700→}
+   701→
+   702→class _InheritanceChain extends StatelessWidget {
+   703→  final String role;
+   704→
+   705→  const _InheritanceChain({required this.role});
+   706→
+   707→  @override
+   708→  Widget build(BuildContext context) {
+   709→    final ancestors = RoleHierarchy.getAncestors(role);
+   710→    final descendants = RoleHierarchy.getDescendants(role);
+   711→
+   712→    if (ancestors.isEmpty && descendants.isEmpty) {
+   713→      return const Text('Standalone role — no inheritance',
+   714→          style: TextStyle(fontStyle: FontStyle.italic));
+   715→    }
+   716→
+   717→    final chain = <String>[
+   718→      ...ancestors.toList()..reversed,
+   719→      role,
+   720→    ];
+   721→
+   722→    return Wrap(
+   723→      spacing: 4,
+   724→      runSpacing: 4,
+   725→      children: chain
+   726→          .map((r) => Row(
+   727→                mainAxisSize: MainAxisSize.min,
+   728→                children: [
+   729→                  if (r != chain.first)
+   730→                    const Icon(Icons.arrow_right_rounded, size: 16),
+   731→                  KlasivoBadge(
+   732→                    label: KlasivoRole.displayName(r),
+   733→                    variant: r == role
+   734→                        ? KlasivoBadgeVariant.custom
+   735→                        : KlasivoBadgeVariant.neutral,
+   736→                    customColor: r == role ? AppColors.primary : null,
+   737→                    size: KlasivoBadgeSize.sm,
+   738→                  ),
+   739→                ],
+   740→              ))
+   741→          .toList(),
+   742→    );
+   743→  }
+   744→}
+   745→
+   746→class _StatCard extends StatelessWidget {
+   747→  final String label;
+   748→  final String value;
+   749→  final IconData icon;
+   750→  final Color color;
+   751→
+   752→  const _StatCard({
+   753→    required this.label,
+   754→    required this.value,
+   755→    required this.icon,
+   756→    required this.color,
+   757→  });
+   758→
+   759→  @override
+   760→  Widget build(BuildContext context) {
+   761→    final theme = Theme.of(context);
+   762→    return KlasivoCard(
+   763→      child: Padding(
+   764→        padding: const EdgeInsets.all(12),
+   765→        child: Column(
+   766→          children: [
+   767→            Icon(icon, color: color, size: 24),
+   768→            const SizedBox(height: 8),
+   769→            Text(value,
+   770→                style: theme.textTheme.headlineSmall?.copyWith(
+   771→                  color: color,
+   772→                  fontWeight: FontWeight.bold,
+   773→                )),
+   774→            const SizedBox(height: 4),
+   775→            Text(label,
+   776→                style: theme.textTheme.labelSmall,
+   777→                textAlign: TextAlign.center),
+   778→          ],
+   779→        ),
+   780→      ),
+   781→    );
+   782→  }
+   783→}
+   784→
+   785→class _ScopeChipList extends StatelessWidget {
+   786→  final String label;
+   787→  final List<String> ids;
+   788→  final String type;
+   789→
+   790→  const _ScopeChipList({
+   791→    required this.label,
+   792→    required this.ids,
+   793→    required this.type,
+   794→  });
+   795→
+   796→  @override
+   797→  Widget build(BuildContext context) {
+   798→    final theme = Theme.of(context);
+   799→    return Padding(
+   800→      padding: const EdgeInsets.only(bottom: 12),
+   801→      child: Column(
+   802→        crossAxisAlignment: CrossAxisAlignment.start,
+   803→        children: [
+   804→          Text(label, style: theme.textTheme.titleSmall),
+   805→          const SizedBox(height: 6),
+   806→          Wrap(
+   807→            spacing: 6,
+   808→            runSpacing: 6,
+   809→            children: ids
+   810→                .map((id) => Chip(
+   811→                      label: Text(id,
+   812→                          style: theme.textTheme.labelSmall),
+   813→                      avatar: Icon(
+   814→                        _typeIcon,
+   815→                        size: 14,
+   816→                      ),
+   817→                      visualDensity: VisualDensity.compact,
+   818→                    ))
+   819→                .toList(),
+   820→          ),
+   821→        ],
+   822→      ),
+   823→    );
+   824→  }
+   825→
+   826→  IconData get _typeIcon => switch (type) {
+   827→        'campus' => Icons.location_city_rounded,
+   828→        'stage' => Icons.stairs_rounded,
+   829→        'class' => Icons.groups_rounded,
+   830→        'subject' => Icons.book_rounded,
+   831→        _ => Icons.circle_rounded,
+   832→      };
+   833→}
+   834→
+   835→// ═══════════════════════════════════════════════════════════════════════════════
+   836→// READ-ONLY SCOPE TREE — User Detail view
+   837→// ═══════════════════════════════════════════════════════════════════════════════
+   838→
+   839→/// Read-only hierarchical tree showing the user's scope assignments.
+   840→/// Highlights assigned nodes within the full org structure:
+   841→///
+   842→///   Main Campus ✓
+   843→///   └─ Primary ✓
+   844→///      ├─ 5A ✓
+   845→///      ├─ 5B
+   846→///      └─ 5C ✓
+   847→class _ReadOnlyScopeTree extends ConsumerWidget {
+   848→  final UserListItem user;
+   849→
+   850→  const _ReadOnlyScopeTree({required this.user});
+   851→
+   852→  @override
+   853→  Widget build(BuildContext context, WidgetRef ref) {
+   854→    final treeAsync = ref.watch(scopeTreeProvider);
+   855→
+   856→    return treeAsync.when(
+   857→      loading: () => const Center(child: KlasivoLoading()),
+   858→      error: (e, _) => Center(child: Text('Error loading tree: $e')),
+   859→      data: (tree) {
+   860→        if (tree.isEmpty) {
+   861→          return const KlasivoEmptyState(
+   862→            icon: Icons.account_tree_rounded,
+   863→            title: 'No organizational structure',
+   864→            subtitle: 'Create stages and classes first',
+   865→          );
+   866→        }
+   867→
+   868→        final assignedCampusIds = user.campusIds.toSet();
+   869→        final assignedStageIds = user.stageIds.toSet();
+   870→        final assignedClassIds = user.classIds.toSet();
+   871→
+   872→        // The tree may have campuses as roots, or stages as roots
+   873→        // (when no campuses exist in the organization).
+   874→        final hasCampusRoots = tree.isNotEmpty && tree.first.type == 'campus';
+   875→
+   876→        if (hasCampusRoots) {
+   877→          // Filter to only campuses that have relevant assignments
+   878→          final relevantCampuses = tree.where((campus) {
+   879→            final isCampusAssigned = assignedCampusIds.contains(campus.id);
+   880→            final hasAssignedChildren = campus.children.any(
+   881→              (stage) =>
+   882→                  assignedStageIds.contains(stage.id) ||
+   883→                  stage.children
+   884→                      .any((cls) => assignedClassIds.contains(cls.id)),
+   885→            );
+   886→            return isCampusAssigned || hasAssignedChildren;
+   887→          }).toList();
+   888→
+   889→          if (relevantCampuses.isEmpty) {
+   890→            return const SizedBox.shrink();
+   891→          }
+   892→
+   893→          return Column(
+   894→            crossAxisAlignment: CrossAxisAlignment.start,
+   895→            children: relevantCampuses
+   896→                .map((campus) => _ReadOnlyCampusNode(
+   897→                      campus: campus,
+   898→                      assignedCampusIds: assignedCampusIds,
+   899→                      assignedStageIds: assignedStageIds,
+   900→                      assignedClassIds: assignedClassIds,
+   901→                    ))
+   902→                .toList(),
+   903→          );
+   904→        }
+   905→
+   906→        // No campuses — stages are root nodes
+   907→        final relevantStages = tree.where((stage) {
+   908→          return assignedStageIds.contains(stage.id) ||
+   909→              stage.children
+   910→                  .any((cls) => assignedClassIds.contains(cls.id));
+   911→        }).toList();
+   912→
+   913→        if (relevantStages.isEmpty) {
+   914→          return const SizedBox.shrink();
+   915→        }
+   916→
+   917→        return Column(
+   918→          crossAxisAlignment: CrossAxisAlignment.start,
+   919→          children: relevantStages
+   920→              .asMap()
+   921→              .entries
+   922→              .map((entry) => _ReadOnlyStageNode(
+   923→                    stage: entry.value,
+   924→                    assignedStageIds: assignedStageIds,
+   925→                    assignedClassIds: assignedClassIds,
+   926→                    isLastStage: entry.key == relevantStages.length - 1,
+   927→                  ))
+   928→              .toList(),
+   929→        );
+   930→      },
+   931→    );
+   932→  }
+   933→}
+   934→
+   935→class _ReadOnlyCampusNode extends StatelessWidget {
+   936→  final ScopeTreeNode campus;
+   937→  final Set<String> assignedCampusIds;
+   938→  final Set<String> assignedStageIds;
+   939→  final Set<String> assignedClassIds;
+   940→
+   941→  const _ReadOnlyCampusNode({
+   942→    required this.campus,
+   943→    required this.assignedCampusIds,
+   944→    required this.assignedStageIds,
+   945→    required this.assignedClassIds,
+   946→  });
+   947→
+   948→  @override
+   949→  Widget build(BuildContext context) {
+   950→    final theme = Theme.of(context);
+   951→    final isAssigned = assignedCampusIds.contains(campus.id);
+   952→
+   953→    // Filter to stages with relevant assignments
+   954→    final relevantStages = campus.children.where((stage) {
+   955→      return assignedStageIds.contains(stage.id) ||
+   956→          stage.children.any((cls) => assignedClassIds.contains(cls.id));
+   957→    }).toList();
+   958→
+   959→    return Padding(
+   960→      padding: const EdgeInsets.only(bottom: 8),
+   961→      child: Column(
+   962→        crossAxisAlignment: CrossAxisAlignment.start,
+   963→        children: [
+   964→          // Campus header
+   965→          Row(
+   966→            children: [
+   967→              Icon(Icons.location_city_rounded,
+   968→                  size: 18,
+   969→                  color:
+   970→                      isAssigned ? AppColors.primary : AppColors.lightTextTertiary),
+   971→              const SizedBox(width: 8),
+   972→              Text(campus.name,
+   973→                  style: theme.textTheme.titleSmall?.copyWith(
+   974→                    color: isAssigned
+   975→                        ? AppColors.primary
+   976→                        : AppColors.lightTextTertiary,
+   977→                    fontWeight:
+   978→                        isAssigned ? FontWeight.w600 : FontWeight.normal,
+   979→                  )),
+   980→              if (isAssigned) ...[
+   981→                const SizedBox(width: 6),
+   982→                Icon(Icons.check_circle_rounded,
+   983→                    size: 14, color: AppColors.success),
+   984→              ],
+   985→            ],
+   986→          ),
+   987→          // Stage children
+   988→          ...relevantStages
+   989→              .map((stage) => _ReadOnlyStageNode(
+   990→                    stage: stage,
+   991→                    assignedStageIds: assignedStageIds,
+   992→                    assignedClassIds: assignedClassIds,
+   993→                    isLastStage: stage == relevantStages.last,
+   994→                  ))
+   995→              .toList(),
+   996→        ],
+   997→      ),
+   998→    );
+   999→  }
+  1000→}
+  1001→
+  1002→class _ReadOnlyStageNode extends StatelessWidget {
+  1003→  final ScopeTreeNode stage;
+  1004→  final Set<String> assignedStageIds;
+  1005→  final Set<String> assignedClassIds;
+  1006→  final bool isLastStage;
+  1007→
+  1008→  const _ReadOnlyStageNode({
+  1009→    required this.stage,
+  1010→    required this.assignedStageIds,
+  1011→    required this.assignedClassIds,
+  1012→    required this.isLastStage,
+  1013→  });
+  1014→
+  1015→  @override
+  1016→  Widget build(BuildContext context) {
+  1017→    final theme = Theme.of(context);
+  1018→    final isAssigned = assignedStageIds.contains(stage.id);
+  1019→    final stageConnector = isLastStage ? '└─ ' : '├─ ';
+  1020→
+  1021→    // Compute assigned classes with correct last-child tracking
+  1022→    final assignedClasses = stage.children
+  1023→        .where((cls) => assignedClassIds.contains(cls.id))
+  1024→        .toList();
+  1025→
+  1026→    return Padding(
+  1027→      padding: const EdgeInsets.only(left: 16, bottom: 4),
+  1028→      child: Column(
+  1029→        crossAxisAlignment: CrossAxisAlignment.start,
+  1030→        children: [
+  1031→          Row(
+  1032→            children: [
+  1033→              Text(stageConnector,
+  1034→                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+  1035→              Icon(Icons.stairs_rounded,
+  1036→                  size: 14,
+  1037→                  color: isAssigned
+  1038→                      ? AppColors.success
+  1039→                      : AppColors.lightTextTertiary),
+  1040→              const SizedBox(width: 6),
+  1041→              Text(stage.name,
+  1042→                  style: theme.textTheme.bodyMedium?.copyWith(
+  1043→                    fontWeight:
+  1044→                        isAssigned ? FontWeight.w600 : FontWeight.normal,
+  1045→                    color:
+  1046→                        isAssigned ? null : AppColors.lightTextTertiary,
+  1047→                  )),
+  1048→              if (isAssigned) ...[
+  1049→                const SizedBox(width: 6),
+  1050→                Icon(Icons.check_circle_rounded,
+  1051→                    size: 12, color: AppColors.success),
+  1052→              ],
+  1053→            ],
+  1054→          ),
+  1055→          // Class children — with correct last-child detection
+  1056→          ...List.generate(assignedClasses.length, (i) {
+  1057→            final cls = assignedClasses[i];
+  1058→            return _ReadOnlyClassNode(
+  1059→              classNode: cls,
+  1060→              isAssigned: true,
+  1061→              isLast: i == assignedClasses.length - 1,
+  1062→            );
+  1063→          }),
+  1064→        ],
+  1065→      ),
+  1066→    );
+  1067→  }
+  1068→}
+  1069→
+  1070→class _ReadOnlyClassNode extends StatelessWidget {
+  1071→  final ScopeTreeNode classNode;
+  1072→  final bool isAssigned;
+  1073→  final bool isLast;
+  1074→
+  1075→  const _ReadOnlyClassNode({
+  1076→    required this.classNode,
+  1077→    required this.isAssigned,
+  1078→    this.isLast = false,
+  1079→  });
+  1080→
+  1081→  @override
+  1082→  Widget build(BuildContext context) {
+  1083→    final theme = Theme.of(context);
+  1084→    final connector = isLast ? '   └─ ' : '   ├─ ';
+  1085→
+  1086→    return Padding(
+  1087→      padding: const EdgeInsets.only(left: 32, bottom: 2),
+  1088→      child: Row(
+  1089→        children: [
+  1090→          Text(connector,
+  1091→              style:
+  1092→                  const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+  1093→          Icon(Icons.groups_rounded,
+  1094→              size: 12,
+  1095→              color: isAssigned
+  1096→                  ? AppColors.warning
+  1097→                  : AppColors.lightTextTertiary),
+  1098→          const SizedBox(width: 6),
+  1099→          Text(classNode.name,
+  1100→              style: theme.textTheme.bodySmall?.copyWith(
+  1101→                fontWeight:
+  1102→                    isAssigned ? FontWeight.w600 : FontWeight.normal,
+  1103→                color:
+  1104→                    isAssigned ? null : AppColors.lightTextTertiary,
+  1105→              )),
+  1106→          if (isAssigned) ...[
+  1107→            const SizedBox(width: 6),
+  1108→            Icon(Icons.check_circle_rounded,
+  1109→                size: 10, color: AppColors.success),
+  1110→          ],
+  1111→        ],
+  1112→      ),
+  1113→    );
+  1114→  }
+  1115→}
+  1116→
+  1117→class _OverrideTile extends StatelessWidget {
+  1118→  final String permission;
+  1119→  final bool isGranted;
+  1120→
+  1121→  const _OverrideTile({required this.permission, required this.isGranted});
+  1122→
+  1123→  @override
+  1124→  Widget build(BuildContext context) {
+  1125→    final theme = Theme.of(context);
+  1126→    final category = Permission.categoryOf(permission);
+  1127→    final action = permission.contains(':')
+  1128→        ? permission.split(':')[1]
+  1129→        : permission;
+  1130→
+  1131→    return KlasivoCard(
+  1132→      accentColor: isGranted ? AppColors.success : AppColors.error,
+  1133→      child: Padding(
+  1134→        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  1135→        child: Row(
+  1136→          children: [
+  1137→            Icon(
+  1138→              isGranted ? Icons.add_circle_rounded : Icons.remove_circle_rounded,
+  1139→              color: isGranted ? AppColors.success : AppColors.error,
+  1140→              size: 18,
+  1141→            ),
+  1142→            const SizedBox(width: 8),
+  1143→            Expanded(
+  1144→              child: Column(
+  1145→                crossAxisAlignment: CrossAxisAlignment.start,
+  1146→                children: [
+  1147→                  Text(permission,
+  1148→                      style: theme.textTheme.bodyMedium
+  1149→                          ?.copyWith(fontWeight: FontWeight.w500)),
+  1150→                  Text(category,
+  1151→                      style: theme.textTheme.bodySmall?.copyWith(
+  1152→                        color: isGranted ? AppColors.success : AppColors.error,
+  1153→                      )),
+  1154→                ],
+  1155→              ),
+  1156→            ),
+  1157→            KlasivoBadge(
+  1158→              label: isGranted ? 'GRANT' : 'DENY',
+  1159→              variant: KlasivoBadgeVariant.custom,
+  1160→              customColor: isGranted ? AppColors.success : AppColors.error,
+  1161→              size: KlasivoBadgeSize.sm,
+  1162→            ),
+  1163→          ],
+  1164→        ),
+  1165→      ),
+  1166→    );
+  1167→  }
+  1168→}
+  1169→
+  1170→class _AuditActionIcon extends StatelessWidget {
+  1171→  final String action;
+  1172→
+  1173→  const _AuditActionIcon({required this.action});
+  1174→
+  1175→  @override
+  1176→  Widget build(BuildContext context) {
+  1177→    final (icon, color) = switch (action) {
+  1178→      'create' => (Icons.add_circle_rounded, AppColors.success),
+  1179→      'update' => (Icons.edit_rounded, AppColors.info),
+  1180→      'delete' => (Icons.delete_rounded, AppColors.error),
+  1181→      'assign_role' => (Icons.shield_rounded, AppColors.primary),
+  1182→      'assign_scope' => (Icons.account_tree_rounded, AppColors.warning),
+  1183→      'set_overrides' => (Icons.tune_rounded, AppColors.accent),
+  1184→      _ => (Icons.info_rounded, AppColors.lightTextTertiary),
+  1185→    };
+  1186→
+  1187→    return CircleAvatar(
+  1188→      radius: 16,
+  1189→      backgroundColor: color.withOpacity(0.12),
+  1190→      child: Icon(icon, color: color, size: 16),
+  1191→    );
+  1192→  }
+  1193→}
+  1194→
+  1195→class _RoleBadge extends StatelessWidget {
+  1196→  final String role;
+  1197→  const _RoleBadge({required this.role});
+  1198→
+  1199→  Color get _color => switch (role) {
+  1200→        KlasivoRole.superAdmin => AppColors.primary,
+  1201→        KlasivoRole.owner => AppColors.primary,
+  1202→        KlasivoRole.admin => AppColors.primaryLight,
+  1203→        KlasivoRole.campusManager => AppColors.success,
+  1204→        KlasivoRole.stageManager => AppColors.success,
+  1205→        KlasivoRole.academicSupervisor => AppColors.info,
+  1206→        KlasivoRole.teacher => AppColors.warning,
+  1207→        KlasivoRole.assistantTeacher => AppColors.warning,
+  1208→        KlasivoRole.observer => AppColors.lightTextTertiary,
+  1209→        KlasivoRole.student => AppColors.info,
+  1210→        KlasivoRole.parent => AppColors.accent,
+  1211→        _ => AppColors.lightTextTertiary,
+  1212→      };
+  1213→
+  1214→  @override
+  1215→  Widget build(BuildContext context) {
+  1216→    return KlasivoBadge(
+  1217→      label: KlasivoRole.displayName(role),
+  1218→      variant: KlasivoBadgeVariant.custom,
+  1219→      customColor: _color,
+  1220→      size: KlasivoBadgeSize.md,
+  1221→    );
+  1222→  }
+  1223→}
+  1224→

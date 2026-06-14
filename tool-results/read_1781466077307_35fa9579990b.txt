@@ -1,0 +1,1359 @@
+     1→import 'roles.dart';
+     2→
+     3→/// A single permission definition in the Klasivo platform.
+     4→///
+     5→/// Each permission has a unique [id] (dot-separated, e.g. `exam.create`),
+     6→/// a [displayName] for the UI, the [module] it belongs to, a [description],
+     7→/// and a map of [defaultGrants] that specifies which roles are granted
+     8→/// this permission by default.
+     9→class Permission {
+    10→  final String id;
+    11→  final String displayName;
+    12→  final String module;
+    13→  final String description;
+    14→  final Map<KlasivoRole, bool> defaultGrants;
+    15→
+    16→  const Permission({
+    17→    required this.id,
+    18→    required this.displayName,
+    19→    required this.module,
+    20→    required this.description,
+    21→    required this.defaultGrants,
+    22→  });
+    23→
+    24→  /// Whether this permission is granted to [role] by default.
+    25→  ///
+    26→  /// Returns `false` if the role is not in the [defaultGrants] map.
+    27→  bool isGrantedByDefault(KlasivoRole role) => defaultGrants[role] ?? false;
+    28→}
+    29→
+    30→/// The central permission engine for the Klasivo platform.
+    31→///
+    32→/// Defines all permissions organized by module and provides static methods
+    33→/// to query permissions by role, module, or individual permission ID.
+    34→///
+    35→/// ## Hierarchical Role Inheritance
+    36→///
+    37→/// Roles are organized in a hierarchy from highest to lowest privilege.
+    38→/// The [isSeniorRole] method determines hierarchy position, and
+    39→/// [getAllPermissions] returns permissions with inherited grants.
+    40→///
+    41→/// Inheritance rules:
+    42→///   - **academicManager** inherits all `teacher` permissions +
+    43→///     stage/class management
+    44→///   - **stageSupervisor** inherits all `teacher` permissions +
+    45→///     stage-level management
+    46→///   - **assistantTeacher** gets a subset of `teacher` permissions
+    47→///     (no publish, no delete)
+    48→///
+    49→/// This engine works in concert with the existing [PermissionService] which
+    50→/// handles Firestore overrides (explicit allow/deny). The evaluation order is:
+    51→///   1. Check explicit deny (Firestore override)
+    52→///   2. Check explicit allow (Firestore override)
+    53→///   3. Check default grants from this engine (including inheritance)
+    54→///   4. Deny by default
+    55→class PermissionEngine {
+    56→  // Private constructor — this class is not meant to be instantiated.
+    57→  PermissionEngine._();
+    58→
+    59→  // ═══════════════════════════════════════════════════════════════════════════
+    60→  // ROLE HIERARCHY
+    61→  // ═══════════════════════════════════════════════════════════════════════════
+    62→
+    63→  /// The role hierarchy, ordered from highest to lowest privilege.
+    64→  ///
+    65→  /// A role at a lower index is "senior" to one at a higher index.
+    66→  /// This is used for permission inheritance — senior roles implicitly
+    67→  /// gain the permissions of junior roles below them in the hierarchy.
+    68→  ///
+    69→  /// Note: [observer] and [student]/[parent] are NOT in the inheritance
+    70→  /// chain for teaching/management roles. They have their own scoped
+    71→  /// permissions.
+    72→  static const List<KlasivoRole> roleHierarchy = [
+    73→    KlasivoRole.superAdmin,
+    74→    KlasivoRole.tenantOwner,
+    75→    KlasivoRole.owner,
+    76→    KlasivoRole.admin,
+    77→    KlasivoRole.academicManager,
+    78→    KlasivoRole.campusManager,
+    79→    KlasivoRole.stageSupervisor,
+    80→    KlasivoRole.teacher,
+    81→    KlasivoRole.assistantTeacher,
+    82→    KlasivoRole.student,
+    83→    KlasivoRole.parent,
+    84→    KlasivoRole.observer,
+    85→  ];
+    86→
+    87→  /// Check if [roleA] is senior to [roleB] (for permission inheritance).
+    88→  ///
+    89→  /// Returns `true` if [roleA] appears before [roleB] in [roleHierarchy],
+    90→  /// meaning [roleA] has higher or equal privilege.
+    91→  ///
+    92→  /// Example:
+    93→  /// ```dart
+    94→  /// isSeniorRole(KlasivoRole.admin, KlasivoRole.teacher) // true
+    95→  /// isSeniorRole(KlasivoRole.teacher, KlasivoRole.admin) // false
+    96→  /// isSeniorRole(KlasivoRole.admin, KlasivoRole.admin)   // true (equal)
+    97→  /// ```
+    98→  static bool isSeniorRole(KlasivoRole roleA, KlasivoRole roleB) {
+    99→    final indexA = roleHierarchy.indexOf(roleA);
+   100→    final indexB = roleHierarchy.indexOf(roleB);
+   101→    if (indexA == -1 || indexB == -1) return false;
+   102→    return indexA <= indexB;
+   103→  }
+   104→
+   105→  /// Check if [roleA] is strictly senior to [roleB] (not equal).
+   106→  static bool isStrictlySeniorRole(KlasivoRole roleA, KlasivoRole roleB) {
+   107→    final indexA = roleHierarchy.indexOf(roleA);
+   108→    final indexB = roleHierarchy.indexOf(roleB);
+   109→    if (indexA == -1 || indexB == -1) return false;
+   110→    return indexA < indexB;
+   111→  }
+   112→
+   113→  /// Get the direct permissions for a role (without inheritance).
+   114→  ///
+   115→  /// These are only the permissions explicitly granted in [allPermissions].
+   116→  static List<String> getDirectPermissions(KlasivoRole role) {
+   117→    return allPermissions
+   118→        .where((p) => p.isGrantedByDefault(role))
+   119→        .map((p) => p.id)
+   120→        .toList();
+   121→  }
+   122→
+   123→  /// Get all permissions for a role, including inherited ones.
+   124→  ///
+   125→  /// Inheritance rules:
+   126→  ///   - **academicManager** inherits all `teacher` permissions +
+   127→  ///     stage/class management permissions
+   128→  ///   - **stageSupervisor** inherits all `teacher` permissions +
+   129→  ///     stage-level permissions
+   130→  ///   - **assistantTeacher** inherits a subset of `teacher` permissions
+   131→  ///     (excludes publish, delete, and create actions)
+   132→  ///
+   133→  /// For roles above `teacher` in the hierarchy, all direct permissions
+   134→  /// are returned (they already have more permissions than teachers).
+   135→  static List<String> getAllPermissions(KlasivoRole role) {
+   136→    final directPermissions = getDirectPermissions(role).toSet();
+   137→
+   138→    // ── Inheritance for academic_manager ─────────────────────────────────
+   139→    // Inherits teacher permissions + gets stage/class management
+   140→    if (role == KlasivoRole.academicManager) {
+   141→      directPermissions.addAll(getDirectPermissions(KlasivoRole.teacher));
+   142→      // Academic manager gets additional management permissions
+   143→      directPermissions.addAll([
+   144→        'stage.manage',
+   145→        'stage.view',
+   146→        'class.manage',
+   147→        'class.view',
+   148→        'subject.manage',
+   149→        'subject.view',
+   150→        'academic.manage',
+   151→        'academic.view',
+   152→        'curriculum.manage',
+   153→      ]);
+   154→    }
+   155→
+   156→    // ── Inheritance for stage_supervisor ─────────────────────────────────
+   157→    // Inherits teacher permissions + gets stage-level permissions
+   158→    if (role == KlasivoRole.stageSupervisor) {
+   159→      directPermissions.addAll(getDirectPermissions(KlasivoRole.teacher));
+   160→      // Stage supervisor gets stage-level management permissions
+   161→      directPermissions.addAll([
+   162→        'stage.manage',
+   163→        'stage.view',
+   164→        'class.view',
+   165→        'class.manage_grades',
+   166→        'subject.view',
+   167→        'academic.view',
+   168→      ]);
+   169→    }
+   170→
+   171→    // ── Inheritance for assistant_teacher ────────────────────────────────
+   172→    // Subset of teacher permissions — NO publish, NO delete, NO create
+   173→    if (role == KlasivoRole.assistantTeacher) {
+   174→      // Remove dangerous permissions that assistant teachers should NOT have
+   175→      directPermissions.remove('exam.create');
+   176→      directPermissions.remove('exam.publish');
+   177→      directPermissions.remove('exam.delete');
+   178→      directPermissions.remove('exam.edit');
+   179→      directPermissions.remove('assignment.create');
+   180→      directPermissions.remove('assignment.delete');
+   181→      directPermissions.remove('assignment.edit');
+   182→      directPermissions.remove('lms.manage');
+   183→      directPermissions.remove('question.create');
+   184→      directPermissions.remove('question.delete');
+   185→      directPermissions.remove('material.upload');
+   186→      directPermissions.remove('material.delete');
+   187→      directPermissions.remove('lesson.create');
+   188→      directPermissions.remove('lesson.delete');
+   189→    }
+   190→
+   191→    // ── Inheritance for campus_manager ──────────────────────────────────
+   192→    // Inherits teacher + academic_manager scoped to their campus
+   193→    if (role == KlasivoRole.campusManager) {
+   194→      directPermissions.addAll(getDirectPermissions(KlasivoRole.teacher));
+   195→      directPermissions.addAll([
+   196→        'stage.manage',
+   197→        'stage.view',
+   198→        'class.manage',
+   199→        'class.view',
+   200→        'subject.manage',
+   201→        'subject.view',
+   202→        'academic.view',
+   203→        'campus.manage',
+   204→        'campus.view',
+   205→      ]);
+   206→    }
+   207→
+   208→    return directPermissions.toList()..sort();
+   209→  }
+   210→
+   211→  /// Get all permissions for a role using the string ID (from Firestore).
+   212→  ///
+   213→  /// Returns an empty list if the role ID is not recognized.
+   214→  static List<String> getAllPermissionsByRoleId(String roleId) {
+   215→    final role = KlasivoRole.fromId(roleId);
+   216→    if (role == null) return [];
+   217→    return getAllPermissions(role);
+   218→  }
+   219→
+   220→  /// Check if a role has a specific permission, considering inheritance.
+   221→  ///
+   222→  /// This is the enhanced version that considers the full permission set
+   223→  /// including inherited permissions.
+   224→  static bool hasPermissionWithInheritance(
+   225→    KlasivoRole role,
+   226→    String permissionId,
+   227→  ) {
+   228→    return getAllPermissions(role).contains(permissionId);
+   229→  }
+   230→
+   231→  // ═══════════════════════════════════════════════════════════════════════════
+   232→  // ALL DEFINED PERMISSIONS
+   233→  // ═══════════════════════════════════════════════════════════════════════════
+   234→
+   235→  static const List<Permission> allPermissions = [
+   236→    // ─── Exam Module ─────────────────────────────────────────────────────
+   237→    Permission(
+   238→      id: 'exam.create',
+   239→      displayName: 'Create Exam',
+   240→      module: 'exams',
+   241→      description: 'Create new exams and question papers',
+   242→      defaultGrants: {
+   243→        KlasivoRole.superAdmin: true,
+   244→        KlasivoRole.tenantOwner: true,
+   245→        KlasivoRole.owner: true,
+   246→        KlasivoRole.admin: true,
+   247→        KlasivoRole.academicManager: true,
+   248→        KlasivoRole.teacher: true,
+   249→      },
+   250→    ),
+   251→    Permission(
+   252→      id: 'exam.edit',
+   253→      displayName: 'Edit Exam',
+   254→      module: 'exams',
+   255→      description: 'Edit existing exams and their settings',
+   256→      defaultGrants: {
+   257→        KlasivoRole.superAdmin: true,
+   258→        KlasivoRole.tenantOwner: true,
+   259→        KlasivoRole.owner: true,
+   260→        KlasivoRole.admin: true,
+   261→        KlasivoRole.academicManager: true,
+   262→        KlasivoRole.teacher: true,
+   263→      },
+   264→    ),
+   265→    Permission(
+   266→      id: 'exam.publish',
+   267→      displayName: 'Publish Exam',
+   268→      module: 'exams',
+   269→      description: 'Publish exams for students to take',
+   270→      defaultGrants: {
+   271→        KlasivoRole.superAdmin: true,
+   272→        KlasivoRole.tenantOwner: true,
+   273→        KlasivoRole.owner: true,
+   274→        KlasivoRole.admin: true,
+   275→        KlasivoRole.academicManager: true,
+   276→        KlasivoRole.teacher: true,
+   277→      },
+   278→    ),
+   279→    Permission(
+   280→      id: 'exam.delete',
+   281→      displayName: 'Delete Exam',
+   282→      module: 'exams',
+   283→      description: 'Permanently delete exams',
+   284→      defaultGrants: {
+   285→        KlasivoRole.superAdmin: true,
+   286→        KlasivoRole.tenantOwner: true,
+   287→        KlasivoRole.owner: true,
+   288→        KlasivoRole.admin: true,
+   289→      },
+   290→    ),
+   291→    Permission(
+   292→      id: 'exam.grade',
+   293→      displayName: 'Grade Exam',
+   294→      module: 'exams',
+   295→      description: 'Grade student submissions',
+   296→      defaultGrants: {
+   297→        KlasivoRole.superAdmin: true,
+   298→        KlasivoRole.tenantOwner: true,
+   299→        KlasivoRole.owner: true,
+   300→        KlasivoRole.admin: true,
+   301→        KlasivoRole.academicManager: true,
+   302→        KlasivoRole.campusManager: true,
+   303→        KlasivoRole.stageSupervisor: true,
+   304→        KlasivoRole.teacher: true,
+   305→        KlasivoRole.assistantTeacher: true,
+   306→      },
+   307→    ),
+   308→    Permission(
+   309→      id: 'exam.view',
+   310→      displayName: 'View Exams',
+   311→      module: 'exams',
+   312→      description: 'View exam listings and details',
+   313→      defaultGrants: {
+   314→        KlasivoRole.superAdmin: true,
+   315→        KlasivoRole.tenantOwner: true,
+   316→        KlasivoRole.owner: true,
+   317→        KlasivoRole.admin: true,
+   318→        KlasivoRole.academicManager: true,
+   319→        KlasivoRole.campusManager: true,
+   320→        KlasivoRole.stageSupervisor: true,
+   321→        KlasivoRole.teacher: true,
+   322→        KlasivoRole.assistantTeacher: true,
+   323→        KlasivoRole.student: true,
+   324→        KlasivoRole.observer: true,
+   325→      },
+   326→    ),
+   327→    Permission(
+   328→      id: 'exam.view_results',
+   329→      displayName: 'View Exam Results',
+   330→      module: 'exams',
+   331→      description: 'View exam results and analytics',
+   332→      defaultGrants: {
+   333→        KlasivoRole.superAdmin: true,
+   334→        KlasivoRole.tenantOwner: true,
+   335→        KlasivoRole.owner: true,
+   336→        KlasivoRole.admin: true,
+   337→        KlasivoRole.academicManager: true,
+   338→        KlasivoRole.campusManager: true,
+   339→        KlasivoRole.stageSupervisor: true,
+   340→        KlasivoRole.teacher: true,
+   341→        KlasivoRole.assistantTeacher: true,
+   342→        KlasivoRole.parent: true,
+   343→      },
+   344→    ),
+   345→    Permission(
+   346→      id: 'exam.take',
+   347→      displayName: 'Take Exam',
+   348→      module: 'exams',
+   349→      description: 'Take an exam as a student',
+   350→      defaultGrants: {
+   351→        KlasivoRole.student: true,
+   352→      },
+   353→    ),
+   354→
+   355→    // ─── Attendance Module ───────────────────────────────────────────────
+   356→    Permission(
+   357→      id: 'attendance.create',
+   358→      displayName: 'Take Attendance',
+   359→      module: 'attendance',
+   360→      description: 'Record student attendance',
+   361→      defaultGrants: {
+   362→        KlasivoRole.superAdmin: true,
+   363→        KlasivoRole.tenantOwner: true,
+   364→        KlasivoRole.owner: true,
+   365→        KlasivoRole.admin: true,
+   366→        KlasivoRole.academicManager: true,
+   367→        KlasivoRole.teacher: true,
+   368→        KlasivoRole.assistantTeacher: true,
+   369→      },
+   370→    ),
+   371→    Permission(
+   372→      id: 'attendance.view',
+   373→      displayName: 'View Attendance',
+   374→      module: 'attendance',
+   375→      description: 'View attendance records',
+   376→      defaultGrants: {
+   377→        KlasivoRole.superAdmin: true,
+   378→        KlasivoRole.tenantOwner: true,
+   379→        KlasivoRole.owner: true,
+   380→        KlasivoRole.admin: true,
+   381→        KlasivoRole.academicManager: true,
+   382→        KlasivoRole.campusManager: true,
+   383→        KlasivoRole.stageSupervisor: true,
+   384→        KlasivoRole.teacher: true,
+   385→        KlasivoRole.assistantTeacher: true,
+   386→        KlasivoRole.parent: true,
+   387→        KlasivoRole.observer: true,
+   388→      },
+   389→    ),
+   390→    Permission(
+   391→      id: 'attendance.export',
+   392→      displayName: 'Export Attendance',
+   393→      module: 'attendance',
+   394→      description: 'Export attendance data to CSV/PDF',
+   395→      defaultGrants: {
+   396→        KlasivoRole.superAdmin: true,
+   397→        KlasivoRole.tenantOwner: true,
+   398→        KlasivoRole.owner: true,
+   399→        KlasivoRole.admin: true,
+   400→        KlasivoRole.academicManager: true,
+   401→        KlasivoRole.campusManager: true,
+   402→        KlasivoRole.stageSupervisor: true,
+   403→        KlasivoRole.teacher: true,
+   404→      },
+   405→    ),
+   406→
+   407→    // ─── Assignment Module ───────────────────────────────────────────────
+   408→    Permission(
+   409→      id: 'assignment.create',
+   410→      displayName: 'Create Assignment',
+   411→      module: 'assignments',
+   412→      description: 'Create and assign work to students',
+   413→      defaultGrants: {
+   414→        KlasivoRole.superAdmin: true,
+   415→        KlasivoRole.tenantOwner: true,
+   416→        KlasivoRole.owner: true,
+   417→        KlasivoRole.admin: true,
+   418→        KlasivoRole.academicManager: true,
+   419→        KlasivoRole.teacher: true,
+   420→      },
+   421→    ),
+   422→    Permission(
+   423→      id: 'assignment.edit',
+   424→      displayName: 'Edit Assignment',
+   425→      module: 'assignments',
+   426→      description: 'Edit existing assignments',
+   427→      defaultGrants: {
+   428→        KlasivoRole.superAdmin: true,
+   429→        KlasivoRole.tenantOwner: true,
+   430→        KlasivoRole.owner: true,
+   431→        KlasivoRole.admin: true,
+   432→        KlasivoRole.academicManager: true,
+   433→        KlasivoRole.teacher: true,
+   434→      },
+   435→    ),
+   436→    Permission(
+   437→      id: 'assignment.delete',
+   438→      displayName: 'Delete Assignment',
+   439→      module: 'assignments',
+   440→      description: 'Permanently delete assignments',
+   441→      defaultGrants: {
+   442→        KlasivoRole.superAdmin: true,
+   443→        KlasivoRole.tenantOwner: true,
+   444→        KlasivoRole.owner: true,
+   445→        KlasivoRole.admin: true,
+   446→      },
+   447→    ),
+   448→    Permission(
+   449→      id: 'assignment.grade',
+   450→      displayName: 'Grade Assignment',
+   451→      module: 'assignments',
+   452→      description: 'Grade student assignment submissions',
+   453→      defaultGrants: {
+   454→        KlasivoRole.superAdmin: true,
+   455→        KlasivoRole.tenantOwner: true,
+   456→        KlasivoRole.owner: true,
+   457→        KlasivoRole.admin: true,
+   458→        KlasivoRole.academicManager: true,
+   459→        KlasivoRole.teacher: true,
+   460→        KlasivoRole.assistantTeacher: true,
+   461→      },
+   462→    ),
+   463→    Permission(
+   464→      id: 'assignment.view',
+   465→      displayName: 'View Assignments',
+   466→      module: 'assignments',
+   467→      description: 'View assignment listings and details',
+   468→      defaultGrants: {
+   469→        KlasivoRole.superAdmin: true,
+   470→        KlasivoRole.tenantOwner: true,
+   471→        KlasivoRole.owner: true,
+   472→        KlasivoRole.admin: true,
+   473→        KlasivoRole.academicManager: true,
+   474→        KlasivoRole.campusManager: true,
+   475→        KlasivoRole.stageSupervisor: true,
+   476→        KlasivoRole.teacher: true,
+   477→        KlasivoRole.assistantTeacher: true,
+   478→        KlasivoRole.student: true,
+   479→        KlasivoRole.parent: true,
+   480→        KlasivoRole.observer: true,
+   481→      },
+   482→    ),
+   483→    Permission(
+   484→      id: 'assignment.submit',
+   485→      displayName: 'Submit Assignment',
+   486→      module: 'assignments',
+   487→      description: 'Submit assignment work as a student',
+   488→      defaultGrants: {
+   489→        KlasivoRole.student: true,
+   490→      },
+   491→    ),
+   492→
+   493→    // ─── Messaging Module ────────────────────────────────────────────────
+   494→    Permission(
+   495→      id: 'messaging.send',
+   496→      displayName: 'Send Messages',
+   497→      module: 'messaging',
+   498→      description: 'Send messages to other users',
+   499→      defaultGrants: {
+   500→        KlasivoRole.superAdmin: true,
+   501→        KlasivoRole.tenantOwner: true,
+   502→        KlasivoRole.owner: true,
+   503→        KlasivoRole.admin: true,
+   504→        KlasivoRole.academicManager: true,
+   505→        KlasivoRole.campusManager: true,
+   506→        KlasivoRole.stageSupervisor: true,
+   507→        KlasivoRole.teacher: true,
+   508→        KlasivoRole.assistantTeacher: true,
+   509→        KlasivoRole.student: true,
+   510→        KlasivoRole.parent: true,
+   511→      },
+   512→    ),
+   513→    Permission(
+   514→      id: 'messaging.manage',
+   515→      displayName: 'Manage Messaging',
+   516→      module: 'messaging',
+   517→      description: 'Manage conversations and moderation',
+   518→      defaultGrants: {
+   519→        KlasivoRole.superAdmin: true,
+   520→        KlasivoRole.tenantOwner: true,
+   521→        KlasivoRole.owner: true,
+   522→        KlasivoRole.admin: true,
+   523→      },
+   524→    ),
+   525→
+   526→    // ─── LMS Module ──────────────────────────────────────────────────────
+   527→    Permission(
+   528→      id: 'lms.manage',
+   529→      displayName: 'Manage LMS Content',
+   530→      module: 'lms',
+   531→      description: 'Create and manage LMS materials and lessons',
+   532→      defaultGrants: {
+   533→        KlasivoRole.superAdmin: true,
+   534→        KlasivoRole.tenantOwner: true,
+   535→        KlasivoRole.owner: true,
+   536→        KlasivoRole.admin: true,
+   537→        KlasivoRole.academicManager: true,
+   538→        KlasivoRole.teacher: true,
+   539→      },
+   540→    ),
+   541→    Permission(
+   542→      id: 'lms.view',
+   543→      displayName: 'View LMS Content',
+   544→      module: 'lms',
+   545→      description: 'Access LMS materials and lessons',
+   546→      defaultGrants: {
+   547→        KlasivoRole.superAdmin: true,
+   548→        KlasivoRole.tenantOwner: true,
+   549→        KlasivoRole.owner: true,
+   550→        KlasivoRole.admin: true,
+   551→        KlasivoRole.academicManager: true,
+   552→        KlasivoRole.campusManager: true,
+   553→        KlasivoRole.stageSupervisor: true,
+   554→        KlasivoRole.teacher: true,
+   555→        KlasivoRole.assistantTeacher: true,
+   556→        KlasivoRole.student: true,
+   557→        KlasivoRole.parent: true,
+   558→        KlasivoRole.observer: true,
+   559→      },
+   560→    ),
+   561→
+   562→    // ─── Question Bank ──────────────────────────────────────────────────
+   563→    Permission(
+   564→      id: 'question.create',
+   565→      displayName: 'Create Questions',
+   566→      module: 'questions',
+   567→      description: 'Create questions for question banks',
+   568→      defaultGrants: {
+   569→        KlasivoRole.superAdmin: true,
+   570→        KlasivoRole.tenantOwner: true,
+   571→        KlasivoRole.owner: true,
+   572→        KlasivoRole.admin: true,
+   573→        KlasivoRole.academicManager: true,
+   574→        KlasivoRole.teacher: true,
+   575→      },
+   576→    ),
+   577→    Permission(
+   578→      id: 'question.edit',
+   579→      displayName: 'Edit Questions',
+   580→      module: 'questions',
+   581→      description: 'Edit existing questions',
+   582→      defaultGrants: {
+   583→        KlasivoRole.superAdmin: true,
+   584→        KlasivoRole.tenantOwner: true,
+   585→        KlasivoRole.owner: true,
+   586→        KlasivoRole.admin: true,
+   587→        KlasivoRole.academicManager: true,
+   588→        KlasivoRole.teacher: true,
+   589→      },
+   590→    ),
+   591→    Permission(
+   592→      id: 'question.delete',
+   593→      displayName: 'Delete Questions',
+   594→      module: 'questions',
+   595→      description: 'Permanently delete questions',
+   596→      defaultGrants: {
+   597→        KlasivoRole.superAdmin: true,
+   598→        KlasivoRole.tenantOwner: true,
+   599→        KlasivoRole.owner: true,
+   600→        KlasivoRole.admin: true,
+   601→      },
+   602→    ),
+   603→    Permission(
+   604→      id: 'question.view',
+   605→      displayName: 'View Questions',
+   606→      module: 'questions',
+   607→      description: 'View questions in question banks',
+   608→      defaultGrants: {
+   609→        KlasivoRole.superAdmin: true,
+   610→        KlasivoRole.tenantOwner: true,
+   611→        KlasivoRole.owner: true,
+   612→        KlasivoRole.admin: true,
+   613→        KlasivoRole.academicManager: true,
+   614→        KlasivoRole.campusManager: true,
+   615→        KlasivoRole.stageSupervisor: true,
+   616→        KlasivoRole.teacher: true,
+   617→        KlasivoRole.assistantTeacher: true,
+   618→        KlasivoRole.observer: true,
+   619→      },
+   620→    ),
+   621→
+   622→    // ─── Stage Management ────────────────────────────────────────────────
+   623→    Permission(
+   624→      id: 'stage.manage',
+   625→      displayName: 'Manage Stages',
+   626→      module: 'stages',
+   627→      description: 'Create, edit, and manage academic stages/levels',
+   628→      defaultGrants: {
+   629→        KlasivoRole.superAdmin: true,
+   630→        KlasivoRole.tenantOwner: true,
+   631→        KlasivoRole.owner: true,
+   632→        KlasivoRole.admin: true,
+   633→        KlasivoRole.academicManager: true,
+   634→      },
+   635→    ),
+   636→    Permission(
+   637→      id: 'stage.view',
+   638→      displayName: 'View Stages',
+   639→      module: 'stages',
+   640→      description: 'View academic stages and their structure',
+   641→      defaultGrants: {
+   642→        KlasivoRole.superAdmin: true,
+   643→        KlasivoRole.tenantOwner: true,
+   644→        KlasivoRole.owner: true,
+   645→        KlasivoRole.admin: true,
+   646→        KlasivoRole.academicManager: true,
+   647→        KlasivoRole.campusManager: true,
+   648→        KlasivoRole.stageSupervisor: true,
+   649→        KlasivoRole.teacher: true,
+   650→        KlasivoRole.assistantTeacher: true,
+   651→        KlasivoRole.observer: true,
+   652→      },
+   653→    ),
+   654→
+   655→    // ─── Class Management ────────────────────────────────────────────────
+   656→    Permission(
+   657→      id: 'class.manage',
+   658→      displayName: 'Manage Classes',
+   659→      module: 'classes',
+   660→      description: 'Create, edit, and manage class sections',
+   661→      defaultGrants: {
+   662→        KlasivoRole.superAdmin: true,
+   663→        KlasivoRole.tenantOwner: true,
+   664→        KlasivoRole.owner: true,
+   665→        KlasivoRole.admin: true,
+   666→        KlasivoRole.academicManager: true,
+   667→      },
+   668→    ),
+   669→    Permission(
+   670→      id: 'class.view',
+   671→      displayName: 'View Classes',
+   672→      module: 'classes',
+   673→      description: 'View class sections and their details',
+   674→      defaultGrants: {
+   675→        KlasivoRole.superAdmin: true,
+   676→        KlasivoRole.tenantOwner: true,
+   677→        KlasivoRole.owner: true,
+   678→        KlasivoRole.admin: true,
+   679→        KlasivoRole.academicManager: true,
+   680→        KlasivoRole.campusManager: true,
+   681→        KlasivoRole.stageSupervisor: true,
+   682→        KlasivoRole.teacher: true,
+   683→        KlasivoRole.assistantTeacher: true,
+   684→        KlasivoRole.observer: true,
+   685→      },
+   686→    ),
+   687→    Permission(
+   688→      id: 'class.manage_grades',
+   689→      displayName: 'Manage Grades',
+   690→      module: 'classes',
+   691→      description: 'Enter and edit student grades within a class',
+   692→      defaultGrants: {
+   693→        KlasivoRole.superAdmin: true,
+   694→        KlasivoRole.tenantOwner: true,
+   695→        KlasivoRole.owner: true,
+   696→        KlasivoRole.admin: true,
+   697→        KlasivoRole.academicManager: true,
+   698→        KlasivoRole.campusManager: true,
+   699→        KlasivoRole.stageSupervisor: true,
+   700→        KlasivoRole.teacher: true,
+   701→      },
+   702→    ),
+   703→
+   704→    // ─── Subject Management ──────────────────────────────────────────────
+   705→    Permission(
+   706→      id: 'subject.manage',
+   707→      displayName: 'Manage Subjects',
+   708→      module: 'subjects',
+   709→      description: 'Create, edit, and manage subjects',
+   710→      defaultGrants: {
+   711→        KlasivoRole.superAdmin: true,
+   712→        KlasivoRole.tenantOwner: true,
+   713→        KlasivoRole.owner: true,
+   714→        KlasivoRole.admin: true,
+   715→        KlasivoRole.academicManager: true,
+   716→      },
+   717→    ),
+   718→    Permission(
+   719→      id: 'subject.view',
+   720→      displayName: 'View Subjects',
+   721→      module: 'subjects',
+   722→      description: 'View subject listings and details',
+   723→      defaultGrants: {
+   724→        KlasivoRole.superAdmin: true,
+   725→        KlasivoRole.tenantOwner: true,
+   726→        KlasivoRole.owner: true,
+   727→        KlasivoRole.admin: true,
+   728→        KlasivoRole.academicManager: true,
+   729→        KlasivoRole.campusManager: true,
+   730→        KlasivoRole.stageSupervisor: true,
+   731→        KlasivoRole.teacher: true,
+   732→        KlasivoRole.assistantTeacher: true,
+   733→        KlasivoRole.student: true,
+   734→        KlasivoRole.observer: true,
+   735→      },
+   736→    ),
+   737→
+   738→    // ─── Academic Management ─────────────────────────────────────────────
+   739→    Permission(
+   740→      id: 'academic.manage',
+   741→      displayName: 'Manage Academics',
+   742→      module: 'academic',
+   743→      description: 'Manage academic programs, curricula, and schedules',
+   744→      defaultGrants: {
+   745→        KlasivoRole.superAdmin: true,
+   746→        KlasivoRole.tenantOwner: true,
+   747→        KlasivoRole.owner: true,
+   748→        KlasivoRole.admin: true,
+   749→        KlasivoRole.academicManager: true,
+   750→      },
+   751→    ),
+   752→    Permission(
+   753→      id: 'academic.view',
+   754→      displayName: 'View Academics',
+   755→      module: 'academic',
+   756→      description: 'View academic programs and curricula',
+   757→      defaultGrants: {
+   758→        KlasivoRole.superAdmin: true,
+   759→        KlasivoRole.tenantOwner: true,
+   760→        KlasivoRole.owner: true,
+   761→        KlasivoRole.admin: true,
+   762→        KlasivoRole.academicManager: true,
+   763→        KlasivoRole.campusManager: true,
+   764→        KlasivoRole.stageSupervisor: true,
+   765→        KlasivoRole.teacher: true,
+   766→        KlasivoRole.observer: true,
+   767→      },
+   768→    ),
+   769→    Permission(
+   770→      id: 'curriculum.manage',
+   771→      displayName: 'Manage Curriculum',
+   772→      module: 'academic',
+   773→      description: 'Create and edit curriculum frameworks',
+   774→      defaultGrants: {
+   775→        KlasivoRole.superAdmin: true,
+   776→        KlasivoRole.tenantOwner: true,
+   777→        KlasivoRole.owner: true,
+   778→        KlasivoRole.admin: true,
+   779→        KlasivoRole.academicManager: true,
+   780→      },
+   781→    ),
+   782→
+   783→    // ─── Campus Management ───────────────────────────────────────────────
+   784→    Permission(
+   785→      id: 'campus.manage',
+   786→      displayName: 'Manage Campus',
+   787→      module: 'campus',
+   788→      description: 'Manage campus settings, staff, and resources',
+   789→      defaultGrants: {
+   790→        KlasivoRole.superAdmin: true,
+   791→        KlasivoRole.tenantOwner: true,
+   792→        KlasivoRole.owner: true,
+   793→        KlasivoRole.admin: true,
+   794→        KlasivoRole.campusManager: true,
+   795→      },
+   796→    ),
+   797→    Permission(
+   798→      id: 'campus.view',
+   799→      displayName: 'View Campus',
+   800→      module: 'campus',
+   801→      description: 'View campus information and structure',
+   802→      defaultGrants: {
+   803→        KlasivoRole.superAdmin: true,
+   804→        KlasivoRole.tenantOwner: true,
+   805→        KlasivoRole.owner: true,
+   806→        KlasivoRole.admin: true,
+   807→        KlasivoRole.academicManager: true,
+   808→        KlasivoRole.campusManager: true,
+   809→        KlasivoRole.stageSupervisor: true,
+   810→        KlasivoRole.teacher: true,
+   811→        KlasivoRole.observer: true,
+   812→      },
+   813→    ),
+   814→
+   815→    // ─── User Management ─────────────────────────────────────────────────
+   816→    Permission(
+   817→      id: 'user.manage',
+   818→      displayName: 'Manage Users',
+   819→      module: 'users',
+   820→      description: 'Create, edit, and deactivate user accounts',
+   821→      defaultGrants: {
+   822→        KlasivoRole.superAdmin: true,
+   823→        KlasivoRole.tenantOwner: true,
+   824→        KlasivoRole.owner: true,
+   825→        KlasivoRole.admin: true,
+   826→      },
+   827→    ),
+   828→    Permission(
+   829→      id: 'user.view',
+   830→      displayName: 'View Users',
+   831→      module: 'users',
+   832→      description: 'View user profiles and directory',
+   833→      defaultGrants: {
+   834→        KlasivoRole.superAdmin: true,
+   835→        KlasivoRole.tenantOwner: true,
+   836→        KlasivoRole.owner: true,
+   837→        KlasivoRole.admin: true,
+   838→        KlasivoRole.academicManager: true,
+   839→        KlasivoRole.campusManager: true,
+   840→        KlasivoRole.stageSupervisor: true,
+   841→        KlasivoRole.teacher: true,
+   842→        KlasivoRole.observer: true,
+   843→      },
+   844→    ),
+   845→
+   846→    // ─── Organization Management ─────────────────────────────────────────
+   847→    Permission(
+   848→      id: 'org.manage',
+   849→      displayName: 'Manage Organization',
+   850→      module: 'organization',
+   851→      description: 'Edit organization settings and configuration',
+   852→      defaultGrants: {
+   853→        KlasivoRole.superAdmin: true,
+   854→        KlasivoRole.tenantOwner: true,
+   855→        KlasivoRole.owner: true,
+   856→      },
+   857→    ),
+   858→    Permission(
+   859→      id: 'org.view',
+   860→      displayName: 'View Organization',
+   861→      module: 'organization',
+   862→      description: 'View organization details',
+   863→      defaultGrants: {
+   864→        KlasivoRole.superAdmin: true,
+   865→        KlasivoRole.tenantOwner: true,
+   866→        KlasivoRole.owner: true,
+   867→        KlasivoRole.admin: true,
+   868→        KlasivoRole.academicManager: true,
+   869→        KlasivoRole.campusManager: true,
+   870→        KlasivoRole.stageSupervisor: true,
+   871→        KlasivoRole.teacher: true,
+   872→        KlasivoRole.assistantTeacher: true,
+   873→        KlasivoRole.student: true,
+   874→        KlasivoRole.parent: true,
+   875→        KlasivoRole.observer: true,
+   876→      },
+   877→    ),
+   878→
+   879→    // ─── Tenant Management ───────────────────────────────────────────────
+   880→    Permission(
+   881→      id: 'tenant.manage',
+   882→      displayName: 'Manage Tenant',
+   883→      module: 'tenant',
+   884→      description: 'Manage tenant-wide settings, plans, and organizations',
+   885→      defaultGrants: {
+   886→        KlasivoRole.superAdmin: true,
+   887→        KlasivoRole.tenantOwner: true,
+   888→      },
+   889→    ),
+   890→    Permission(
+   891→      id: 'tenant.view',
+   892→      displayName: 'View Tenant',
+   893→      module: 'tenant',
+   894→      description: 'View tenant information and statistics',
+   895→      defaultGrants: {
+   896→        KlasivoRole.superAdmin: true,
+   897→        KlasivoRole.tenantOwner: true,
+   898→        KlasivoRole.owner: true,
+   899→      },
+   900→    ),
+   901→
+   902→    // ─── Analytics ───────────────────────────────────────────────────────
+   903→    Permission(
+   904→      id: 'analytics.view',
+   905→      displayName: 'View Analytics',
+   906→      module: 'analytics',
+   907→      description: 'View organization-wide analytics and reports',
+   908→      defaultGrants: {
+   909→        KlasivoRole.superAdmin: true,
+   910→        KlasivoRole.tenantOwner: true,
+   911→        KlasivoRole.owner: true,
+   912→        KlasivoRole.admin: true,
+   913→        KlasivoRole.academicManager: true,
+   914→        KlasivoRole.campusManager: true,
+   915→        KlasivoRole.stageSupervisor: true,
+   916→        KlasivoRole.teacher: true,
+   917→      },
+   918→    ),
+   919→    Permission(
+   920→      id: 'analytics.export',
+   921→      displayName: 'Export Analytics',
+   922→      module: 'analytics',
+   923→      description: 'Export analytics data to CSV/PDF',
+   924→      defaultGrants: {
+   925→        KlasivoRole.superAdmin: true,
+   926→        KlasivoRole.tenantOwner: true,
+   927→        KlasivoRole.owner: true,
+   928→        KlasivoRole.admin: true,
+   929→        KlasivoRole.academicManager: true,
+   930→      },
+   931→    ),
+   932→
+   933→    // ─── Reports ─────────────────────────────────────────────────────────
+   934→    Permission(
+   935→      id: 'report.generate',
+   936→      displayName: 'Generate Reports',
+   937→      module: 'reports',
+   938→      description: 'Generate academic and administrative reports',
+   939→      defaultGrants: {
+   940→        KlasivoRole.superAdmin: true,
+   941→        KlasivoRole.tenantOwner: true,
+   942→        KlasivoRole.owner: true,
+   943→        KlasivoRole.admin: true,
+   944→        KlasivoRole.academicManager: true,
+   945→        KlasivoRole.campusManager: true,
+   946→        KlasivoRole.stageSupervisor: true,
+   947→        KlasivoRole.teacher: true,
+   948→      },
+   949→    ),
+   950→    Permission(
+   951→      id: 'report.view',
+   952→      displayName: 'View Reports',
+   953→      module: 'reports',
+   954→      description: 'View generated reports',
+   955→      defaultGrants: {
+   956→        KlasivoRole.superAdmin: true,
+   957→        KlasivoRole.tenantOwner: true,
+   958→        KlasivoRole.owner: true,
+   959→        KlasivoRole.admin: true,
+   960→        KlasivoRole.academicManager: true,
+   961→        KlasivoRole.campusManager: true,
+   962→        KlasivoRole.stageSupervisor: true,
+   963→        KlasivoRole.teacher: true,
+   964→        KlasivoRole.parent: true,
+   965→        KlasivoRole.observer: true,
+   966→      },
+   967→    ),
+   968→    Permission(
+   969→      id: 'report.export',
+   970→      displayName: 'Export Reports',
+   971→      module: 'reports',
+   972→      description: 'Export reports to PDF/Excel',
+   973→      defaultGrants: {
+   974→        KlasivoRole.superAdmin: true,
+   975→        KlasivoRole.tenantOwner: true,
+   976→        KlasivoRole.owner: true,
+   977→        KlasivoRole.admin: true,
+   978→        KlasivoRole.academicManager: true,
+   979→      },
+   980→    ),
+   981→
+   982→    // ─── Feature Flags ───────────────────────────────────────────────────
+   983→    Permission(
+   984→      id: 'feature_flags.manage',
+   985→      displayName: 'Manage Feature Flags',
+   986→      module: 'feature_flags',
+   987→      description: 'Enable/disable feature modules for the organization',
+   988→      defaultGrants: {
+   989→        KlasivoRole.superAdmin: true,
+   990→        KlasivoRole.tenantOwner: true,
+   991→        KlasivoRole.owner: true,
+   992→      },
+   993→    ),
+   994→
+   995→    // ─── Integrity / Violations ──────────────────────────────────────────
+   996→    Permission(
+   997→      id: 'integrity.view',
+   998→      displayName: 'View Integrity Violations',
+   999→      module: 'integrity',
+  1000→      description: 'View exam integrity violation reports',
+  1001→      defaultGrants: {
+  1002→        KlasivoRole.superAdmin: true,
+  1003→        KlasivoRole.tenantOwner: true,
+  1004→        KlasivoRole.owner: true,
+  1005→        KlasivoRole.admin: true,
+  1006→        KlasivoRole.academicManager: true,
+  1007→        KlasivoRole.campusManager: true,
+  1008→        KlasivoRole.stageSupervisor: true,
+  1009→        KlasivoRole.teacher: true,
+  1010→      },
+  1011→    ),
+  1012→    Permission(
+  1013→      id: 'integrity.manage',
+  1014→      displayName: 'Manage Integrity',
+  1015→      module: 'integrity',
+  1016→      description: 'Configure integrity settings and manage violations',
+  1017→      defaultGrants: {
+  1018→        KlasivoRole.superAdmin: true,
+  1019→        KlasivoRole.tenantOwner: true,
+  1020→        KlasivoRole.owner: true,
+  1021→        KlasivoRole.admin: true,
+  1022→      },
+  1023→    ),
+  1024→
+  1025→    // ─── Finance ─────────────────────────────────────────────────────────
+  1026→    Permission(
+  1027→      id: 'finance.manage',
+  1028→      displayName: 'Manage Finance',
+  1029→      module: 'finance',
+  1030→      description: 'Access financial records and billing',
+  1031→      defaultGrants: {
+  1032→        KlasivoRole.superAdmin: true,
+  1033→        KlasivoRole.tenantOwner: true,
+  1034→        KlasivoRole.owner: true,
+  1035→        KlasivoRole.admin: true,
+  1036→      },
+  1037→    ),
+  1038→    Permission(
+  1039→      id: 'finance.view',
+  1040→      displayName: 'View Finance',
+  1041→      module: 'finance',
+  1042→      description: 'View financial reports and summaries',
+  1043→      defaultGrants: {
+  1044→        KlasivoRole.superAdmin: true,
+  1045→        KlasivoRole.tenantOwner: true,
+  1046→        KlasivoRole.owner: true,
+  1047→        KlasivoRole.admin: true,
+  1048→        KlasivoRole.campusManager: true,
+  1049→      },
+  1050→    ),
+  1051→
+  1052→    // ─── Transport ───────────────────────────────────────────────────────
+  1053→    Permission(
+  1054→      id: 'transport.manage',
+  1055→      displayName: 'Manage Transport',
+  1056→      module: 'transport',
+  1057→      description: 'Manage transportation routes and tracking',
+  1058→      defaultGrants: {
+  1059→        KlasivoRole.superAdmin: true,
+  1060→        KlasivoRole.tenantOwner: true,
+  1061→        KlasivoRole.owner: true,
+  1062→        KlasivoRole.admin: true,
+  1063→      },
+  1064→    ),
+  1065→
+  1066→    // ─── Material / Resource Management ──────────────────────────────────
+  1067→    Permission(
+  1068→      id: 'material.upload',
+  1069→      displayName: 'Upload Materials',
+  1070→      module: 'materials',
+  1071→      description: 'Upload educational materials and resources',
+  1072→      defaultGrants: {
+  1073→        KlasivoRole.superAdmin: true,
+  1074→        KlasivoRole.tenantOwner: true,
+  1075→        KlasivoRole.owner: true,
+  1076→        KlasivoRole.admin: true,
+  1077→        KlasivoRole.academicManager: true,
+  1078→        KlasivoRole.teacher: true,
+  1079→      },
+  1080→    ),
+  1081→    Permission(
+  1082→      id: 'material.delete',
+  1083→      displayName: 'Delete Materials',
+  1084→      module: 'materials',
+  1085→      description: 'Permanently delete uploaded materials',
+  1086→      defaultGrants: {
+  1087→        KlasivoRole.superAdmin: true,
+  1088→        KlasivoRole.tenantOwner: true,
+  1089→        KlasivoRole.owner: true,
+  1090→        KlasivoRole.admin: true,
+  1091→      },
+  1092→    ),
+  1093→    Permission(
+  1094→      id: 'material.view',
+  1095→      displayName: 'View Materials',
+  1096→      module: 'materials',
+  1097→      description: 'View and download educational materials',
+  1098→      defaultGrants: {
+  1099→        KlasivoRole.superAdmin: true,
+  1100→        KlasivoRole.tenantOwner: true,
+  1101→        KlasivoRole.owner: true,
+  1102→        KlasivoRole.admin: true,
+  1103→        KlasivoRole.academicManager: true,
+  1104→        KlasivoRole.campusManager: true,
+  1105→        KlasivoRole.stageSupervisor: true,
+  1106→        KlasivoRole.teacher: true,
+  1107→        KlasivoRole.assistantTeacher: true,
+  1108→        KlasivoRole.student: true,
+  1109→        KlasivoRole.parent: true,
+  1110→        KlasivoRole.observer: true,
+  1111→      },
+  1112→    ),
+  1113→
+  1114→    // ─── Lesson Management ───────────────────────────────────────────────
+  1115→    Permission(
+  1116→      id: 'lesson.create',
+  1117→      displayName: 'Create Lessons',
+  1118→      module: 'lessons',
+  1119→      description: 'Create new lessons within the LMS',
+  1120→      defaultGrants: {
+  1121→        KlasivoRole.superAdmin: true,
+  1122→        KlasivoRole.tenantOwner: true,
+  1123→        KlasivoRole.owner: true,
+  1124→        KlasivoRole.admin: true,
+  1125→        KlasivoRole.academicManager: true,
+  1126→        KlasivoRole.teacher: true,
+  1127→      },
+  1128→    ),
+  1129→    Permission(
+  1130→      id: 'lesson.delete',
+  1131→      displayName: 'Delete Lessons',
+  1132→      module: 'lessons',
+  1133→      description: 'Permanently delete lessons',
+  1134→      defaultGrants: {
+  1135→        KlasivoRole.superAdmin: true,
+  1136→        KlasivoRole.tenantOwner: true,
+  1137→        KlasivoRole.owner: true,
+  1138→        KlasivoRole.admin: true,
+  1139→      },
+  1140→    ),
+  1141→    Permission(
+  1142→      id: 'lesson.view',
+  1143→      displayName: 'View Lessons',
+  1144→      module: 'lessons',
+  1145→      description: 'View lesson content and structure',
+  1146→      defaultGrants: {
+  1147→        KlasivoRole.superAdmin: true,
+  1148→        KlasivoRole.tenantOwner: true,
+  1149→        KlasivoRole.owner: true,
+  1150→        KlasivoRole.admin: true,
+  1151→        KlasivoRole.academicManager: true,
+  1152→        KlasivoRole.campusManager: true,
+  1153→        KlasivoRole.stageSupervisor: true,
+  1154→        KlasivoRole.teacher: true,
+  1155→        KlasivoRole.assistantTeacher: true,
+  1156→        KlasivoRole.student: true,
+  1157→        KlasivoRole.parent: true,
+  1158→        KlasivoRole.observer: true,
+  1159→      },
+  1160→    ),
+  1161→
+  1162→    // ─── Progress Tracking ───────────────────────────────────────────────
+  1163→    Permission(
+  1164→      id: 'progress.view',
+  1165→      displayName: 'View Progress',
+  1166→      module: 'progress',
+  1167→      description: 'View student progress and learning analytics',
+  1168→      defaultGrants: {
+  1169→        KlasivoRole.superAdmin: true,
+  1170→        KlasivoRole.tenantOwner: true,
+  1171→        KlasivoRole.owner: true,
+  1172→        KlasivoRole.admin: true,
+  1173→        KlasivoRole.academicManager: true,
+  1174→        KlasivoRole.campusManager: true,
+  1175→        KlasivoRole.stageSupervisor: true,
+  1176→        KlasivoRole.teacher: true,
+  1177→        KlasivoRole.assistantTeacher: true,
+  1178→        KlasivoRole.parent: true,
+  1179→      },
+  1180→    ),
+  1181→    Permission(
+  1182→      id: 'progress.view_own',
+  1183→      displayName: 'View Own Progress',
+  1184→      module: 'progress',
+  1185→      description: 'View own learning progress and analytics',
+  1186→      defaultGrants: {
+  1187→        KlasivoRole.student: true,
+  1188→      },
+  1189→    ),
+  1190→
+  1191→    // ─── Parent Portal ───────────────────────────────────────────────────
+  1192→    Permission(
+  1193→      id: 'parent.link',
+  1194→      displayName: 'Link Parent',
+  1195→      module: 'parent',
+  1196→      description: 'Link a parent account to a student',
+  1197→      defaultGrants: {
+  1198→        KlasivoRole.superAdmin: true,
+  1199→        KlasivoRole.tenantOwner: true,
+  1200→        KlasivoRole.owner: true,
+  1201→        KlasivoRole.admin: true,
+  1202→      },
+  1203→    ),
+  1204→    Permission(
+  1205→      id: 'parent.view_children',
+  1206→      displayName: 'View Children',
+  1207→      module: 'parent',
+  1208→      description: 'View linked children data',
+  1209→      defaultGrants: {
+  1210→        KlasivoRole.superAdmin: true,
+  1211→        KlasivoRole.tenantOwner: true,
+  1212→        KlasivoRole.owner: true,
+  1213→        KlasivoRole.admin: true,
+  1214→        KlasivoRole.parent: true,
+  1215→      },
+  1216→    ),
+  1217→
+  1218→    // ─── Notifications ───────────────────────────────────────────────────
+  1219→    Permission(
+  1220→      id: 'notification.send',
+  1221→      displayName: 'Send Notifications',
+  1222→      module: 'notifications',
+  1223→      description: 'Send notifications to users',
+  1224→      defaultGrants: {
+  1225→        KlasivoRole.superAdmin: true,
+  1226→        KlasivoRole.tenantOwner: true,
+  1227→        KlasivoRole.owner: true,
+  1228→        KlasivoRole.admin: true,
+  1229→        KlasivoRole.academicManager: true,
+  1230→        KlasivoRole.campusManager: true,
+  1231→        KlasivoRole.stageSupervisor: true,
+  1232→        KlasivoRole.teacher: true,
+  1233→      },
+  1234→    ),
+  1235→    Permission(
+  1236→      id: 'notification.manage',
+  1237→      displayName: 'Manage Notifications',
+  1238→      module: 'notifications',
+  1239→      description: 'Configure notification settings and templates',
+  1240→      defaultGrants: {
+  1241→        KlasivoRole.superAdmin: true,
+  1242→        KlasivoRole.tenantOwner: true,
+  1243→        KlasivoRole.owner: true,
+  1244→        KlasivoRole.admin: true,
+  1245→      },
+  1246→    ),
+  1247→    Permission(
+  1248→      id: 'notification.view',
+  1249→      displayName: 'View Notifications',
+  1250→      module: 'notifications',
+  1251→      description: 'View received notifications',
+  1252→      defaultGrants: {
+  1253→        KlasivoRole.superAdmin: true,
+  1254→        KlasivoRole.tenantOwner: true,
+  1255→        KlasivoRole.owner: true,
+  1256→        KlasivoRole.admin: true,
+  1257→        KlasivoRole.academicManager: true,
+  1258→        KlasivoRole.campusManager: true,
+  1259→        KlasivoRole.stageSupervisor: true,
+  1260→        KlasivoRole.teacher: true,
+  1261→        KlasivoRole.assistantTeacher: true,
+  1262→        KlasivoRole.student: true,
+  1263→        KlasivoRole.parent: true,
+  1264→        KlasivoRole.observer: true,
+  1265→      },
+  1266→    ),
+  1267→  ];
+  1268→
+  1269→  // ═══════════════════════════════════════════════════════════════════════════
+  1270→  // QUERY METHODS
+  1271→  // ═══════════════════════════════════════════════════════════════════════════
+  1272→
+  1273→  /// Check if a role has a specific permission by default.
+  1274→  ///
+  1275→  /// Throws [ArgumentError] if [permissionId] is not a known permission.
+  1276→  static bool hasPermission(KlasivoRole role, String permissionId) {
+  1277→    final permission = allPermissions.firstWhere(
+  1278→      (p) => p.id == permissionId,
+  1279→      orElse: () => throw ArgumentError('Unknown permission: $permissionId'),
+  1280→    );
+  1281→    return permission.isGrantedByDefault(role);
+  1282→  }
+  1283→
+  1284→  /// Check if a role has a specific permission by default.
+  1285→  ///
+  1286→  /// Returns `false` if the permission ID is unknown (non-throwing version).
+  1287→  static bool maybeHasPermission(KlasivoRole role, String permissionId) {
+  1288→    final permission = _permissionById[permissionId];
+  1289→    if (permission == null) return false;
+  1290→    return permission.isGrantedByDefault(role);
+  1291→  }
+  1292→
+  1293→  /// Get all permission IDs granted to a role by default (direct only).
+  1294→  static List<String> getPermissionsForRole(KlasivoRole role) {
+  1295→    return allPermissions
+  1296→        .where((p) => p.isGrantedByDefault(role))
+  1297→        .map((p) => p.id)
+  1298→        .toList();
+  1299→  }
+  1300→
+  1301→  /// Get all [Permission] objects granted to a role by default (direct only).
+  1302→  static List<Permission> getPermissionObjectsForRole(KlasivoRole role) {
+  1303→    return allPermissions.where((p) => p.isGrantedByDefault(role)).toList();
+  1304→  }
+  1305→
+  1306→  /// Get all permissions for a specific module.
+  1307→  static List<Permission> getPermissionsForModule(String module) {
+  1308→    return allPermissions.where((p) => p.module == module).toList();
+  1309→  }
+  1310→
+  1311→  /// Get all available module names, sorted alphabetically.
+  1312→  static List<String> get modules =>
+  1313→      allPermissions.map((p) => p.module).toSet().toList()..sort();
+  1314→
+  1315→  /// Look up a permission by its ID.
+  1316→  ///
+  1317→  /// Returns `null` if no permission with the given ID exists.
+  1318→  static Permission? findById(String permissionId) {
+  1319→    return _permissionById[permissionId];
+  1320→  }
+  1321→
+  1322→  /// Get a summary of a role's effective permissions including inheritance.
+  1323→  ///
+  1324→  /// Returns a map with:
+  1325→  /// - `role`: The role name
+  1326→  /// - `direct`: Directly granted permissions
+  1327→  /// - `inherited`: Inherited permissions (from other roles)
+  1328→  /// - `effective`: All effective permissions (direct + inherited)
+  1329→  static Map<String, dynamic> getRolePermissionSummary(KlasivoRole role) {
+  1330→    final direct = getPermissionsForRole(role);
+  1331→    final effective = getAllPermissions(role);
+  1332→    final inherited = effective.where((p) => !direct.contains(p)).toList();
+  1333→
+  1334→    return {
+  1335→      'role': role.id,
+  1336→      'directCount': direct.length,
+  1337→      'inheritedCount': inherited.length,
+  1338→      'effectiveCount': effective.length,
+  1339→      'direct': direct,
+  1340→      'inherited': inherited,
+  1341→      'effective': effective,
+  1342→    };
+  1343→  }
+  1344→
+  1345→  // ═══════════════════════════════════════════════════════════════════════════
+  1346→  // PRIVATE CACHE
+  1347→  // ═══════════════════════════════════════════════════════════════════════════
+  1348→
+  1349→  /// Pre-built lookup table for O(1) permission ID lookups.
+  1350→  static final Map<String, Permission> _permissionById = {
+  1351→    for (final p in allPermissions) p.id: p,
+  1352→  };
+  1353→
+  1354→  /// Pre-built cache of inherited permissions per role.
+  1355→  static final Map<KlasivoRole, List<String>> _inheritedPermissionsCache = {
+  1356→    for (final role in KlasivoRole.values) role: getAllPermissions(role),
+  1357→  };
+  1358→}
+  1359→
