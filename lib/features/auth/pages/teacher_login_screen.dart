@@ -69,7 +69,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+        ref.read(authErrorProvider.notifier).state = formatAuthError(e);
       }
     } finally {
       if (mounted) {
@@ -109,7 +109,7 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+        ref.read(authErrorProvider.notifier).state = formatAuthError(e);
       }
     } finally {
       if (mounted) {

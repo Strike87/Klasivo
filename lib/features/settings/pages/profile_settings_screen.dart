@@ -105,7 +105,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        KlasivoToast.error(context, message: 'Failed to update: ${e.toString().replaceAll('Exception: ', '')}');
+        KlasivoToast.error(context, message: 'Failed to update: ${formatAuthError(e)}');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

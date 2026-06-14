@@ -54,7 +54,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          e.toString().replaceAll('Exception: ', '');
+          formatAuthError(e);
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }

@@ -16,8 +16,7 @@ import 'core/services/firebase_analytics_service.dart';
 import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
 import 'core/config/theme_provider.dart';
-import 'core/config/locale_provider.dart';
-import 'core/utils/rtl_helper.dart';
+// RTL helper removed — app is LTR/English-only
 import 'core/tokens/app_typography.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
@@ -348,9 +347,8 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
 
-    // Current locale from provider
-    final locale = ref.watch(currentLocaleProvider);
-    final isRtl = ref.watch(isRtlProvider);
+    // Force English locale — Klasivo is English-only (no RTL)
+    const forcedLocale = Locale('en', 'US');
 
     // Show splash while enterprise services are loading
     if (!_initialized) {
@@ -359,8 +357,8 @@ class _MyAppState extends ConsumerState<MyApp> {
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ref.watch(themeModeProvider),
-        locale: locale,
-        supportedLocales: kSupportedLocales,
+        locale: forcedLocale,
+        supportedLocales: const [forcedLocale],
         localizationsDelegates: const [
           ...GlobalMaterialLocalizations.delegates,
           ...GlobalCupertinoLocalizations.delegates,
@@ -389,34 +387,27 @@ class _MyAppState extends ConsumerState<MyApp> {
     return MaterialApp.router(
       title: 'Klasivo',
       debugShowCheckedModeBanner: false,
-      theme: isRtl
-          ? AppTheme.lightTheme.copyWith(textTheme: _rtlTextTheme())
-          : AppTheme.lightTheme,
-      darkTheme: isRtl
-          ? AppTheme.darkTheme.copyWith(textTheme: _rtlTextTheme())
-          : AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
       themeMode: ref.watch(themeModeProvider),
-      locale: locale,
-      supportedLocales: kSupportedLocales,
+      locale: forcedLocale,
+      supportedLocales: const [forcedLocale],
       localizationsDelegates: const [
         ...GlobalMaterialLocalizations.delegates,
         ...GlobalCupertinoLocalizations.delegates,
         GlobalWidgetsLocalizations.delegate,
       ],
       builder: (context, child) {
-        // Wrap with OfflineBanner for connectivity awareness
-        return OfflineBanner(child: child!);
+        // Force LTR direction regardless of device locale
+        return Directionality(
+          textDirection: TextDirection.ltr,
+          child: OfflineBanner(child: child!),
+        );
       },
       routerConfig: router,
     );
   }
 
-  // ─── RTL-aware TextTheme using NotoSansArabic ────────────────────────────
-  static TextTheme _rtlTextTheme() {
-    return AppTypography.textTheme.apply(
-      fontFamily: AppTypography.fontFamilyArabic,
-    );
-  }
 }
 
 class AuthChangeNotifier extends ChangeNotifier {

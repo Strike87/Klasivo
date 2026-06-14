@@ -66,7 +66,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
+        KlasivoToast.error(context, message: formatAuthError(e));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

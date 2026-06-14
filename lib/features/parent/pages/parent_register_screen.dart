@@ -61,7 +61,7 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          e.toString().replaceAll('Exception: ', '');
+          formatAuthError(e);
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -94,7 +94,7 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          e.toString().replaceAll('Exception: ', '');
+          formatAuthError(e);
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }

@@ -91,7 +91,7 @@ class _TeacherRegistrationScreenState
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          e.toString().replaceAll('Exception: ', '');
+          formatAuthError(e);
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -155,7 +155,7 @@ class _TeacherRegistrationScreenState
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          e.toString().replaceAll('Exception: ', '');
+          formatAuthError(e);
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }

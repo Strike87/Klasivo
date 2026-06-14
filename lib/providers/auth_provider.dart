@@ -121,6 +121,75 @@ final authLoadingProvider = StateProvider<bool>((ref) => false);
 
 final authErrorProvider = StateProvider<String?>((ref) => null);
 
+// ─── Helper: Format auth errors into user-friendly messages ─────────────────
+
+/// Converts raw Firebase Auth exceptions into short, user-friendly messages.
+/// This prevents showing PlatformException / stack traces to users.
+String formatAuthError(dynamic error) {
+  final msg = error.toString();
+
+  // Network / connectivity
+  if (msg.contains('network-request-failed') ||
+      msg.contains('network_error') ||
+      msg.contains('NetworkError') ||
+      msg.contains('java.net') ||
+      msg.contains('SocketException') ||
+      msg.contains('Failed host lookup')) {
+    return 'No internet connection. Please check your network and try again.';
+  }
+
+  // Firebase Auth specific codes
+  if (msg.contains('user-not-found') || msg.contains('userNotFound')) {
+    return 'No account found with this email.';
+  }
+  if (msg.contains('wrong-password') || msg.contains('wrongPassword')) {
+    return 'Incorrect password. Please try again.';
+  }
+  if (msg.contains('email-already-in-use') || msg.contains('emailAlreadyInUse')) {
+    return 'This email is already registered. Try signing in instead.';
+  }
+  if (msg.contains('weak-password') || msg.contains('weakPassword')) {
+    return 'Password is too weak. Use at least 6 characters.';
+  }
+  if (msg.contains('invalid-email') || msg.contains('invalidEmail')) {
+    return 'Please enter a valid email address.';
+  }
+  if (msg.contains('too-many-requests') || msg.contains('tooManyRequests')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  if (msg.contains('user-disabled') || msg.contains('userDisabled')) {
+    return 'This account has been disabled. Contact support.';
+  }
+  if (msg.contains('invalid-credential') || msg.contains('invalidCredential')) {
+    return 'Invalid email or password. Please try again.';
+  }
+  if (msg.contains('operation-not-allowed')) {
+    return 'This sign-in method is not enabled. Contact support.';
+  }
+  if (msg.contains('account-exists-with-different-credential')) {
+    return 'An account already exists with a different sign-in method.';
+  }
+  if (msg.contains('requires-recent-login')) {
+    return 'Please sign out and sign in again before making this change.';
+  }
+
+  // Google Sign-In
+  if (msg.contains('sign_in_canceled') || msg.contains('Sign in canceled')) {
+    return 'Sign in was cancelled.';
+  }
+  if (msg.contains('GoogleSignIn')) {
+    return 'Google Sign-In failed. Please try again.';
+  }
+
+  // PlatformException fallback
+  if (msg.contains('PlatformException')) {
+    return 'Something went wrong. Please try again.';
+  }
+
+  // Generic cleanup — strip "Exception: " prefix
+  return msg.replaceAll('Exception: ', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
 // ─── Helper: Save auth data locally (for OWNER / TEACHER / PARENT login) ────
 
 Future<void> saveTeacherAuthData({

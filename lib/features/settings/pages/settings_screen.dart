@@ -691,7 +691,7 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
                       KlasivoToast.success(context, message: 'Password updated successfully');
                     }
                   } catch (e) {
-                    KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
+                    KlasivoToast.error(context, message: formatAuthError(e));
                   }
                 },
               ),

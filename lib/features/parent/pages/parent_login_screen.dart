@@ -61,7 +61,7 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
     } catch (e) {
       if (mounted) {
         ref.read(authErrorProvider.notifier).state =
-            e.toString().replaceAll('Exception: ', '');
+            formatAuthError(e);
       }
     } finally {
       if (mounted) {
@@ -100,7 +100,7 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
     } catch (e) {
       if (mounted) {
         ref.read(authErrorProvider.notifier).state =
-            e.toString().replaceAll('Exception: ', '');
+            formatAuthError(e);
       }
     } finally {
       if (mounted) {

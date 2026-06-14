@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';
@@ -42,7 +43,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       setState(() => _emailSent = true);
     } catch (e) {
       if (mounted) {
-        KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
+        KlasivoToast.error(context, message: formatAuthError(e));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

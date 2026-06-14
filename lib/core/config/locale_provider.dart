@@ -10,17 +10,16 @@ import 'app_constants.dart';
 // KLASIVO LOCALE PROVIDER
 // Manages the app's locale with Riverpod StateNotifier + Hive persistence.
 //
-// Supported locales: en, ar, fr, tr
+// Supported locales: en, fr, tr (Arabic/RTL removed — app is LTR-only)
 // Persists to Hive box 'app_settings' with key 'locale'.
-// Defaults to the system locale on first launch.
+// Defaults to English on first launch.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const String _localeKey = 'locale';
 
-/// All locales supported by the app.
+/// All locales supported by the app (LTR-only — no Arabic).
 const List<Locale> kSupportedLocales = [
   Locale('en'),
-  Locale('ar'),
   Locale('fr'),
   Locale('tr'),
 ];
@@ -28,13 +27,9 @@ const List<Locale> kSupportedLocales = [
 /// Map of locale code → human-readable native name.
 const Map<String, String> kLocaleNativeNames = {
   'en': 'English',
-  'ar': 'العربية',
   'fr': 'Français',
   'tr': 'Türkçe',
 };
-
-/// RTL locale codes.
-const Set<String> kRtlLocales = {'ar'};
 
 // ─── State Notifier ─────────────────────────────────────────────────────────
 
@@ -89,9 +84,6 @@ class LocaleNotifier extends StateNotifier<Locale> {
     }
   }
 
-  /// Whether the current locale is RTL.
-  bool get isRtl => kRtlLocales.contains(state.languageCode);
-
   void _persist(String languageCode) {
     try {
       final box = Hive.box(AppConstants.appSettingsBox);
@@ -117,10 +109,4 @@ final localeNotifierProvider =
 /// Convenience provider that returns the current [Locale].
 final currentLocaleProvider = Provider<Locale>((ref) {
   return ref.watch(localeNotifierProvider);
-});
-
-/// Convenience provider that returns whether the current locale is RTL.
-final isRtlProvider = Provider<bool>((ref) {
-  final locale = ref.watch(localeNotifierProvider);
-  return kRtlLocales.contains(locale.languageCode);
 });

@@ -9,7 +9,6 @@ class AppTypography {
   AppTypography._();
 
   static const String fontFamily = 'PlusJakartaSans';
-  static const String fontFamilyArabic = 'NotoSansArabic';
 
   // ─── Display — For hero numbers (92% attendance) ────────────────────────
   static const TextStyle displayLarge = TextStyle(
@@ -153,21 +152,6 @@ class AppTypography {
     fontWeight: FontWeight.w400,
     height: 1.5,
     letterSpacing: 0.2,
-  );
-
-  // ─── Arabic variants (for RTL text) ─────────────────────────────────────
-  static const TextStyle arabicBody = TextStyle(
-    fontFamily: fontFamilyArabic,
-    fontSize: 16,
-    fontWeight: FontWeight.w400,
-    height: 1.8,
-  );
-
-  static const TextStyle arabicTitle = TextStyle(
-    fontFamily: fontFamilyArabic,
-    fontSize: 18,
-    fontWeight: FontWeight.w700,
-    height: 1.6,
   );
 
   // ─── Helper: Build TextTheme from tokens ────────────────────────────────
