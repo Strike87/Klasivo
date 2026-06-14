@@ -3,7 +3,7 @@
 > **Current Version:** v2.0.0+7  
 > **Platform:** Android (Flutter 3.x / Dart 3.x)  
 > **Architecture:** Clean Architecture + Riverpod + Firebase  
-> **Last Updated:** 2026-06-12
+> **Last Updated:** 2026-06-14
 
 ---
 
@@ -20,7 +20,11 @@
 | **v1.9** | Polish & Integration (component migration, tests, CI/CD) | ✅ Complete |
 | **v2.0** | Dark mode, Push notifications, Video player, Content tracking | ✅ Complete |
 | **v2.1** | Chat attachments, Offline caching, Multi-tenant | 🔲 Planned |
-| **v2.2** | RTL, iOS, Web, SSO, Analytics warehouse | 🔲 Planned |
+| **v2.2** | iOS, Web, SSO, Analytics warehouse | 🔲 Planned |
+| **v2.3** | Teacher Approval Workflow, Attendance Tracking | 🔲 Planned |
+| **v2.4** | Assignment Submission API, Parent Accounts | 🔲 Planned |
+| **v2.5** | School Accounts / Multi-Tenancy, Analytics Dashboard | 🔲 Planned |
+| **v2.6** | Subscription & Billing | 🔲 Planned |
 
 ---
 
@@ -228,6 +232,57 @@
 
 ---
 
+## Infrastructure — Cloud Functions Audit ✅ (2026-06-14)
+
+### v1→v2 Migration
+- [x] 5 RBAC callables migrated v1→v2 (assignRole, assignScope, syncClaims, changeUserPassword, setPermissionOverrides)
+- [x] Auth triggers remain v1 (onUserCreated, onUserDeleted) — Firebase has no v2 after-event auth API
+- [x] All other functions already v2 (api, generateLiveKitToken, removeParticipant, emailWorker, etc.)
+
+### Cost Optimization
+- [x] `maxInstances` caps on all v2 functions — prevents runaway billing from traffic spikes
+- [x] `minInstances: 1` only on latency-critical functions (api gateway, generateLiveKitToken)
+- [x] `minInstances: 0` on all event-driven & admin functions — scale-to-zero, no idle cost
+- [x] `concurrency: 80–100` on all callables — v2 handles 80+ requests per instance (v1 was 1:1)
+- [x] `maxInstances: 1` on scheduledClassReminder — single-instance job
+- [x] Explicit `memory` + `timeoutSeconds` on v1 auth triggers
+
+### Post-Deploy Verification Required
+- [ ] Run `firebase deploy --only functions` to deploy v2 callables
+- [ ] Run `firebase functions:list` to confirm all RBAC functions are Gen 2
+- [ ] If old v1 versions remain, delete explicitly:
+  ```bash
+  firebase functions:delete assignRole
+  firebase functions:delete assignScope
+  firebase functions:delete syncClaims
+  firebase functions:delete changeUserPassword
+  firebase functions:delete setPermissionOverrides
+  ```
+- [ ] Confirm no duplicate Gen1 + Gen2 versions of RBAC functions exist
+
+### Function Config Summary
+| Function | Gen | minInstances | maxInstances | Concurrency | Memory |
+|----------|-----|-------------|-------------|-------------|--------|
+| api | v2 | 1 | 100 | 80 | 512MiB |
+| generateLiveKitToken | v2 | 1 | 50 | 100 | 256MiB |
+| removeParticipant | v2 | 0 | 20 | 80 | 256MiB |
+| assignRole | v2 | 0 | 10 | 80 | 256MiB |
+| assignScope | v2 | 0 | 10 | 80 | 256MiB |
+| syncClaims | v2 | 0 | 20 | 80 | 256MiB |
+| changeUserPassword | v2 | 0 | 10 | 80 | 256MiB |
+| setPermissionOverrides | v2 | 0 | 10 | 80 | 256MiB |
+| sendContactForm | v2 | 0 | 10 | 80 | 256MiB |
+| sendTeacherInvitation | v2 | 0 | 10 | 80 | 256MiB |
+| sendSchoolAnnouncement | v2 | 0 | 10 | 80 | 256MiB |
+| emailWorker | v2 | 0 | — | — | 256MiB |
+| onLiveKitRoomCreated | v2 | 0 | — | — | 256MiB |
+| onLiveKitRoomUpdated | v2 | 0 | — | — | 256MiB |
+| scheduledClassReminder | v2 | 0 | 1 | — | 256MiB |
+| onUserCreated | v1 | — | — | — | 256MB |
+| onUserDeleted | v1 | — | — | — | 256MB |
+
+---
+
 ## v2.1 — Chat Attachments, Offline Caching, Multi-Tenant 🔲
 
 ### Communication
@@ -242,10 +297,9 @@
 
 ---
 
-## v2.2 — RTL, iOS, Web, SSO, Analytics 🔲
+## v2.2 — iOS, Web, SSO, Analytics 🔲
 
 ### Platform
-- [ ] RTL layout support (Arabic fonts loaded)
 - [ ] iOS support
 - [ ] Web support
 - [ ] SSO integration
@@ -257,6 +311,96 @@
 
 ### LMS
 - [ ] Lesson plan templates
+
+---
+
+## v2.3 — Teacher Approval Workflow & Attendance Tracking 🔲
+
+### Teacher Approval Workflow
+- [ ] Admin approves/rejects teacher registration requests
+- [ ] Teacher onboarding flow with invite code verification
+- [ ] Approval queue dashboard for owners/admins
+- [ ] Email notifications on approval status change
+- [ ] Auto-assign default scope (campus/stage/class) on approval
+
+### Attendance Tracking (Enhanced)
+- [ ] Real-time attendance during live classes (LiveKit integration)
+- [ ] Manual attendance marking by teachers
+- [ ] Attendance analytics per student/class/subject
+- [ ] Parent notifications for student absences
+- [ ] Export attendance reports (PDF/Excel)
+- [ ] Attendance trends and heatmaps
+
+---
+
+## v2.4 — Assignment Submission API & Parent Accounts 🔲
+
+### Assignment Submission API
+- [ ] REST API for assignment creation, submission, and grading
+- [ ] File upload support (PDF, images, documents)
+- [ ] Submission deadlines with late penalty rules
+- [ ] Plagiarism detection integration placeholder
+- [ ] Rubric-based grading interface
+- [ ] Batch grading and feedback
+- [ ] Student submission status tracking
+
+### Parent Accounts (Enhanced)
+- [ ] Self-service parent registration (email verification)
+- [ ] Link multiple children to one parent account
+- [ ] Parent dashboard with real-time child progress
+- [ ] Push notifications for grades, attendance, announcements
+- [ ] Parent-teacher messaging channel
+- [ ] Weekly progress summary emails
+- [ ] Parent role scope isolation (view-only, no edit)
+
+---
+
+## v2.5 — School Accounts / Multi-Tenancy & Analytics Dashboard 🔲
+
+### School Accounts / Multi-Tenancy
+- [ ] School registration and onboarding wizard
+- [ ] Organization settings (branding, logo, academic calendar)
+- [ ] Campus/stage/class hierarchy management
+- [ ] Role-based access per campus/stage
+- [ ] Cross-campus analytics for district-level admins
+- [ ] Data isolation between organizations (Firestore security)
+- [ ] Organization-specific feature flag overrides
+- [ ] Bulk import/export for school data
+
+### Analytics Dashboard
+- [ ] Teacher dashboard: class performance, assignment completion rates
+- [ ] Student dashboard: personal progress, strengths/weaknesses
+- [ ] Admin dashboard: organization-wide KPIs
+- [ ] Attendance trends and patterns
+- [ ] Grade distribution analysis
+- [ ] Live class participation metrics
+- [ ] Custom date range filters
+- [ ] Exportable charts and reports
+
+---
+
+## v2.6 — Subscription & Billing 🔲
+
+### Subscription Plans
+- [ ] Free tier definition (limits: students, storage, features)
+- [ ] Pro plan with expanded limits
+- [ ] Enterprise plan with custom pricing
+- [ ] Plan comparison page
+
+### Billing Infrastructure
+- [ ] Stripe integration for payment processing
+- [ ] Subscription management (upgrade/downgrade/cancel)
+- [ ] Invoice generation and history
+- [ ] Trial period with automatic conversion
+- [ ] Proration on plan changes
+
+### Billing-aware Features
+- [ ] Feature gating based on subscription tier
+- [ ] Usage metering (student count, storage, API calls)
+- [ ] Soft limits with upgrade prompts
+- [ ] Admin billing dashboard
+- [ ] Payment method management
+- [ ] Revenue analytics for platform admin
 
 ---
 
