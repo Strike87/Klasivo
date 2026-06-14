@@ -38,6 +38,7 @@ export const changeUserPassword = onCall(
     }
 
     const callerUid = request.auth.uid;
+    scope.setUser({ id: callerUid });
     const { newPassword, targetUserId } = request.data;
 
     if (!newPassword || newPassword.length < 6) {
@@ -93,6 +94,7 @@ export const changeUserPassword = onCall(
         }
       } catch (e) {
         console.warn('Could not update Firebase Auth password for student:', e);
+        Sentry.captureException(e);
       }
 
       // Update passwordHash in Firestore

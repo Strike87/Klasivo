@@ -74,38 +74,39 @@ class AuthService {
       final createUserDocSpan = transaction.startChild('create_user_doc');
 
       try {
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .set({
-          'organizationId': '', // Placeholder — updated below after org creation
-          'role': AppConstants.roleOwner,
-          'authProvider': AuthProviders.password,
-          'fullName': fullName,
-          'email': email,
-          'photoUrl': null,
-          'phoneNumber': null,
-          'isActive': true,
-          'isEmailVerified': isEmailVerified,
-          'hasCompletedSetup': false,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await SentryFirestoreHelper.docSet(
+          collection: AppConstants.usersCollection,
+          docId: user.uid,
+          data: {
+            'organizationId': '', // Placeholder — updated below after org creation
+            'role': AppConstants.roleOwner,
+            'authProvider': AuthProviders.password,
+            'fullName': fullName,
+            'email': email,
+            'photoUrl': null,
+            'phoneNumber': null,
+            'isActive': true,
+            'isEmailVerified': isEmailVerified,
+            'hasCompletedSetup': false,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          flow: 'owner_registration',
+          step: 'STEP_2_USER_DOC_CREATE',
+        );
+
+        // Doc ID audit trail
+        KlasivoSentry.docIdAudit.logUserCreation(
+          flow: 'owner_registration',
+          collection: AppConstants.usersCollection,
+          docIdStrategy: 'uid',
+          actualDocId: user.uid,
+          authUid: user.uid,
+        );
 
         createUserDocSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         createUserDocSpan.status = const SpanStatus.internalError();
-        await Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('collection', 'users');
-            scope.setTag('operation', 'set');
-            scope.setTag('documentId', user.uid);
-            scope.setTag('flow', 'owner_registration');
-            scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
-          },
-        );
         rethrow;
       } finally {
         await createUserDocSpan.finish();
@@ -166,27 +167,19 @@ class AuthService {
       final patchUserSpan = transaction.startChild('update_user_doc');
 
       try {
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .update({
-          'organizationId': orgId,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await SentryFirestoreHelper.docUpdate(
+          collection: AppConstants.usersCollection,
+          docId: user.uid,
+          data: {
+            'organizationId': orgId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          flow: 'owner_registration',
+          step: 'STEP_4_USER_PATCH',
+        );
         patchUserSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         patchUserSpan.status = const SpanStatus.internalError();
-        await Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('collection', 'users');
-            scope.setTag('operation', 'update');
-            scope.setTag('documentId', user.uid);
-            scope.setTag('flow', 'owner_registration');
-            scope.setTag('step', 'STEP_4_USER_PATCH');
-          },
-        );
         rethrow;
       } finally {
         await patchUserSpan.finish();
@@ -249,21 +242,27 @@ class AuthService {
         data: {'userId': userId, 'organizationId': organizationId, 'workspaceName': workspaceName},
       ));
 
-      await _firestore
-          .collection(AppConstants.organizationsCollection)
-          .doc(organizationId)
-          .update({
-        'name': workspaceName,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.organizationsCollection,
+        docId: organizationId,
+        data: {
+          'name': workspaceName,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'owner_registration',
+        step: 'STEP_WORKSPACE_SETUP_ORG',
+      );
 
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(userId)
-          .update({
-        'hasCompletedSetup': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.usersCollection,
+        docId: userId,
+        data: {
+          'hasCompletedSetup': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'owner_registration',
+        step: 'STEP_WORKSPACE_SETUP_USER',
+      );
 
       Sentry.addBreadcrumb(const Breadcrumb(
         category: 'registration',
@@ -608,37 +607,38 @@ class AuthService {
       final createUserDocSpan = transaction.startChild('create_user_doc');
 
       try {
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .set({
-          'organizationId': organizationId,
-          'role': AppConstants.roleTeacher,
-          'authProvider': AuthProviders.password,
-          'fullName': fullName,
-          'email': email,
-          'photoUrl': null,
-          'phoneNumber': null,
-          'isActive': true,
-          'isEmailVerified': isEmailVerified,
-          'hasCompletedSetup': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await SentryFirestoreHelper.docSet(
+          collection: AppConstants.usersCollection,
+          docId: user.uid,
+          data: {
+            'organizationId': organizationId,
+            'role': AppConstants.roleTeacher,
+            'authProvider': AuthProviders.password,
+            'fullName': fullName,
+            'email': email,
+            'photoUrl': null,
+            'phoneNumber': null,
+            'isActive': true,
+            'isEmailVerified': isEmailVerified,
+            'hasCompletedSetup': true,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          flow: 'teacher_registration',
+          step: 'STEP_2_USER_DOC_CREATE',
+        );
+
+        KlasivoSentry.docIdAudit.logUserCreation(
+          flow: 'teacher_registration',
+          collection: AppConstants.usersCollection,
+          docIdStrategy: 'uid',
+          actualDocId: user.uid,
+          authUid: user.uid,
+        );
+
         createUserDocSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         createUserDocSpan.status = const SpanStatus.internalError();
-        await Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('collection', 'users');
-            scope.setTag('operation', 'set');
-            scope.setTag('documentId', user.uid);
-            scope.setTag('flow', 'teacher_registration');
-            scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
-          },
-        );
         rethrow;
       } finally {
         await createUserDocSpan.finish();
@@ -875,37 +875,38 @@ class AuthService {
       final createUserDocSpan = transaction.startChild('create_user_doc');
 
       try {
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .set({
-          'organizationId': null, // Set when parent links a child
-          'role': AppConstants.roleParent,
-          'authProvider': AuthProviders.password,
-          'fullName': fullName,
-          'email': email,
-          'photoUrl': null,
-          'phoneNumber': null,
-          'isActive': true,
-          'isEmailVerified': isEmailVerified,
-          'hasCompletedSetup': false, // Needs to link child
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await SentryFirestoreHelper.docSet(
+          collection: AppConstants.usersCollection,
+          docId: user.uid,
+          data: {
+            'organizationId': null, // Set when parent links a child
+            'role': AppConstants.roleParent,
+            'authProvider': AuthProviders.password,
+            'fullName': fullName,
+            'email': email,
+            'photoUrl': null,
+            'phoneNumber': null,
+            'isActive': true,
+            'isEmailVerified': isEmailVerified,
+            'hasCompletedSetup': false, // Needs to link child
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          flow: 'parent_registration',
+          step: 'STEP_2_USER_DOC_CREATE',
+        );
+
+        KlasivoSentry.docIdAudit.logUserCreation(
+          flow: 'parent_registration',
+          collection: AppConstants.usersCollection,
+          docIdStrategy: 'uid',
+          actualDocId: user.uid,
+          authUid: user.uid,
+        );
+
         createUserDocSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         createUserDocSpan.status = const SpanStatus.internalError();
-        await Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('collection', 'users');
-            scope.setTag('operation', 'set');
-            scope.setTag('documentId', user.uid);
-            scope.setTag('flow', 'parent_registration');
-            scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
-          },
-        );
         rethrow;
       } finally {
         await createUserDocSpan.finish();

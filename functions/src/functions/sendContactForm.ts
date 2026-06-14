@@ -38,8 +38,9 @@ export const sendContactForm = onCall(
     const result = await sendEmail({ to: 'support@klasivo.app', subject: `New Contact Form: ${cleanSubject}`, html, from: SENDER.noreply, replyTo: cleanEmail, category: 'contact' });
 
     if (!result.success) {
-      Sentry.captureMessage(`Contact form send failed: ${result.error ?? 'Unknown error'}`);
-      throw new Error(result.error ?? 'Unknown error');
+      const error = new Error(result.error ?? 'Unknown error');
+      Sentry.captureException(error, { tags: { step: 'send_contact_email' } });
+      throw error;
     }
     return { success: true, id: result.id };
     }); // withIsolatedScope

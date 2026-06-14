@@ -60,6 +60,7 @@ export const assignScope = onCall(
     }
 
     const callerUid = request.auth.uid;
+    sentryScope.setUser({ id: callerUid });
     const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
@@ -78,6 +79,7 @@ export const assignScope = onCall(
       throw new HttpsError('permission-denied', 'Cannot assign scope in a different organization.');
     }
 
+    try {
     // ─── Get Target User ────────────────────────────────────────────────
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
@@ -137,5 +139,9 @@ export const assignScope = onCall(
     });
 
     return { success: true, targetUserId, scope };
+    } catch (err) {
+      Sentry.captureException(err);
+      throw err;
+    }
     }); // withIsolatedScope
   });

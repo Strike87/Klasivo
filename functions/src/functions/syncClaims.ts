@@ -51,6 +51,7 @@ export const syncClaims = onCall(
     }
 
     const callerUid = request.auth.uid;
+    scope.setUser({ id: callerUid });
     const callerRole = (request.auth.token.role as string) || '';
     const targetUserId = request.data.targetUserId || callerUid;
 
@@ -81,6 +82,7 @@ export const syncClaims = onCall(
       }
     }
 
+    try {
     // ─── Set Custom Claims ──────────────────────────────────────────────
     const customClaims = buildCustomClaims(role, organizationId);
     await admin.auth().setCustomUserClaims(targetUserId, customClaims);
@@ -109,5 +111,9 @@ export const syncClaims = onCall(
       organizationId,
       scopeAccessLevel: customClaims.scopeAccessLevel,
     };
+    } catch (err) {
+      Sentry.captureException(err);
+      throw err;
+    }
     }); // withIsolatedScope
   });

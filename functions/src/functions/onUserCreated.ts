@@ -19,6 +19,8 @@ export const onUserCreated = functions
     const uid = user.uid;
     const email = user.email;
 
+    scope.setUser({ id: uid });
+
     if (!email) {
       console.warn(`User ${uid} created without email — skipping welcome queue`);
       return null;

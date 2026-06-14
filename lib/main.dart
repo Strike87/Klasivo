@@ -126,58 +126,10 @@ Future<void> main() async {
   final releaseTag = 'klasivo@${packageInfo.version}+${packageInfo.buildNumber}';
 
   // ─── Sentry before-send callback: sanitize sensitive data ──────────────
+  // Uses the centralized KlasivoSentrySanitizer from sentry_service.dart
+  // instead of a duplicate local class.
   SentryEvent? beforeSendCallback(SentryEvent event) {
-    // Strip sensitive data from breadcrumbs
-    if (event.breadcrumbs != null) {
-      for (int i = 0; i < event.breadcrumbs!.length; i++) {
-        final crumb = event.breadcrumbs![i];
-        if (crumb.data != null) {
-          final sanitized = <String, dynamic>{};
-          crumb.data!.forEach((key, value) {
-            sanitized[key] = _SentrySanitizer.isSensitive(key)
-                ? '[REDACTED]'
-                : value;
-          });
-          event.breadcrumbs![i] = Breadcrumb(
-            category: crumb.category,
-            message: crumb.message,
-            data: sanitized,
-            level: crumb.level,
-            timestamp: crumb.timestamp,
-            type: crumb.type,
-          );
-        }
-      }
-    }
-
-    // Strip sensitive data from extra fields
-    if (event.extra != null) {
-      final sanitized = <String, dynamic>{};
-      event.extra!.forEach((key, value) {
-        sanitized[key] = _SentrySanitizer.isSensitive(key)
-            ? '[REDACTED]'
-            : value;
-      });
-      event.extra = sanitized;
-    }
-
-    // Strip sensitive data from request headers
-    if (event.request?.headers != null) {
-      final sanitized = <String, String>{};
-      event.request!.headers!.forEach((key, value) {
-        final lower = key.toLowerCase();
-        if (lower.contains('authorization') ||
-            lower.contains('cookie') ||
-            lower.contains('token')) {
-          sanitized[key] = '[REDACTED]';
-        } else {
-          sanitized[key] = value;
-        }
-      });
-      event.request = SentryRequest(headers: sanitized);
-    }
-
-    return event;
+    return KlasivoSentrySanitizer.sanitizeEvent(event);
   }
 
   // ─── Initialize Firebase with error handling ────────────────────────
@@ -228,11 +180,10 @@ Future<void> main() async {
   }
 
   // ─── Initialize Sentry (production-grade) ──────────────────────────
-  final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
-
   await SentryFlutter.init(
     (options) {
-      options.dsn = sentryDsn;
+      // ── DSN from EnvironmentConfig (hardcoded with compile-time override) ──
+      options.dsn = envConfig.sentryDsn;
 
       // ── Environment from EnvironmentConfig ──────────────────────────
       options.environment = envConfig.environment.name;
@@ -240,17 +191,9 @@ Future<void> main() async {
       // ── Release tracking ────────────────────────────────────────────
       options.release = releaseTag;
 
-      // ── Sampling rates (environment-aware) ──────────────────────────
-      if (envConfig.isDev) {
-        options.tracesSampleRate = 1.0; // 100% in dev for debugging
-        options.profilesSampleRate = 1.0;
-      } else if (envConfig.isStaging) {
-        options.tracesSampleRate = 0.5; // 50% in staging
-        options.profilesSampleRate = 0.5;
-      } else {
-        options.tracesSampleRate = 0.2; // 20% in prod (cost control)
-        options.profilesSampleRate = 0.2;
-      }
+      // ── Sampling rates from EnvironmentConfig (centralised) ─────────
+      options.tracesSampleRate = envConfig.sentryTracesSampleRate;
+      options.profilesSampleRate = envConfig.sentryProfilesSampleRate;
 
       // ── PII / Privacy ──────────────────────────────────────────────
       options.sendDefaultPii = false; // Never send PII by default
@@ -267,8 +210,10 @@ Future<void> main() async {
       options.attachViewHierarchy = true;
 
       // ── Session Replay ──────────────────────────────────────────────
-      // Mask sensitive fields — passwords, emails, phone numbers, OTPs
-      options.replay.sessionSampleRate = envConfig.isDev ? 1.0 : 0.1;
+      // Mask all text and images by default for privacy
+      options.replay.maskAllText = true;
+      options.replay.maskAllImages = true;
+      options.replay.sessionSampleRate = envConfig.sentryReplaySessionSampleRate;
       options.replay.onErrorSampleRate = 1.0; // Always capture on error
 
       // ── Max breadcrumbs ─────────────────────────────────────────────
@@ -283,6 +228,12 @@ Future<void> main() async {
       // ── ANR (Application Not Responding) ────────────────────────────
       options.anrEnabled = true;
       options.anrTimeoutIntervalInSeconds = 5;
+
+      // ── App lifecycle breadcrumbs ───────────────────────────────────
+      options.enableAppLifecycleBreadcrumbs = true;
+
+      // ── Navigation observer integration ─────────────────────────────
+      options.enableNavigatorObserver = true;
     },
     appRunner: () {
       // ── Set app version tags on Sentry scope ────────────────────────
@@ -295,7 +246,10 @@ Future<void> main() async {
       // Catches async errors that PlatformDispatcher misses
       runZonedGuarded<Future<void>>(
         () async {
-          runApp(const ProviderScope(child: MyApp()));
+          runApp(ProviderScope(
+            observers: [SentryRiverpodObserver()],
+            child: const MyApp(),
+          ));
         },
         (error, stack) {
           FirebaseCrashlytics.instance.recordError(
@@ -310,21 +264,26 @@ Future<void> main() async {
   );
 }
 
-// ─── Sentry Sanitization Helper ──────────────────────────────────────────────
+// ─── Riverpod Sentry Observer ────────────────────────────────────────────────
 
-class _SentrySanitizer {
-  static const Set<String> _sensitiveKeys = {
-    'password', 'passwordHash', 'confirmPassword', 'newPassword',
-    'accessToken', 'refreshToken', 'idToken', 'otp', 'otpCode',
-    'inviteCode', 'secret', 'apiKey', 'authEmail', 'studentCode',
-  };
-
-  static bool isSensitive(String key) {
-    final lower = key.toLowerCase();
-    for (final s in _sensitiveKeys) {
-      if (lower.contains(s.toLowerCase())) return true;
-    }
-    return false;
+/// Riverpod [ProviderObserver] that reports provider errors to Sentry.
+/// Attached via [ProviderScope(observers:)] in the widget tree.
+class SentryRiverpodObserver extends ProviderObserver {
+  @override
+  void providerDidFailUpdate(
+    ProviderBase provider,
+    Object error,
+    StackTrace stackTrace,
+    ProviderContainer container,
+  ) {
+    Sentry.captureException(
+      error,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        scope.setTag('source', 'riverpod');
+        scope.setTag('provider', provider.name ?? provider.runtimeType.toString());
+      },
+    );
   }
 }
 
@@ -447,6 +406,48 @@ final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
   return notifier;
 });
 
+// ─── GoRouter Navigation Observer (Sentry breadcrumbs) ───────────────────────
+
+/// Custom [NavigatorObserver] that logs route changes as Sentry breadcrumbs
+/// for full navigation traceability in error reports.
+class SentryNavigationObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _logNavigation('push', route, previousRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _logNavigation('pop', route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (newRoute != null) {
+      KlasivoSentry.breadcrumb.navigation(
+        newRoute.settings.name ?? newRoute.runtimeType.toString(),
+        action: 'replace',
+        data: {
+          if (oldRoute?.settings.name != null)
+            'from': oldRoute!.settings.name!,
+        },
+      );
+    }
+  }
+
+  void _logNavigation(
+    String action,
+    Route<dynamic> route,
+    Route<dynamic>? previousRoute,
+  ) {
+    final name = route.settings.name ?? route.runtimeType.toString();
+    KlasivoSentry.breadcrumb.navigation(name, action: action, data: {
+      if (previousRoute?.settings.name != null)
+        'from': previousRoute!.settings.name!,
+    });
+  }
+}
+
 // ─── GoRouter with Auth Guards & v1.7 Complete Navigation ─────────────────────
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -456,6 +457,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     debugLogDiagnostics: true,
     refreshListenable: notifier,
+    observers: [SentryNavigationObserver()],
     // ── Navigation error builder — catches route errors and reports to Sentry ──
     errorBuilder: (context, state) {
       final error = state.error;

@@ -114,6 +114,58 @@ class EnvironmentConfig {
   }
 
   // ────────────────────────────────────────────────────────────────────────────
+  // Sentry
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /// Sentry DSN — per-environment so dev/staging/prod report to separate projects.
+  /// The DSN is safe to embed in client code — it is NOT a secret.
+  /// (Sentry's docs explicitly state: "DSNs are safe to make public.")
+  String get sentryDsn {
+    // Allow compile-time override via --dart-define=SENTRY_DSN=...
+    const override = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+    if (override.isNotEmpty) return override;
+
+    // Default: production DSN
+    return 'https://c523c263a4f3fee05ea0fce5b477d606@o4511553244692480.ingest.us.sentry.io/4511553494319105';
+  }
+
+  /// Sentry traces sample rate — higher in dev for debugging, lower in prod for cost.
+  double get sentryTracesSampleRate {
+    switch (environment) {
+      case AppEnvironment.dev:
+        return 1.0; // 100%
+      case AppEnvironment.staging:
+        return 0.5; // 50%
+      case AppEnvironment.prod:
+        return 0.2; // 20%
+    }
+  }
+
+  /// Sentry profiles sample rate.
+  double get sentryProfilesSampleRate {
+    switch (environment) {
+      case AppEnvironment.dev:
+        return 1.0;
+      case AppEnvironment.staging:
+        return 0.5;
+      case AppEnvironment.prod:
+        return 0.2;
+    }
+  }
+
+  /// Sentry Session Replay sample rate (normal sessions).
+  double get sentryReplaySessionSampleRate {
+    switch (environment) {
+      case AppEnvironment.dev:
+        return 1.0;
+      case AppEnvironment.staging:
+        return 0.2;
+      case AppEnvironment.prod:
+        return 0.1;
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Firebase / Crashlytics / Analytics toggles
   // ────────────────────────────────────────────────────────────────────────────
 

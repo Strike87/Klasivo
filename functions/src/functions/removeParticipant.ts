@@ -106,6 +106,7 @@ export const removeParticipant = onCall(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`Failed to remove participant ${participantIdentity}: ${msg}`);
+      Sentry.captureException(err, { tags: { step: 'livekit_remove_participant' } });
       // Participant might have already left — continue to update attendance
     }
 
@@ -125,6 +126,7 @@ export const removeParticipant = onCall(
     } catch (err: unknown) {
       // Attendance doc might not exist — non-critical
       console.warn(`Could not update attendance for ${participantIdentity}: ${err}`);
+      Sentry.captureException(err, { tags: { step: 'update_attendance' } });
     }
 
     // ── Send notification to removed participant ─────────────
@@ -140,6 +142,7 @@ export const removeParticipant = onCall(
       });
     } catch (err: unknown) {
       console.warn(`Could not create removal notification: ${err}`);
+      Sentry.captureException(err, { tags: { step: 'create_removal_notification' } });
     }
 
     Sentry.addBreadcrumb({

@@ -56,6 +56,8 @@ export const assignRole = onCall(
     const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
+    scope.setUser({ id: callerUid });
+
     if (!ROLE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
       throw new HttpsError('permission-denied', 'Only admins can assign roles.');
     }

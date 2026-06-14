@@ -68,6 +68,7 @@ export const setPermissionOverrides = onCall(
     }
 
     const callerUid = request.auth.uid;
+    scope.setUser({ id: callerUid });
     const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
@@ -114,6 +115,7 @@ export const setPermissionOverrides = onCall(
       );
     }
 
+    try {
     // ─── Get Target User ────────────────────────────────────────────────
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
@@ -174,5 +176,9 @@ export const setPermissionOverrides = onCall(
       overrides: finalOverrides,
       overrideCount: Object.keys(finalOverrides).length,
     };
+    } catch (err) {
+      Sentry.captureException(err);
+      throw err;
+    }
     }); // withIsolatedScope
   });

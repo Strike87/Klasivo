@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../config/app_environment.dart';
 
 // ─── Sensitive Field Sanitization ─────────────────────────────────────────────
 
@@ -849,7 +850,81 @@ class KlasivoSentry {
 
   /// Check if Sentry is currently enabled (DSN was provided).
   static bool get isEnabled {
-    final dsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
-    return dsn.isNotEmpty;
+    // Use EnvironmentConfig for the DSN check — same source as main.dart init
+    try {
+      final env = EnvironmentConfig.current;
+      return env.sentryDsn.isNotEmpty;
+    } catch (_) {
+      // Fallback: check compile-time env var
+      final dsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+      return dsn.isNotEmpty;
+    }
+  }
+}
+
+// ─── Centralized Event Sanitizer ────────────────────────────────────────────
+
+/// Global Sentry event sanitizer used by the `beforeSend` callback in
+/// `main.dart`. Replaces the duplicate `_SentrySanitizer` class that was
+/// previously defined in main.dart.
+///
+/// Strips sensitive data from breadcrumbs, extras, and request headers.
+class KlasivoSentrySanitizer {
+  KlasivoSentrySanitizer._();
+
+  /// Sanitize a [SentryEvent] — returns the same event with sensitive data
+  /// replaced by '[REDACTED]'.
+  static SentryEvent sanitizeEvent(SentryEvent event) {
+    // Strip sensitive data from breadcrumbs
+    if (event.breadcrumbs != null) {
+      for (int i = 0; i < event.breadcrumbs!.length; i++) {
+        final crumb = event.breadcrumbs![i];
+        if (crumb.data != null) {
+          final sanitized = <String, dynamic>{};
+          crumb.data!.forEach((key, value) {
+            sanitized[key] = _SensitiveFields.isSensitive(key)
+                ? '[REDACTED]'
+                : value;
+          });
+          event.breadcrumbs![i] = Breadcrumb(
+            category: crumb.category,
+            message: crumb.message,
+            data: sanitized,
+            level: crumb.level,
+            timestamp: crumb.timestamp,
+            type: crumb.type,
+          );
+        }
+      }
+    }
+
+    // Strip sensitive data from extra fields
+    if (event.extra != null) {
+      final sanitized = <String, dynamic>{};
+      event.extra!.forEach((key, value) {
+        sanitized[key] = _SensitiveFields.isSensitive(key)
+            ? '[REDACTED]'
+            : value;
+      });
+      event.extra = sanitized;
+    }
+
+    // Strip sensitive data from request headers
+    if (event.request?.headers != null) {
+      final sanitized = <String, String>{};
+      event.request!.headers!.forEach((key, value) {
+        final lower = key.toLowerCase();
+        if (lower.contains('authorization') ||
+            lower.contains('cookie') ||
+            lower.contains('token')) {
+          sanitized[key] = '[REDACTED]';
+        } else {
+          sanitized[key] = value;
+        }
+      });
+      event.request = SentryRequest(headers: sanitized);
+    }
+
+    return event;
   }
 }
