@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -147,7 +148,22 @@ Future<void> main() async {
     debugPrint('Notification initialization failed: $e');
   }
 
-  runApp(const ProviderScope(child: MyApp()));
+  // ─── Initialize Sentry ──────────────────────────────────────────────
+  // DSN is read from --dart-define=SENTRY_DSN=... at build time.
+  // If not provided, Sentry is disabled (safe no-op).
+  final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = sentryDsn;
+      options.tracesSampleRate = 1.0; // Capture 100% of transactions for registration debugging
+      options.environment = kDebugMode ? 'development' : 'production';
+      options.sendDefaultPii = false;
+      // Attach Crashlytics breadcrumbs to Sentry for cross-referencing
+      options.enableAutoBreadcrumbTracking = true;
+    },
+    appRunner: () => runApp(const ProviderScope(child: MyApp())),
+  );
 }
 
 class MyApp extends ConsumerStatefulWidget {

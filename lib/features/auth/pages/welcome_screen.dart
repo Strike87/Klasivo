@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
@@ -50,19 +51,42 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       final userId = ref.read(userIdProvider);
       final orgId = ref.read(organizationIdProvider);
 
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'registration',
+        message: 'STEP_WELCOME_SCREEN_START',
+        data: {
+          'userId': userId ?? 'null',
+          'orgId': orgId ?? 'null',
+          'orgIdIsEmpty': orgId?.isEmpty.toString() ?? 'N/A',
+        },
+      ));
+
       if (userId == null || orgId == null || orgId.isEmpty) {
-        // Log the missing data to Crashlytics for diagnostics
+        // Log the missing data to Crashlytics and Sentry for diagnostics
         final detail = 'userId=${userId ?? "null"}, orgId=${orgId ?? "null"}';
         FirebaseCrashlytics.instance.recordError(
           'Missing user or organization data ($detail)',
           StackTrace.current,
           reason: 'Welcome screen _completeSetup: providers returned null/empty',
         );
+        await Sentry.captureMessage(
+          'Welcome screen: providers returned null/empty ($detail)',
+          level: SentryLevel.warning,
+        );
 
         // Providers may be stale — read directly from Hive as fallback
         final box = Hive.box(AppConstants.authBox);
         final hiveUserId = userId ?? box.get('userId') as String?;
         var hiveOrgId = orgId?.isEmpty == true ? null : (orgId ?? box.get('organizationId') as String?);
+
+        Sentry.addBreadcrumb(Breadcrumb(
+          category: 'registration',
+          message: 'STEP_WELCOME_HIVE_FALLBACK',
+          data: {
+            'hiveUserId': hiveUserId ?? 'null',
+            'hiveOrgId': hiveOrgId ?? 'null',
+          },
+        ));
 
         if (hiveUserId == null || hiveOrgId == null || hiveOrgId.isEmpty) {
           throw Exception('Missing user or organization data. Please sign out and try again.');
@@ -91,11 +115,30 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       final box = Hive.box(AppConstants.authBox);
       await box.put('hasCompletedSetup', true);
 
+      Sentry.addBreadcrumb(const Breadcrumb(
+        category: 'registration',
+        message: 'STEP_HIVE_PERSIST_SUCCESS',
+      ));
+
+      Sentry.addBreadcrumb(const Breadcrumb(
+        category: 'registration',
+        message: 'STEP_NAVIGATE_DASHBOARD',
+      ));
+
       if (mounted) {
         context.go('/dashboard');
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Welcome screen _completeSetup failed');
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('screen', 'welcome');
+          scope.setTag('flow', 'owner_registration');
+          scope.setTag('step', 'WELCOME_COMPLETE_SETUP');
+        },
+      );
       if (mounted) {
         KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
       }
