@@ -1,0 +1,856 @@
+     1→// ═══════════════════════════════════════════════════════════════════════════════
+     2→// KLASIVO — Centralized Sentry Observability Service
+     3→//
+     4→// Production-grade observability layer providing:
+     5→//   - Standardized breadcrumbs (auth, registration, firestore, cloud_function,
+     6→//     navigation, livekit)
+     7→//   - Firestore operation wrappers with automatic error tagging
+     8→//   - Guarded async operation runner (runGuarded)
+     9→//   - User context management
+    10→//   - Transaction / span helpers
+    11→//   - Security sanitization (never sends passwords, tokens, OTPs, invite codes)
+    12→//   - Doc ID audit trail for all user creation paths
+    13→//
+    14→// Usage:
+    15→//   import 'package:klasivo/core/services/sentry_service.dart';
+    16→//   await KlasivoSentry.breadcrumb.auth('login_started');
+    17→//   await KlasivoSentry.runGuarded('create_exam', () => examService.create(...));
+    18→// ═══════════════════════════════════════════════════════════════════════════════
+    19→
+    20→import 'package:flutter/foundation.dart';
+    21→import 'package:sentry_flutter/sentry_flutter.dart';
+    22→import 'package:cloud_firestore/cloud_firestore.dart';
+    23→import 'package:firebase_auth/firebase_auth.dart';
+    24→
+    25→// ─── Sensitive Field Sanitization ─────────────────────────────────────────────
+    26→
+    27→/// Keys that must NEVER be sent to Sentry in any breadcrumb, tag, or extra.
+    28→/// Covers passwords, tokens, OTP codes, invite codes, and secrets.
+    29→class _SensitiveFields {
+    30→  static const Set<String> keys = {
+    31→    'password',
+    32→    'passwordHash',
+    33→    'confirmPassword',
+    34→    'newPassword',
+    35→    'accessToken',
+    36→    'refreshToken',
+    37→    'idToken',
+    38→    'otp',
+    39→    'otpCode',
+    40→    'inviteCode',
+    41→    'secret',
+    42→    'apiKey',
+    43→    'authEmail', // Internal student auth email — PII
+    44→    'studentCode', // Sensitive — could be used to log in
+    45→  };
+    46→
+    47→  /// Returns true if the key contains any sensitive substring.
+    48→  static bool isSensitive(String key) {
+    49→    final lower = key.toLowerCase();
+    50→    for (final s in keys) {
+    51→      if (lower.contains(s.toLowerCase())) return true;
+    52→    }
+    53→    return false;
+    54→  }
+    55→
+    56→  /// Sanitize a map — replace sensitive values with '[REDACTED]'.
+    57→  static Map<String, dynamic> sanitize(Map<String, dynamic> data) {
+    58→    return data.map((key, value) {
+    59→      if (isSensitive(key)) {
+    60→        return MapEntry(key, '[REDACTED]');
+    61→      }
+    62→      // Recursively sanitize nested maps
+    63→      if (value is Map<String, dynamic>) {
+    64→        return MapEntry(key, sanitize(value));
+    65→      }
+    66→      return MapEntry(key, value);
+    67→    });
+    68→  }
+    69→
+    70→  /// Sanitize a string by removing patterns that look like tokens/secrets.
+    71→  static String sanitizeString(String input) {
+    72→    // Redact Bearer tokens
+    73→    var result = input.replaceAll(
+    74→      RegExp(r'Bearer\s+[A-Za-z0-9\-._~+/]+=*'),
+    75→      'Bearer [REDACTED]',
+    76→    );
+    77→    // Redact long hex strings (likely tokens)
+    78→    result = result.replaceAll(
+    79→      RegExp(r'\b[A-Fa-f0-9]{32,}\b'),
+    80→      '[REDACTED_TOKEN]',
+    81→    );
+    82→    return result;
+    83→  }
+    84→}
+    85→
+    86→// ─── Breadcrumb Categories ────────────────────────────────────────────────────
+    87→
+    88→/// Standardized breadcrumb categories for consistent filtering in Sentry.
+    89→class SentryCategories {
+    90→  static const String auth = 'auth';
+    91→  static const String registration = 'registration';
+    92→  static const String firestore = 'firestore';
+    93→  static const String cloudFunction = 'cloud_function';
+    94→  static const String navigation = 'navigation';
+    95→  static const String livekit = 'livekit';
+    96→  static const String hive = 'hive';
+    97→  static const String riverpod = 'riverpod';
+    98→  static const String sync = 'sync';
+    99→  static const String notification = 'notification';
+   100→}
+   101→
+   102→// ─── Breadcrumb Builder ──────────────────────────────────────────────────────
+   103→
+   104→/// Fluent API for creating standardized Sentry breadcrumbs.
+   105→///
+   106→/// Example:
+   107→///   KlasivoSentry.breadcrumb.auth('login_started', data: {'email': email});
+   108→///   KlasivoSentry.breadcrumb.firestore('create', collection: 'users', docId: uid);
+   109→class SentryBreadcrumbBuilder {
+   110→  /// Auth breadcrumb (login, logout, signup, password reset)
+   111→  void auth(String message, {Map<String, dynamic>? data}) {
+   112→    Sentry.addBreadcrumb(Breadcrumb(
+   113→      category: SentryCategories.auth,
+   114→      message: message,
+   115→      data: data != null ? _SensitiveFields.sanitize(data) : null,
+   116→      level: SentryLevel.info,
+   117→    ));
+   118→  }
+   119→
+   120→  /// Registration breadcrumb (account creation steps)
+   121→  void registration(String message, {Map<String, dynamic>? data}) {
+   122→    Sentry.addBreadcrumb(Breadcrumb(
+   123→      category: SentryCategories.registration,
+   124→      message: message,
+   125→      data: data != null ? _SensitiveFields.sanitize(data) : null,
+   126→      level: SentryLevel.info,
+   127→    ));
+   128→  }
+   129→
+   130→  /// Firestore breadcrumb (create, update, delete, read)
+   131→  void firestore(
+   132→    String operation, {
+   133→    required String collection,
+   134→    String? docId,
+   135→    Map<String, dynamic>? data,
+   136→  }) {
+   137→    Sentry.addBreadcrumb(Breadcrumb(
+   138→      category: SentryCategories.firestore,
+   139→      message: '$operation $collection${docId != null ? '/$docId' : ''}',
+   140→      data: _SensitiveFields.sanitize({
+   141→        'collection': collection,
+   142→        'operation': operation,
+   143→        if (docId != null) 'documentId': docId,
+   144→        ...?data,
+   145→      }),
+   146→      level: SentryLevel.info,
+   147→    ));
+   148→  }
+   149→
+   150→  /// Cloud Function breadcrumb (callable invoked/succeeded/failed)
+   151→  void cloudFunction(
+   152→    String functionName, {
+   153→    required String status, // 'invoked', 'succeeded', 'failed'
+   154→    Map<String, dynamic>? data,
+   155→  }) {
+   156→    Sentry.addBreadcrumb(Breadcrumb(
+   157→      category: SentryCategories.cloudFunction,
+   158→      message: '$functionName $status',
+   159→      data: _SensitiveFields.sanitize({
+   160→        'function': functionName,
+   161→        'status': status,
+   162→        ...?data,
+   163→      }),
+   164→      level: status == 'failed' ? SentryLevel.error : SentryLevel.info,
+   165→    ));
+   166→  }
+   167→
+   168→  /// Navigation breadcrumb (route entered/exited)
+   169→  void navigation(
+   170→    String route, {
+   171→    String action = 'entered',
+   172→    Map<String, dynamic>? data,
+   173→  }) {
+   174→    Sentry.addBreadcrumb(Breadcrumb(
+   175→      category: SentryCategories.navigation,
+   176→      message: '$action $route',
+   177→      data: {
+   178→        'route': route,
+   179→        'action': action,
+   180→        ...?data,
+   181→      },
+   182→      level: SentryLevel.info,
+   183→    ));
+   184→  }
+   185→
+   186→  /// LiveKit breadcrumb (room joined/left, token generated/failed)
+   187→  void livekit(
+   188→    String message, {
+   189→    Map<String, dynamic>? data,
+   190→  }) {
+   191→    Sentry.addBreadcrumb(Breadcrumb(
+   192→      category: SentryCategories.livekit,
+   193→      message: message,
+   194→      data: data != null ? _SensitiveFields.sanitize(data) : null,
+   195→      level: SentryLevel.info,
+   196→    ));
+   197→  }
+   198→
+   199→  /// Hive local storage breadcrumb
+   200→  void hive(
+   201→    String message, {
+   202→    Map<String, dynamic>? data,
+   203→  }) {
+   204→    Sentry.addBreadcrumb(Breadcrumb(
+   205→      category: SentryCategories.hive,
+   206→      message: message,
+   207→      data: data,
+   208→      level: SentryLevel.info,
+   209→    ));
+   210→  }
+   211→
+   212→  /// Riverpod provider breadcrumb
+   213→  void riverpod(
+   214→    String message, {
+   215→    Map<String, dynamic>? data,
+   216→  }) {
+   217→    Sentry.addBreadcrumb(Breadcrumb(
+   218→      category: SentryCategories.riverpod,
+   219→      message: message,
+   220→      data: data,
+   221→      level: SentryLevel.info,
+   222→    ));
+   223→  }
+   224→
+   225→  /// Sync operation breadcrumb
+   226→  void sync(
+   227→    String message, {
+   228→    Map<String, dynamic>? data,
+   229→  }) {
+   230→    Sentry.addBreadcrumb(Breadcrumb(
+   231→      category: SentryCategories.sync,
+   232→      message: message,
+   233→      data: data,
+   234→      level: SentryLevel.info,
+   235→    ));
+   236→  }
+   237→
+   238→  /// Notification breadcrumb
+   239→  void notification(
+   240→    String message, {
+   241→    Map<String, dynamic>? data,
+   242→  }) {
+   243→    Sentry.addBreadcrumb(Breadcrumb(
+   244→      category: SentryCategories.notification,
+   245→      message: message,
+   246→      data: data,
+   247→      level: SentryLevel.info,
+   248→    ));
+   249→  }
+   250→}
+   251→
+   252→// ─── Firestore Observability Helper ──────────────────────────────────────────
+   253→
+   254→/// Wraps Firestore operations with automatic Sentry breadcrumbs, exception
+   255→/// capture, and scope tags for every critical write.
+   256→///
+   257→/// Every Firestore exception will:
+   258→///   1. Reach Sentry
+   259→///   2. Include collection name
+   260→///   3. Include document id
+   261→///   4. Include user role
+   262→///   5. Include organization id
+   263→class SentryFirestoreHelper {
+   264→  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+   265→
+   266→  /// Wrapped `.set()` with full observability.
+   267→  static Future<void> docSet({
+   268→    required String collection,
+   269→    required String docId,
+   270→    required Map<String, dynamic> data,
+   271→    String? flow,
+   272→    String? step,
+   273→    SetOptions? options,
+   274→  }) async {
+   275→    final sanitizedData = _SensitiveFields.sanitize(data);
+   276→    KlasivoSentry.breadcrumb.firestore(
+   277→      'create',
+   278→      collection: collection,
+   279→      docId: docId,
+   280→      data: {'flow': flow, 'step': step},
+   281→    );
+   282→
+   283→    try {
+   284→      await _db.collection(collection).doc(docId).set(data, options);
+   285→      KlasivoSentry.breadcrumb.firestore(
+   286→        'create_success',
+   287→        collection: collection,
+   288→        docId: docId,
+   289→      );
+   290→    } catch (e, st) {
+   291→      await _captureFirestoreException(
+   292→        e,
+   293→        st,
+   294→        collection: collection,
+   295→        operation: 'set',
+   296→        docId: docId,
+   297→        flow: flow,
+   298→        step: step,
+   299→        dataPreview: sanitizedData,
+   300→      );
+   301→      rethrow;
+   302→    }
+   303→  }
+   304→
+   305→  /// Wrapped `.update()` with full observability.
+   306→  static Future<void> docUpdate({
+   307→    required String collection,
+   308→    required String docId,
+   309→    required Map<String, dynamic> data,
+   310→    String? flow,
+   311→    String? step,
+   312→  }) async {
+   313→    final sanitizedData = _SensitiveFields.sanitize(data);
+   314→    KlasivoSentry.breadcrumb.firestore(
+   315→      'update',
+   316→      collection: collection,
+   317→      docId: docId,
+   318→      data: {'flow': flow, 'step': step},
+   319→    );
+   320→
+   321→    try {
+   322→      await _db.collection(collection).doc(docId).update(data);
+   323→      KlasivoSentry.breadcrumb.firestore(
+   324→        'update_success',
+   325→        collection: collection,
+   326→        docId: docId,
+   327→      );
+   328→    } catch (e, st) {
+   329→      await _captureFirestoreException(
+   330→        e,
+   331→        st,
+   332→        collection: collection,
+   333→        operation: 'update',
+   334→        docId: docId,
+   335→        flow: flow,
+   336→        step: step,
+   337→        dataPreview: sanitizedData,
+   338→      );
+   339→      rethrow;
+   340→    }
+   341→  }
+   342→
+   343→  /// Wrapped `.delete()` with full observability.
+   344→  static Future<void> docDelete({
+   345→    required String collection,
+   346→    required String docId,
+   347→    String? flow,
+   348→    String? step,
+   349→  }) async {
+   350→    KlasivoSentry.breadcrumb.firestore(
+   351→      'delete',
+   352→      collection: collection,
+   353→      docId: docId,
+   354→      data: {'flow': flow, 'step': step},
+   355→    );
+   356→
+   357→    try {
+   358→      await _db.collection(collection).doc(docId).delete();
+   359→      KlasivoSentry.breadcrumb.firestore(
+   360→        'delete_success',
+   361→        collection: collection,
+   362→        docId: docId,
+   363→      );
+   364→    } catch (e, st) {
+   365→      await _captureFirestoreException(
+   366→        e,
+   367→        st,
+   368→        collection: collection,
+   369→        operation: 'delete',
+   370→        docId: docId,
+   371→        flow: flow,
+   372→        step: step,
+   373→      );
+   374→      rethrow;
+   375→    }
+   376→  }
+   377→
+   378→  /// Wrapped batch commit with full observability.
+   379→  static Future<void> batchCommit({
+   380→    required WriteBatch batch,
+   381→    required String collection,
+   382→    required int operationCount,
+   383→    String? flow,
+   384→    String? step,
+   385→  }) async {
+   386→    KlasivoSentry.breadcrumb.firestore(
+   387→      'batch_commit',
+   388→      collection: collection,
+   389→      data: {'operationCount': operationCount, 'flow': flow, 'step': step},
+   390→    );
+   391→
+   392→    try {
+   393→      await batch.commit();
+   394→      KlasivoSentry.breadcrumb.firestore(
+   395→        'batch_commit_success',
+   396→        collection: collection,
+   397→        data: {'operationCount': operationCount},
+   398→      );
+   399→    } catch (e, st) {
+   400→      await _captureFirestoreException(
+   401→        e,
+   402→        st,
+   403→        collection: collection,
+   404→        operation: 'batch_commit',
+   405→        flow: flow,
+   406→        step: step,
+   407→        dataPreview: {'operationCount': operationCount},
+   408→      );
+   409→      rethrow;
+   410→    }
+   411→  }
+   412→
+   413→  /// Wrapped Firestore transaction with full observability.
+   414→  static Future<T> runTransaction<T>({
+   415→    required String collection,
+   416→    required Future<T> Function(Transaction tx) handler,
+   417→    String? flow,
+   418→    String? step,
+   419→    int maxAttempts = 5,
+   420→  }) async {
+   421→    KlasivoSentry.breadcrumb.firestore(
+   422→      'transaction_start',
+   423→      collection: collection,
+   424→      data: {'flow': flow, 'step': step},
+   425→    );
+   426→
+   427→    try {
+   428→      final result = await _db.runTransaction<T>(
+   429→        handler,
+   430→        maxAttempts: maxAttempts,
+   431→      );
+   432→      KlasivoSentry.breadcrumb.firestore(
+   433→        'transaction_success',
+   434→        collection: collection,
+   435→      );
+   436→      return result;
+   437→    } catch (e, st) {
+   438→      await _captureFirestoreException(
+   439→        e,
+   440→        st,
+   441→        collection: collection,
+   442→        operation: 'transaction',
+   443→        flow: flow,
+   444→        step: step,
+   445→      );
+   446→      rethrow;
+   447→    }
+   448→  }
+   449→
+   450→  /// Capture a Firestore exception with full context tags.
+   451→  static Future<void> _captureFirestoreException(
+   452→    Object exception,
+   453→    StackTrace stackTrace, {
+   454→    required String collection,
+   455→    required String operation,
+   456→    String? docId,
+   457→    String? flow,
+   458→    String? step,
+   459→    Map<String, dynamic>? dataPreview,
+   460→  }) async {
+   461→    // Determine if this is a permission-denied error
+   462→    String? errorCode;
+   463→    if (exception is FirebaseException) {
+   464→      errorCode = exception.code;
+   465→    }
+   466→
+   467→    await Sentry.captureException(
+   468→      exception,
+   469→      stackTrace: stackTrace,
+   470→      withScope: (scope) {
+   471→        scope.setTag('collection', collection);
+   472→        scope.setTag('operation', operation);
+   473→        if (docId != null) scope.setTag('documentId', docId);
+   474→        if (flow != null) scope.setTag('flow', flow);
+   475→        if (step != null) scope.setTag('step', step);
+   476→        if (errorCode != null) scope.setTag('firebase_code', errorCode);
+   477→
+   478→        // Attach user role and org from current Sentry context
+   479→        final currentUser = FirebaseAuth.instance.currentUser;
+   480→        if (currentUser != null) {
+   481→          scope.setTag('auth_uid', currentUser.uid);
+   482→        }
+   483→
+   484→        if (dataPreview != null && dataPreview.isNotEmpty) {
+   485→          scope.setExtra('data_preview', dataPreview);
+   486→        }
+   487→      },
+   488→    );
+   489→  }
+   490→}
+   491→
+   492→// ─── Guarded Async Operation ─────────────────────────────────────────────────
+   493→
+   494→/// Runs an async operation with automatic Sentry breadcrumb, exception capture,
+   495→/// and metadata attachment. This is the recommended way to wrap any async
+   496→/// operation that should never fail silently.
+   497→///
+   498→/// Example:
+   499→///   final result = await KlasivoSentry.runGuarded(
+   500→///     'create_exam',
+   501→///     () => examService.createExam(...),
+   502→///     category: 'firestore',
+   503→///   );
+   504→class KlasivoSentryGuard {
+   505→  /// Execute [operation] inside a Sentry-guarded wrapper.
+   506→  ///
+   507→  /// - Automatically adds a breadcrumb before execution.
+   508→  /// - On success: adds a success breadcrumb.
+   509→  /// - On failure: captures the exception with scope tags and rethrows.
+   510→  /// - The [category] defaults to the operation name but can be overridden.
+   511→  /// - Additional [tags] and [data] are attached to both the breadcrumb
+   512→  ///   and the exception scope.
+   513→  static Future<T> runGuarded<T>(
+   514→    String operationName,
+   515→    Future<T> Function() operation, {
+   516→    String? category,
+   517→    Map<String, String>? tags,
+   518→    Map<String, dynamic>? data,
+   519→  }) async {
+   520→    final cat = category ?? 'operation';
+   521→
+   522→    Sentry.addBreadcrumb(Breadcrumb(
+   523→      category: cat,
+   524→      message: '${operationName}_started',
+   525→      data: data != null ? _SensitiveFields.sanitize(data) : null,
+   526→      level: SentryLevel.info,
+   527→    ));
+   528→
+   529→    try {
+   530→      final result = await operation();
+   531→
+   532→      Sentry.addBreadcrumb(Breadcrumb(
+   533→        category: cat,
+   534→        message: '${operationName}_success',
+   535→        data: data != null ? _SensitiveFields.sanitize(data) : null,
+   536→        level: SentryLevel.info,
+   537→      ));
+   538→
+   539→      return result;
+   540→    } catch (e, st) {
+   541→      Sentry.addBreadcrumb(Breadcrumb(
+   542→        category: cat,
+   543→        message: '${operationName}_failed',
+   544→        data: _SensitiveFields.sanitize({
+   545→          'error': e.toString().substring(0, (e.toString().length).clamp(0, 200)),
+   546→          ...?data,
+   547→        }),
+   548→        level: SentryLevel.error,
+   549→      ));
+   550→
+   551→      await Sentry.captureException(
+   552→        e,
+   553→        stackTrace: st,
+   554→        withScope: (scope) {
+   555→          scope.setTag('operation', operationName);
+   556→          tags?.forEach(scope.setTag);
+   557→          if (data != null) {
+   558→            scope.setExtra('operation_data', _SensitiveFields.sanitize(data));
+   559→          }
+   560→        },
+   561→      );
+   562→
+   563→      rethrow;
+   564→    }
+   565→  }
+   566→
+   567→  /// Execute [operation] with a Sentry transaction span.
+   568→  ///
+   569→  /// Creates a child span under the given [transaction], measures duration,
+   570→  /// and sets the span status based on success/failure.
+   571→  static Future<T> runWithSpan<T>(
+   572→    ISentrySpan transaction,
+   573→    String spanName,
+   574→    Future<T> Function() operation, {
+   575→    Map<String, String>? tags,
+   576→  }) async {
+   577→    final span = transaction.startChild(spanName);
+   578→
+   579→    try {
+   580→      final result = await operation();
+   581→      span.status = const SpanStatus.ok();
+   582→      return result;
+   583→    } catch (e, st) {
+   584→      span.status = const SpanStatus.internalError();
+   585→
+   586→      await Sentry.captureException(
+   587→        e,
+   588→        stackTrace: st,
+   589→        withScope: (scope) {
+   590→          scope.setTag('span', spanName);
+   591→          tags?.forEach(scope.setTag);
+   592→        },
+   593→      );
+   594→
+   595→      rethrow;
+   596→    } finally {
+   597→      await span.finish();
+   598→    }
+   599→  }
+   600→}
+   601→
+   602→// ─── User Context Management ─────────────────────────────────────────────────
+   603→
+   604→/// Manages Sentry user context — attached on sign-in, updated on role/org
+   605→/// changes, cleared on logout.
+   606→///
+   607→/// Attaches:
+   608→///   - uid
+   609→///   - email
+   610→///   - role (tag)
+   611→///   - organizationId (tag)
+   612→///   - app version (tag — set once at init)
+   613→///   - build number (tag — set once at init)
+   614→class SentryUserContext {
+   615→  /// Set user context after authentication.
+   616→  static Future<void> setUser({
+   617→    required String uid,
+   618→    required String email,
+   619→    String? role,
+   620→    String? organizationId,
+   621→  }) async {
+   622→    await Sentry.configureScope((scope) {
+   623→      scope.setUser(SentryUser(
+   624→        id: uid,
+   625→        email: email,
+   626→      ));
+   627→      if (role != null) {
+   628→        scope.setTag('role', role);
+   629→      }
+   630→      if (organizationId != null && organizationId.isNotEmpty) {
+   631→        scope.setTag('organizationId', organizationId);
+   632→      }
+   633→    });
+   634→  }
+   635→
+   636→  /// Update role tag (e.g. after role assignment).
+   637→  static Future<void> setRole(String role) async {
+   638→    await Sentry.configureScope((scope) {
+   639→      scope.setTag('role', role);
+   640→    });
+   641→  }
+   642→
+   643→  /// Update organization ID tag (e.g. after joining org or linking child).
+   644→  static Future<void> setOrganizationId(String orgId) async {
+   645→    await Sentry.configureScope((scope) {
+   646→      scope.setTag('organizationId', orgId);
+   647→    });
+   648→  }
+   649→
+   650→  /// Set app version and build number tags (called once at init).
+   651→  static Future<void> setAppVersion({
+   652→    required String version,
+   653→    required String buildNumber,
+   654→  }) async {
+   655→    await Sentry.configureScope((scope) {
+   656→      scope.setTag('app_version', version);
+   657→      scope.setTag('build_number', buildNumber);
+   658→    });
+   659→  }
+   660→
+   661→  /// Clear user context on logout.
+   662→  static Future<void> clearUser() async {
+   663→    await Sentry.configureScope((scope) {
+   664→      scope.setUser(null);
+   665→      scope.removeTag('role');
+   666→      scope.removeTag('organizationId');
+   667→    });
+   668→  }
+   669→}
+   670→
+   671→// ─── Transaction Helpers ──────────────────────────────────────────────────────
+   672→
+   673→/// Factory methods for common Sentry transactions.
+   674→class SentryTransactions {
+   675→  // Registration flows
+   676→  static ISentrySpan ownerRegistration() =>
+   677→      Sentry.startTransaction('owner_registration', 'registration');
+   678→  static ISentrySpan teacherRegistration() =>
+   679→      Sentry.startTransaction('teacher_registration', 'registration');
+   680→  static ISentrySpan parentRegistration() =>
+   681→      Sentry.startTransaction('parent_registration', 'registration');
+   682→  static ISentrySpan studentEnrollment() =>
+   683→      Sentry.startTransaction('student_enrollment', 'registration');
+   684→
+   685→  // Auth flows
+   686→  static ISentrySpan loginFlow(String role) =>
+   687→      Sentry.startTransaction('${role}_login', 'auth');
+   688→  static ISentrySpan logoutFlow(String role) =>
+   689→      Sentry.startTransaction('${role}_logout', 'auth');
+   690→  static ISentrySpan passwordReset() =>
+   691→      Sentry.startTransaction('password_reset', 'auth');
+   692→
+   693→  // Google Sign-In
+   694→  static ISentrySpan googleSignIn(String role, {bool isNewUser = false}) =>
+   695→      Sentry.startTransaction(
+   696→        '${role}_google_${isNewUser ? 'registration' : 'login'}',
+   697→        'auth',
+   698→      );
+   699→
+   700→  // LiveKit
+   701→  static ISentrySpan liveKitTokenGeneration() =>
+   702→      Sentry.startTransaction('livekit_token_generation', 'livekit');
+   703→  static ISentrySpan liveKitRoomJoin() =>
+   704→      Sentry.startTransaction('livekit_room_join', 'livekit');
+   705→
+   706→  // Dashboard
+   707→  static ISentrySpan dashboardLoad(String role) =>
+   708→      Sentry.startTransaction('${role}_dashboard_load', 'ui');
+   709→}
+   710→
+   711→// ─── Doc ID Audit Trail ──────────────────────────────────────────────────────
+   712→
+   713→/// Documents the doc ID strategy for every user creation path.
+   714→/// This is critical for the ongoing investigation into missing users/{uid} docs.
+   715→///
+   716→/// | Path                  | Collection | Doc ID     | Status    |
+   717→/// |-----------------------|-----------|------------|-----------|
+   718→/// | Owner (email)         | users     | user.uid   | OK        |
+   719→/// | Owner (Google)        | users     | user.uid   | OK        |
+   720→/// | Teacher (invite)      | users     | user.uid   | OK        |
+   721→/// | Teacher (Google)      | users     | user.uid   | OK        |
+   722→/// | Parent (email)        | users     | user.uid   | OK        |
+   723→/// | Parent (Google)       | users     | user.uid   | OK        |
+   724→/// | Student (QR enroll)   | users     | auto-id    | BROKEN    |
+   725→/// | Student (Excel import)| users     | ?          | UNKNOWN   |
+   726→/// | onUserCreated trigger | users     | READ ONLY  | N/A       |
+   727→///
+   728→/// The QR enrollment path uses `.doc()` (auto-generated ID) instead of
+   729→/// `.doc(user.uid)`, which means:
+   730→///   1. The doc ID doesn't match the auth UID
+   731→///   2. Security rule `request.auth.uid == userId` ALWAYS FAILS
+   732→///   3. QR enrollment is 100% broken in production
+   733→class SentryDocIdAudit {
+   734→  /// Log a doc ID audit breadcrumb for any user creation path.
+   735→  static void logUserCreation({
+   736→    required String flow,
+   737→    required String collection,
+   738→    required String docIdStrategy, // 'uid' or 'auto_id'
+   739→    required String actualDocId,
+   740→    String? authUid,
+   741→  }) {
+   742→    final isMismatch = authUid != null && docIdStrategy == 'uid' && actualDocId != authUid;
+   743→    final isAutoId = docIdStrategy == 'auto_id';
+   744→
+   745→    Sentry.addBreadcrumb(Breadcrumb(
+   746→      category: 'doc_id_audit',
+   747→      message: 'user_doc_created',
+   748→      data: _SensitiveFields.sanitize({
+   749→        'flow': flow,
+   750→        'collection': collection,
+   751→        'docIdStrategy': docIdStrategy,
+   752→        'actualDocId': actualDocId,
+   753→        if (authUid != null) 'authUid': authUid,
+   754→        'idMismatch': isMismatch,
+   755→        'autoIdUsed': isAutoId,
+   756→        'brokenByRules': isAutoId, // auto-id always fails security rules
+   757→      }),
+   758→      level: (isMismatch || isAutoId) ? SentryLevel.warning : SentryLevel.info,
+   759→    ));
+   760→
+   761→    if (isMismatch || isAutoId) {
+   762→      Sentry.captureMessage(
+   763→        'Doc ID audit: $flow uses ${isAutoId ? 'auto-id' : 'mismatched uid'} '
+   764→        '(docId=$actualDocId, authUid=$authUid). '
+   765→        'This path is ${isAutoId ? "blocked by security rules" : "potentially broken"}.',
+   766→        level: SentryLevel.warning,
+   767→      );
+   768→    }
+   769→  }
+   770→}
+   771→
+   772→// ─── Main Facade ──────────────────────────────────────────────────────────────
+   773→
+   774→/// Top-level entry point for all Sentry observability in Klasivo.
+   775→///
+   776→/// Usage:
+   777→///   KlasivoSentry.breadcrumb.auth('login_started');
+   778→///   KlasivoSentry.firestore.docSet(collection: 'users', docId: uid, data: {...});
+   779→///   KlasivoSentry.runGuarded('create_exam', () => ...);
+   780→///   KlasivoSentry.userContext.setUser(uid: uid, email: email, role: 'owner');
+   781→class KlasivoSentry {
+   782→  KlasivoSentry._();
+   783→
+   784→  /// Breadcrumb builder — use for all breadcrumb creation.
+   785→  static final breadcrumb = SentryBreadcrumbBuilder();
+   786→
+   787→  /// Firestore operation helper — use for all critical Firestore writes.
+   788→  static final firestore = SentryFirestoreHelper();
+   789→
+   790→  /// Guarded operation runner — use to wrap any async operation.
+   791→  static final guard = KlasivoSentryGuard();
+   792→
+   793→  /// User context manager — use on sign-in, role change, org change, logout.
+   794→  static final userContext = SentryUserContext();
+   795→
+   796→  /// Transaction factory — use to start named transactions for flows.
+   797→  static final transactions = SentryTransactions();
+   798→
+   799→  /// Doc ID audit — use when creating any user document.
+   800→  static final docIdAudit = SentryDocIdAudit();
+   801→
+   802→  /// Convenience method for runGuarded.
+   803→  static Future<T> runGuarded<T>(
+   804→    String operationName,
+   805→    Future<T> Function() operation, {
+   806→    String? category,
+   807→    Map<String, String>? tags,
+   808→    Map<String, dynamic>? data,
+   809→  }) {
+   810→    return KlasivoSentryGuard.runGuarded(
+   811→      operationName,
+   812→      operation,
+   813→      category: category,
+   814→      tags: tags,
+   815→      data: data,
+   816→    );
+   817→  }
+   818→
+   819→  /// Capture an exception with optional scope tags.
+   820→  static Future<SentryId> captureException(
+   821→    Object exception, {
+   822→    StackTrace? stackTrace,
+   823→    Map<String, String>? tags,
+   824→    Map<String, dynamic>? extras,
+   825→  }) {
+   826→    return Sentry.captureException(
+   827→      exception,
+   828→      stackTrace: stackTrace,
+   829→      withScope: (scope) {
+   830→        tags?.forEach(scope.setTag);
+   831→        extras?.forEach((key, value) {
+   832→          scope.setExtra(key, _SensitiveFields.isSensitive(key) ? '[REDACTED]' : value);
+   833→        });
+   834→      },
+   835→    );
+   836→  }
+   837→
+   838→  /// Capture a message with level.
+   839→  static Future<SentryId> captureMessage(
+   840→    String message, {
+   841→    SentryLevel level = SentryLevel.info,
+   842→    Map<String, String>? tags,
+   843→  }) {
+   844→    return Sentry.captureMessage(
+   845→      message,
+   846→      level: level,
+   847→    );
+   848→  }
+   849→
+   850→  /// Check if Sentry is currently enabled (DSN was provided).
+   851→  static bool get isEnabled {
+   852→    final dsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+   853→    return dsn.isNotEmpty;
+   854→  }
+   855→}
+   856→
