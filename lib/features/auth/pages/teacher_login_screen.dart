@@ -68,9 +68,13 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
         }
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      if (mounted) {
+        ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      }
     } finally {
-      ref.read(authLoadingProvider.notifier).state = false;
+      if (mounted) {
+        ref.read(authLoadingProvider.notifier).state = false;
+      }
     }
   }
 
@@ -104,9 +108,13 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
         }
       }
     } catch (e) {
-      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      if (mounted) {
+        ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
+      }
     } finally {
-      ref.read(authLoadingProvider.notifier).state = false;
+      if (mounted) {
+        ref.read(authLoadingProvider.notifier).state = false;
+      }
     }
   }
 
