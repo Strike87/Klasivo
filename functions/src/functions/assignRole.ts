@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 import {
@@ -10,7 +10,7 @@ import {
 } from '../utils/rbac';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO RBAC v2.0 — assignRole
+// KLASIVO RBAC v2.0 — assignRole (v2 callable)
 //
 // Assigns a role to a user. Updates both custom claims and Firestore.
 //
@@ -28,38 +28,42 @@ interface AssignRoleData {
   organizationId: string;
 }
 
-export const assignRole = functions
-  .runWith({
-    secrets: [],
+export const assignRole = onCall(
+  {
+    secrets: ['SENTRY_DSN'],
+    enforceAppCheck: true,
+    region: 'us-central1',
+    memory: '256MiB',
     timeoutSeconds: 60,
-    memory: '256MB',
-  })
-  .https.onCall(async (data: AssignRoleData, context) => {
+    minInstances: 0,
+    concurrency: 80,
+  },
+  async (request: CallableRequest<AssignRoleData>) => {
     // ─── Auth Check ─────────────────────────────────────────────────────
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated.');
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
 
-    const callerUid = context.auth.uid;
-    const callerClaims = context.auth.token;
+    const callerUid = request.auth.uid;
+    const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
     if (!ROLE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
-      throw new functions.https.HttpsError('permission-denied', 'Only admins can assign roles.');
+      throw new HttpsError('permission-denied', 'Only admins can assign roles.');
     }
 
     // ─── Input Validation ───────────────────────────────────────────────
-    const { targetUserId, newRole, organizationId } = data;
+    const { targetUserId, newRole, organizationId } = request.data;
     if (!targetUserId || !newRole || !organizationId) {
-      throw new functions.https.HttpsError('invalid-argument', 'targetUserId, newRole, and organizationId are required.');
+      throw new HttpsError('invalid-argument', 'targetUserId, newRole, and organizationId are required.');
     }
     if (!VALID_ROLES.includes(newRole as KlasivoRole)) {
-      throw new functions.https.HttpsError('invalid-argument', `Invalid role: ${newRole}. Valid roles: ${VALID_ROLES.join(', ')}`);
+      throw new HttpsError('invalid-argument', `Invalid role: ${newRole}. Valid roles: ${VALID_ROLES.join(', ')}`);
     }
 
     // Admin cannot assign super_admin or owner
     if (callerRole === 'admin' && ['super_admin', 'owner'].includes(newRole)) {
-      throw new functions.https.HttpsError('permission-denied', 'Admins cannot assign super_admin or owner roles.');
+      throw new HttpsError('permission-denied', 'Admins cannot assign super_admin or owner roles.');
     }
 
     // Caller must be in the same organization
@@ -68,20 +72,20 @@ export const assignRole = functions
       organizationId,
       callerRole,
     )) {
-      throw new functions.https.HttpsError('permission-denied', 'Cannot assign roles in a different organization.');
+      throw new HttpsError('permission-denied', 'Cannot assign roles in a different organization.');
     }
 
     // ─── Get Target User ────────────────────────────────────────────────
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError('not-found', `User ${targetUserId} not found.`);
+      throw new HttpsError('not-found', `User ${targetUserId} not found.`);
     }
     const oldRole = userDoc.data()?.role || 'unknown';
 
     // ─── Owner Self-Demotion Protection ────────────────────────────────
     if (callerUid === targetUserId && oldRole === 'owner' && newRole !== 'owner') {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'failed-precondition',
         'You cannot remove your own owner role. Assign another owner first.',
       );
@@ -95,7 +99,7 @@ export const assignRole = functions
         .get();
 
       if (ownersSnapshot.size <= 1) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'failed-precondition',
           'Cannot demote the last owner. Assign another owner first.',
         );
@@ -117,10 +121,10 @@ export const assignRole = functions
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
-      performedBy: callerUid,                                            // canonical actor field
-      performedByRole: callerRole,                                       // Phase 1: add
-      performedByOrgId: (callerClaims.organizationId as string) || organizationId,  // Phase 1: add
-      userId: callerUid,                                                 // legacy — remove in Phase 3
+      performedBy: callerUid,
+      performedByRole: callerRole,
+      performedByOrgId: (callerClaims.organizationId as string) || organizationId,
+      userId: callerUid,
       action: 'assign_role',
       targetType: 'user',
       targetId: targetUserId,

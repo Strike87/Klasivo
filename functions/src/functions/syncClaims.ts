@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 import {
@@ -9,7 +9,7 @@ import {
 } from '../utils/rbac';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO RBAC v2.0 — syncClaims
+// KLASIVO RBAC v2.0 — syncClaims (v2 callable)
 //
 // Re-syncs custom claims from the Firestore user doc.
 //
@@ -27,31 +27,35 @@ interface SyncClaimsData {
   targetUserId?: string;
 }
 
-export const syncClaims = functions
-  .runWith({
-    secrets: [],
+export const syncClaims = onCall(
+  {
+    secrets: ['SENTRY_DSN'],
+    enforceAppCheck: true,
+    region: 'us-central1',
+    memory: '256MiB',
     timeoutSeconds: 60,
-    memory: '256MB',
-  })
-  .https.onCall(async (data: SyncClaimsData, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated.');
+    minInstances: 0,
+    concurrency: 80,
+  },
+  async (request: CallableRequest<SyncClaimsData>) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
 
-    const callerUid = context.auth.uid;
-    const callerRole = (context.auth.token.role as string) || '';
-    const targetUserId = data.targetUserId || callerUid;
+    const callerUid = request.auth.uid;
+    const callerRole = (request.auth.token.role as string) || '';
+    const targetUserId = request.data.targetUserId || callerUid;
 
     // Users can sync their own claims; admins can sync anyone in their org
     if (targetUserId !== callerUid &&
         !ROLE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
-      throw new functions.https.HttpsError('permission-denied', 'Can only sync your own claims.');
+      throw new HttpsError('permission-denied', 'Can only sync your own claims.');
     }
 
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError('not-found', `User ${targetUserId} not found.`);
+      throw new HttpsError('not-found', `User ${targetUserId} not found.`);
     }
 
     const userData = userDoc.data()!;
@@ -60,9 +64,9 @@ export const syncClaims = functions
 
     // ─── Org Boundary ───────────────────────────────────────────────────
     if (targetUserId !== callerUid && callerRole !== 'super_admin') {
-      const callerOrgId = (context.auth.token.organizationId as string) || '';
+      const callerOrgId = (request.auth.token.organizationId as string) || '';
       if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'permission-denied',
           'Cannot sync claims for users in a different organization.',
         );
@@ -76,10 +80,10 @@ export const syncClaims = functions
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
-      performedBy: callerUid,                                            // canonical actor field
-      performedByRole: callerRole,                                       // Phase 1: add
-      performedByOrgId: (context.auth.token.organizationId as string) || organizationId,  // Phase 1: add
-      userId: callerUid,                                                 // legacy — remove in Phase 3
+      performedBy: callerUid,
+      performedByRole: callerRole,
+      performedByOrgId: (request.auth.token.organizationId as string) || organizationId,
+      userId: callerUid,
       action: 'sync_claims',
       targetType: 'user',
       targetId: targetUserId,

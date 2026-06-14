@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
@@ -14,33 +14,36 @@ function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
 
-export const changeUserPassword = functions
-  .runWith({
-    secrets: [],
+export const changeUserPassword = onCall(
+  {
+    secrets: ['SENTRY_DSN'],
+    enforceAppCheck: true,
+    region: 'us-central1',
+    memory: '256MiB',
     timeoutSeconds: 60,
-    memory: '256MB',
-  })
-  .https.onCall(async (data: ChangePasswordData, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated.');
+    minInstances: 0,
+    concurrency: 80,
+  },
+  async (request: CallableRequest<ChangePasswordData>) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
 
-    const callerUid = context.auth.uid;
-    const { newPassword, targetUserId } = data;
+    const callerUid = request.auth.uid;
+    const { newPassword, targetUserId } = request.data;
 
     if (!newPassword || newPassword.length < 6) {
-      throw new functions.https.HttpsError('invalid-argument', 'New password must be at least 6 characters.');
+      throw new HttpsError('invalid-argument', 'New password must be at least 6 characters.');
     }
 
     const effectiveTargetId = targetUserId || callerUid;
     const isAdminReset = effectiveTargetId !== callerUid;
 
     // ── Load target user document ──────────────────────────────
-    // Must happen BEFORE role/org checks so we can verify org boundary
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(effectiveTargetId).get();
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError('not-found', `User ${effectiveTargetId} not found.`);
+      throw new HttpsError('not-found', `User ${effectiveTargetId} not found.`);
     }
 
     const userData = userDoc.data()!;
@@ -48,22 +51,22 @@ export const changeUserPassword = functions
 
     // If admin resetting someone else's password, check permissions and org boundary
     if (isAdminReset) {
-      const callerRole = (context.auth.token.role as string) || '';
+      const callerRole = (request.auth.token.role as string) || '';
       if (!PASSWORD_RESET_ROLES.includes(callerRole as any)) {
-        throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions to reset passwords.');
+        throw new HttpsError('permission-denied', 'Insufficient permissions to reset passwords.');
       }
 
       // Org boundary: fail-closed — deny if either org ID is missing
       const targetOrgId = userData.organizationId || '';
-      const callerOrgId = (context.auth.token.organizationId as string) || '';
+      const callerOrgId = (request.auth.token.organizationId as string) || '';
       if (!targetOrgId || !callerOrgId) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'permission-denied',
           'Organization information is required for cross-user password resets.',
         );
       }
       if (!verifyOrgBoundary(callerOrgId, targetOrgId, callerRole)) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'permission-denied',
           'You can only reset passwords for users in your organization.',
         );
@@ -81,7 +84,6 @@ export const changeUserPassword = functions
           await admin.auth().updateUser(effectiveTargetId, { password: newPassword });
         }
       } catch (e) {
-        // Student may not have a Firebase Auth account (bulk import without auth)
         console.warn('Could not update Firebase Auth password for student:', e);
       }
 
@@ -93,14 +95,14 @@ export const changeUserPassword = functions
       });
 
       // Audit log
-      const callerRole = (context.auth.token.role as string) || 'unknown';
-      const callerOrgId = (context.auth.token.organizationId as string) || userData.organizationId || '';
+      const callerRole = (request.auth.token.role as string) || 'unknown';
+      const callerOrgId = (request.auth.token.organizationId as string) || userData.organizationId || '';
       await db.collection('audit_logs').add({
         organizationId: userData.organizationId || '',
-        performedBy: callerUid,                       // canonical actor field
-        performedByRole: callerRole,                  // Phase 1: add
-        performedByOrgId: callerOrgId,                // Phase 1: add
-        userId: callerUid,                            // legacy — remove in Phase 3
+        performedBy: callerUid,
+        performedByRole: callerRole,
+        performedByOrgId: callerOrgId,
+        userId: callerUid,
         action: 'change_password',
         targetType: 'user',
         targetId: effectiveTargetId,
@@ -114,16 +116,12 @@ export const changeUserPassword = functions
     // ─── Email/Password User ────────────────────────────────────────────
     if (authProvider === 'password') {
       if (isAdminReset) {
-        // Admin resetting someone's password
         await admin.auth().updateUser(effectiveTargetId, { password: newPassword });
         await db.collection('users').doc(effectiveTargetId).update({
           mustChangePassword: true,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       } else {
-        // Self-service password change
-        // Verify current password by trying to re-authenticate
-        // (Client should verify current password before calling this)
         await admin.auth().updateUser(effectiveTargetId, { password: newPassword });
         await db.collection('users').doc(effectiveTargetId).update({
           mustChangePassword: false,
@@ -132,14 +130,14 @@ export const changeUserPassword = functions
       }
 
       // Audit log
-      const callerRole = (context.auth.token.role as string) || 'unknown';
-      const callerOrgId = (context.auth.token.organizationId as string) || userData.organizationId || '';
+      const callerRole = (request.auth.token.role as string) || 'unknown';
+      const callerOrgId = (request.auth.token.organizationId as string) || userData.organizationId || '';
       await db.collection('audit_logs').add({
         organizationId: userData.organizationId || '',
-        performedBy: callerUid,                       // canonical actor field
-        performedByRole: callerRole,                  // Phase 1: add
-        performedByOrgId: callerOrgId,                // Phase 1: add
-        userId: callerUid,                            // legacy — remove in Phase 3
+        performedBy: callerUid,
+        performedByRole: callerRole,
+        performedByOrgId: callerOrgId,
+        userId: callerUid,
         action: isAdminReset ? 'reset_password' : 'change_password',
         targetType: 'user',
         targetId: effectiveTargetId,
@@ -151,5 +149,5 @@ export const changeUserPassword = functions
     }
 
     // Google auth users shouldn't have passwords
-    throw new functions.https.HttpsError('failed-precondition', 'Cannot change password for this auth provider.');
+    throw new HttpsError('failed-precondition', 'Cannot change password for this auth provider.');
   });

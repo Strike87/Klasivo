@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 import {
@@ -9,7 +9,7 @@ import {
 } from '../utils/rbac';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO RBAC v2.0 — assignScope
+// KLASIVO RBAC v2.0 — assignScope (v2 callable)
 //
 // Assigns scope (campus/stage/class/subject/academicYear/student IDs)
 // to a user. Updates Firestore user doc AND refreshes custom claims.
@@ -36,41 +36,45 @@ interface AssignScopeData {
   organizationId: string;
 }
 
-export const assignScope = functions
-  .runWith({
-    secrets: [],
+export const assignScope = onCall(
+  {
+    secrets: ['SENTRY_DSN'],
+    enforceAppCheck: true,
+    region: 'us-central1',
+    memory: '256MiB',
     timeoutSeconds: 60,
-    memory: '256MB',
-  })
-  .https.onCall(async (data: AssignScopeData, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated.');
+    minInstances: 0,
+    concurrency: 80,
+  },
+  async (request: CallableRequest<AssignScopeData>) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
 
-    const callerUid = context.auth.uid;
-    const callerClaims = context.auth.token;
+    const callerUid = request.auth.uid;
+    const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
     if (!SCOPE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
-      throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions to assign scope.');
+      throw new HttpsError('permission-denied', 'Insufficient permissions to assign scope.');
     }
 
-    const { targetUserId, scope, organizationId } = data;
+    const { targetUserId, scope, organizationId } = request.data;
     if (!targetUserId || !scope || !organizationId) {
-      throw new functions.https.HttpsError('invalid-argument', 'targetUserId, scope, and organizationId are required.');
+      throw new HttpsError('invalid-argument', 'targetUserId, scope, and organizationId are required.');
     }
 
     // ─── Org Boundary ───────────────────────────────────────────────────
     const callerOrgId = (callerClaims.organizationId as string) || '';
     if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
-      throw new functions.https.HttpsError('permission-denied', 'Cannot assign scope in a different organization.');
+      throw new HttpsError('permission-denied', 'Cannot assign scope in a different organization.');
     }
 
     // ─── Get Target User ────────────────────────────────────────────────
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError('not-found', `User ${targetUserId} not found.`);
+      throw new HttpsError('not-found', `User ${targetUserId} not found.`);
     }
 
     const userData = userDoc.data()!;
@@ -109,10 +113,10 @@ export const assignScope = functions
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
-      performedBy: callerUid,                                            // canonical actor field
-      performedByRole: callerRole,                                       // Phase 1: add
-      performedByOrgId: (callerClaims.organizationId as string) || organizationId,  // Phase 1: add
-      userId: callerUid,                                                 // legacy — remove in Phase 3
+      performedBy: callerUid,
+      performedByRole: callerRole,
+      performedByOrgId: (callerClaims.organizationId as string) || organizationId,
+      userId: callerUid,
       action: 'assign_scope',
       targetType: 'user',
       targetId: targetUserId,

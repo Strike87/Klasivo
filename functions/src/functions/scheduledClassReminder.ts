@@ -20,6 +20,9 @@ export const scheduledClassReminder = onSchedule(
     secrets: ['SENTRY_DSN'],
     region: 'us-central1',
     timeZone: 'UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    minInstances: 0,
   },
   async () => {
     initSentry();

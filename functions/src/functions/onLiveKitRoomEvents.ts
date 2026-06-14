@@ -25,6 +25,8 @@ export const onLiveKitRoomCreated = onDocumentCreated(
     document: 'livekit_rooms/{roomId}',
     secrets: ['SENTRY_DSN'],
     region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 60,
   },
   async (event) => {
     initSentry();
@@ -171,6 +173,8 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
     document: 'livekit_rooms/{roomId}',
     secrets: ['SENTRY_DSN'],
     region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 60,
   },
   async (event) => {
     initSentry();

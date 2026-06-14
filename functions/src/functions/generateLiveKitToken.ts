@@ -51,6 +51,11 @@ export const generateLiveKitToken = onCall(
     secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
     enforceAppCheck: true,
     region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 30,
+    minInstances: 1,      // Keep warm — latency-critical for live class join
+    concurrency: 100,     // High concurrency — v2 supports up to 1000
+    cpu: 1,               // Full CPU for fast JWT signing
   },
   async (request: CallableRequest<LiveKitTokenRequest>): Promise<LiveKitTokenResponse> => {
     initSentry();

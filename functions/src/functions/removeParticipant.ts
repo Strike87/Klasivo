@@ -38,6 +38,10 @@ export const removeParticipant = onCall(
     secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
     enforceAppCheck: true,
     region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 30,
+    minInstances: 0,       // On-demand — not latency-critical
+    concurrency: 80,
   },
   async (request: CallableRequest<RemoveParticipantRequest>) => {
     initSentry();

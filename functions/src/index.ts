@@ -20,13 +20,11 @@
  *     sendSchoolAnnouncement — Queue school announcement email
  *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
  *     removeParticipant      — Kick disruptive student from a live class
- *
- *   RBAC Functions (v1 — callable):
- *     assignRole              — Assign a role to a user (custom claims + Firestore)
- *     assignScope             — Assign scope (campus/stage/class) to a user + refresh claims
- *     syncClaims              — Re-sync custom claims from Firestore user doc
- *     changeUserPassword      — Change/reset user password (email or student_code)
- *     setPermissionOverrides  — Set/clear permission overrides for a user
+ *     assignRole             — Assign a role to a user (custom claims + Firestore)
+ *     assignScope            — Assign scope (campus/stage/class) to a user + refresh claims
+ *     syncClaims             — Re-sync custom claims from Firestore user doc
+ *     changeUserPassword     — Change/reset user password (email or student_code)
+ *     setPermissionOverrides — Set/clear permission overrides for a user
  *
  *   Firestore Triggers (v2):
  *     emailWorker            — Process emailQueue documents (send + retry)
@@ -38,7 +36,7 @@
  *
  *   Note: Auth triggers use firebase-functions/v1 because v2 only
  *   provides blocking functions (beforeUserCreated), not after-event
- *   triggers.
+ *   triggers. All callable functions have been migrated to v2.
  */
 
 import * as admin from 'firebase-admin';
@@ -49,7 +47,7 @@ admin.initializeApp();
 // ─── API Gateway (v2 onRequest — serves api.klasivo.app) ─────
 export { api } from './api';
 
-// ─── Auth Triggers (v1) ──────────────────────────────────────
+// ─── Auth Triggers (v1 — no v2 after-event API exists) ────────
 export { onUserCreated } from './functions/onUserCreated';
 export { onUserDeleted } from './functions/onUserDeleted';
 
@@ -60,7 +58,7 @@ export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
 export { generateLiveKitToken } from './functions/generateLiveKitToken';
 export { removeParticipant } from './functions/removeParticipant';
 
-// ─── RBAC Functions (v1 — callable) ───────────────────────────
+// ─── RBAC Functions (v2 — migrated from v1) ───────────────────
 export { assignRole } from './functions/assignRole';
 export { assignScope } from './functions/assignScope';
 export { syncClaims } from './functions/syncClaims';

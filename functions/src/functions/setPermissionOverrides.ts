@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 import {
@@ -9,7 +9,7 @@ import {
 } from '../utils/rbac';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO RBAC v2.0 — setPermissionOverrides
+// KLASIVO RBAC v2.0 — setPermissionOverrides (v2 callable)
 //
 // Sets or clears permission overrides for a user.
 //
@@ -43,34 +43,38 @@ function isValidPermissionKey(key: string): boolean {
   return PERMISSION_RE.test(key);
 }
 
-export const setPermissionOverrides = functions
-  .runWith({
-    secrets: [],
+export const setPermissionOverrides = onCall(
+  {
+    secrets: ['SENTRY_DSN'],
+    enforceAppCheck: true,
+    region: 'us-central1',
+    memory: '256MiB',
     timeoutSeconds: 60,
-    memory: '256MB',
-  })
-  .https.onCall(async (data: SetPermissionOverridesData, context) => {
+    minInstances: 0,
+    concurrency: 80,
+  },
+  async (request: CallableRequest<SetPermissionOverridesData>) => {
     // ─── Auth Check ─────────────────────────────────────────────────────
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated.');
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated.');
     }
 
-    const callerUid = context.auth.uid;
-    const callerClaims = context.auth.token;
+    const callerUid = request.auth.uid;
+    const callerClaims = request.auth.token;
     const callerRole = (callerClaims.role as string) || '';
 
     if (!OVERRIDE_ASSIGNMENT_ROLES.includes(callerRole as KlasivoRole)) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'permission-denied',
         'Only super_admin, owner, or admin can set permission overrides.',
       );
     }
 
     // ─── Input Validation ───────────────────────────────────────────────
-    const { targetUserId, organizationId, overrides, replace = false } = data;
+    const { targetUserId, organizationId, overrides, replace = false } = request.data;
 
     if (!targetUserId || !organizationId || overrides === undefined) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'targetUserId, organizationId, and overrides are required.',
       );
@@ -80,13 +84,13 @@ export const setPermissionOverrides = functions
     const overrideEntries = Object.entries(overrides);
     for (const [key, value] of overrideEntries) {
       if (typeof value !== 'boolean') {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'invalid-argument',
           `Override value for "${key}" must be a boolean, got ${typeof value}.`,
         );
       }
       if (!isValidPermissionKey(key)) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'invalid-argument',
           `Invalid permission key: "${key}". Must match "category:action" pattern or be "*".`,
         );
@@ -96,7 +100,7 @@ export const setPermissionOverrides = functions
     // ─── Org Boundary ───────────────────────────────────────────────────
     const callerOrgId = (callerClaims.organizationId as string) || '';
     if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'permission-denied',
         'Cannot set overrides for users in a different organization.',
       );
@@ -106,7 +110,7 @@ export const setPermissionOverrides = functions
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(targetUserId).get();
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError('not-found', `User ${targetUserId} not found.`);
+      throw new HttpsError('not-found', `User ${targetUserId} not found.`);
     }
 
     const userData = userDoc.data()!;
@@ -114,7 +118,7 @@ export const setPermissionOverrides = functions
 
     // Admin cannot set overrides for super_admin or owner
     if (callerRole === 'admin' && ['super_admin', 'owner'].includes(targetRole)) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'permission-denied',
         'Admins cannot set permission overrides for super_admin or owner.',
       );
@@ -124,17 +128,10 @@ export const setPermissionOverrides = functions
     let finalOverrides: Record<string, boolean>;
 
     if (replace) {
-      // Full replacement
       finalOverrides = { ...overrides };
     } else {
-      // Merge with existing overrides
       const existingOverrides = (userData.permissionOverrides || {}) as Record<string, boolean>;
       finalOverrides = { ...existingOverrides, ...overrides };
-
-      // Remove entries where value is null (treat as deletion signal)
-      // Note: caller should send explicit null to delete, but our type only
-      // allows boolean. For deletion, the caller should use replace mode
-      // with the desired set.
     }
 
     // ─── Update Firestore ───────────────────────────────────────────────
@@ -147,10 +144,10 @@ export const setPermissionOverrides = functions
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,
-      performedBy: callerUid,                                            // canonical actor field
-      performedByRole: callerRole,                                       // Phase 1: add
-      performedByOrgId: (callerClaims.organizationId as string) || organizationId,  // Phase 1: add
-      userId: callerUid,                                                 // legacy — remove in Phase 3
+      performedBy: callerUid,
+      performedByRole: callerRole,
+      performedByOrgId: (callerClaims.organizationId as string) || organizationId,
+      userId: callerUid,
       action: 'set_permission_overrides',
       targetType: 'user',
       targetId: targetUserId,

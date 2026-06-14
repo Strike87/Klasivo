@@ -1134,6 +1134,11 @@ export const api = onRequest(
     secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
     region: 'us-central1',
     cors: true,
+    memory: '512MiB',
+    timeoutSeconds: 60,
+    minInstances: 1,      // Keep warm — API gateway is latency-critical
+    concurrency: 80,      // Handle multiple requests per instance
+    cpu: 1,               // Full CPU for Express middleware chain
   },
   app,
 );
