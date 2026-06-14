@@ -302,8 +302,9 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
                 const SizedBox(height: KlasivoSpacing.xxl),
 
                 // ── Register Link ──
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       "Don't have an account? ",
