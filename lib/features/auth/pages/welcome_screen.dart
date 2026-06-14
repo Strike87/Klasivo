@@ -156,8 +156,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   'Suggestions',
                   style: KlasivoTypography.labelMedium.copyWith(
                     color: isDark
-                        ? KlasivoColors.darkTextTertiary
-                        : KlasivoColors.lightTextTertiary,
+                        ? KlasivoColors.darkTextSecondary
+                        : KlasivoColors.lightTextSecondary,
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.sm),
@@ -168,8 +168,15 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     return ActionChip(
                       label: Text(
                         suggestion,
-                        style: KlasivoTypography.bodySmall,
+                        style: KlasivoTypography.bodySmall.copyWith(
+                          color: isDark
+                              ? KlasivoColors.darkTextPrimary
+                              : KlasivoColors.primary,
+                        ),
                       ),
+                      backgroundColor: isDark
+                          ? KlasivoColors.darkSurface
+                          : KlasivoColors.primarySurface,
                       onPressed: () {
                         _nameController.text = suggestion;
                       },
@@ -178,7 +185,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                         side: BorderSide(
                           color: isDark
                               ? KlasivoColors.darkBorder
-                              : KlasivoColors.lightBorder,
+                              : KlasivoColors.primary.withValues(alpha: 0.3),
                         ),
                       ),
                     );
