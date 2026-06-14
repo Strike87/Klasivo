@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -48,21 +48,23 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       );
 
       await saveTeacherAuthData(
-        role: KlasivoRole.owner,
+        role: AppConstants.roleOwner,
         name: result['fullName'],
         userId: result['id'],
         email: result['email'],
         organizationId: result['organizationId'],
         hasCompletedSetup: false,
         authProvider: 'password',
+        ref: ref,
       );
 
       if (mounted) {
         context.go('/welcome');
       }
-    } catch (e) {
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner registration (email) failed');
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -77,13 +79,14 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       final result = await authService.registerOwnerWithGoogle();
 
       await saveTeacherAuthData(
-        role: result['role'] ?? KlasivoRole.owner,
+        role: result['role'] ?? AppConstants.roleOwner,
         name: result['fullName'] ?? 'User',
         userId: result['id'],
         email: result['email'] ?? '',
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? false,
         authProvider: 'google',
+        ref: ref,
       );
 
       if (mounted) {
@@ -94,9 +97,10 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
           context.go('/dashboard');
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner registration (Google) failed');
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -299,10 +303,15 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
                             : KlasivoColors.lightTextTertiary,
                       ),
                     ),
-                    KlasivoButton(
-                      label: 'Sign in',
-                      variant: KlasivoButtonVariant.tertiary,
-                      onPressed: () => context.go('/auth/teacher-login'),
+                    GestureDetector(
+                      onTap: () => context.go('/auth/teacher-login'),
+                      child: Text(
+                        'Sign in',
+                        style: KlasivoTypography.labelMedium.copyWith(
+                          color: KlasivoColors.primary,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
                     ),
                   ],
                 ),

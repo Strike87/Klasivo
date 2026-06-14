@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/academic_year_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
-import '../../../core/rbac/roles.dart';
+import '../../../core/config/app_constants.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
@@ -25,7 +25,7 @@ class AcademicYearListScreen extends ConsumerWidget {
         title: const Text('Academic Years'),
       ),
       floatingActionButton: KlasivoRoleGate(
-        allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
+        allowedRoles: [AppConstants.roleOwner],
         child: FloatingActionButton(
           onPressed: () {
             Navigator.of(context).push(
@@ -48,7 +48,7 @@ class AcademicYearListScreen extends ConsumerWidget {
                   Text('Create your first academic year to get started',
                       style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
                   KlasivoRoleGate(
-                    allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
+                    allowedRoles: [AppConstants.roleOwner],
                     child: Column(
                       children: [
                         const SizedBox(height: 24),
@@ -152,7 +152,7 @@ class _YearCard extends ConsumerWidget {
           ),
           if (!year.isArchived)
             KlasivoRoleGate(
-              allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
+              allowedRoles: [AppConstants.roleOwner],
               child: Column(
                 children: [
                   const SizedBox(height: 12),

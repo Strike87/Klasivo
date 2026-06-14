@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
-import '../rbac/roles.dart';
 
 class OrganizationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -33,6 +32,7 @@ class OrganizationService {
         'website': website,
         'isActive': true,
         'isPortalEnabled': false, // Portal disabled by default
+        'staffApprovalPolicy': AppConstants.staffPolicyManual, // Default: manual review
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -54,6 +54,7 @@ class OrganizationService {
     String? contactEmail,
     String? contactPhone,
     String? website,
+    String? staffApprovalPolicy,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -67,6 +68,9 @@ class OrganizationService {
       if (contactEmail != null) data['contactEmail'] = contactEmail;
       if (contactPhone != null) data['contactPhone'] = contactPhone;
       if (website != null) data['website'] = website;
+      if (staffApprovalPolicy != null) {
+        data['staffApprovalPolicy'] = staffApprovalPolicy;
+      }
 
       // If slug is being updated, validate uniqueness
       if (slug != null) {
@@ -137,7 +141,7 @@ class OrganizationService {
     return _firestore
         .collection(AppConstants.usersCollection)
         .where('organizationId', isEqualTo: organizationId)
-        .where('role', isEqualTo: KlasivoRole.teacher)
+        .where('role', isEqualTo: AppConstants.roleTeacher)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }

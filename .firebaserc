@@ -1,14 +1,5 @@
 {
   "projects": {
     "default": "klasivo-prod"
-  },
-  "targets": {
-    "klasivo-prod": {
-      "hosting": {
-        "api": [
-          "api-klasivo-app"
-        ]
-      }
-    }
   }
 }

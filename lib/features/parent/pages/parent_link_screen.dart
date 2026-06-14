@@ -129,7 +129,7 @@ class _ParentLinkScreenState extends ConsumerState<ParentLinkScreen> {
       if (mounted) {
         KlasivoToast.error(
           context,
-          message: formatAuthError(e),
+          message: e.toString().replaceAll('Exception: ', ''),
         );
       }
     } finally {

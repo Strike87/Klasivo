@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/theme.dart';
-import '../../../core/rbac/rbac.dart';
 import '../../../core/services/feature_flag_service.dart';
 import '../../../providers/feature_flag_provider.dart';
-import '../../../providers/rbac_provider.dart';
+import '../../../providers/permission_provider.dart';
 import '../../../widgets/klasivo_modal.dart';
-import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';
 
@@ -24,24 +22,7 @@ class FeatureFlagsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return KlasivoRoleGate(
-      allowedRoles: [KlasivoRole.superAdmin, KlasivoRole.owner, KlasivoRole.admin],
-      fallback: Scaffold(
-        appBar: AppBar(title: const Text('Feature Flags')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text('Access Denied', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey)),
-              const SizedBox(height: 8),
-              Text('Only admins can manage feature flags', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
-            ],
-          ),
-        ),
-      ),
-      child: Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: const Text('Feature Flags'),
       ),
@@ -108,7 +89,6 @@ class FeatureFlagsScreen extends ConsumerWidget {
           ],
         ),
       ),
-    ),
     );
   }
 

@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
 import '../../../core/config/theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -46,15 +45,15 @@ class _SplashScreenState extends State<SplashScreen>
     final box = Hive.box(AppConstants.authBox);
     final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
     final userRole = box.get('userRole', defaultValue: '') as String;
-    final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
+    final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: false) as bool;
 
     if (isLoggedIn && userRole.isNotEmpty) {
       // Owner hasn't named their workspace yet → Welcome screen
-      if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
+      if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
         context.go('/welcome');
-      } else if (userRole == KlasivoRole.teacher || userRole == KlasivoRole.owner) {
+      } else if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
         context.go('/dashboard');
-      } else if (userRole == KlasivoRole.student) {
+      } else if (userRole == AppConstants.roleStudent) {
         context.go('/student');
       } else {
         context.go('/auth');
@@ -90,15 +89,30 @@ class _SplashScreenState extends State<SplashScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(KlasivoSpacing.xxl),
+                width: 120,
+                height: 120,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(KlasivoRadius.xl),
-                ),
-                child: const Icon(
-                  Icons.school_outlined,
-                  size: 72,
                   color: Colors.white,
+                  borderRadius: BorderRadius.circular(KlasivoRadius.xl),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(KlasivoRadius.xl),
+                  child: Image.asset(
+                    'assets/icon/app_icon_foreground.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.school_outlined,
+                      size: 64,
+                      color: KlasivoColors.primary,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: KlasivoSpacing.xxl),
@@ -114,7 +128,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: KlasivoSpacing.sm),
               const Text(
-                'Professional Exam Management',
+                'Smart School Management',
                 style: TextStyle(
                   fontFamily: KlasivoTypography.fontFamily,
                   fontSize: 15,

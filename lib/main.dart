@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,16 +7,9 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'core/services/firebase_analytics_service.dart';
 
 import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
-import 'core/config/theme_provider.dart';
-// RTL helper removed — app is LTR/English-only
-import 'core/tokens/app_typography.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
@@ -26,11 +18,9 @@ import 'features/auth/pages/student_login_screen.dart';
 import 'features/auth/pages/welcome_screen.dart';
 import 'features/auth/pages/forgot_password_screen.dart';
 import 'features/auth/pages/owner_register_screen.dart';
-import 'features/auth/pages/change_password_screen.dart';
 import 'features/shell/teacher_shell.dart';
 import 'features/shell/student_shell.dart';
 import 'features/shell/parent_shell.dart';
-import 'features/shell/owner_shell.dart';
 import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
@@ -45,8 +35,7 @@ import 'features/exams/pages/question_builder_screen.dart';
 import 'features/exams/pages/exam_detail_screen.dart';
 import 'features/student_exams/pages/student_exam_list_screen.dart';
 import 'features/student_exams/pages/exam_taking_screen.dart';
-import 'features/student_results/pages/student_results_screen.dart' hide StudentResultDetailScreen;
-import 'features/student/pages/student_result_detail_screen.dart';
+import 'features/student_results/pages/student_results_screen.dart';
 import 'features/teacher_results/pages/exam_results_screen.dart';
 import 'features/stages/pages/stage_list_screen.dart';
 import 'features/groups/pages/group_list_screen.dart';
@@ -64,7 +53,6 @@ import 'features/settings/pages/organization_settings_screen.dart';
 import 'features/settings/pages/profile_settings_screen.dart';
 import 'features/settings/pages/student_settings_screen.dart';
 import 'features/settings/pages/feature_flags_screen.dart';
-import 'features/settings/pages/language_screen.dart';
 import 'features/exam_instances/pages/exam_instances_screen.dart';
 // ─── v1.7 Imports ─────────────────────────────────────────────────────────────
 import 'features/assignments/pages/assignment_list_screen.dart';
@@ -79,18 +67,17 @@ import 'features/parent/pages/parent_dashboard.dart';
 import 'features/parent/pages/parent_assignments_screen.dart';
 import 'features/parent/pages/parent_progress_screen.dart';
 import 'features/parent/pages/parent_announcements_screen.dart';
-import 'features/parent/pages/parent_results_screen.dart';
-import 'features/parent/pages/parent_attendance_screen.dart';
 import 'features/moderation/pages/moderation_queue_screen.dart';
 import 'features/progress/pages/progress_tracking_screen.dart';
 // ─── v1.7 LMS Imports ─────────────────────────────────────────────────────────
 import 'features/lms/pages/subject_content_screen.dart';
 import 'features/lms/pages/lesson_detail_screen.dart';
 import 'features/lms/pages/material_viewer_screen.dart';
-
 // ─── v1.8 Messaging Imports ────────────────────────────────────────────────────
 import 'features/messaging/pages/conversation_list_screen.dart';
 import 'features/messaging/pages/chat_screen.dart';
+// ─── v1.9 Contact Us Import ────────────────────────────────────────────────────
+import 'features/contact/pages/contact_us_screen.dart';
 
 // ─── v1.6 Feature-Complete Imports ────────────────────────────────────────────
 import 'features/announcements/pages/announcement_list_screen.dart';
@@ -101,62 +88,44 @@ import 'features/calendar/pages/calendar_event_form_screen.dart';
 import 'features/academic_years/pages/academic_year_list_screen.dart';
 import 'features/academic_years/pages/academic_year_form_screen.dart';
 import 'features/audit_log/pages/audit_log_screen.dart';
-// ─── Sprint 3B: User Management Imports ────────────────────────────────────────
-import 'features/user_management/pages/people_hub_screen.dart';
-import 'features/user_management/pages/user_detail_screen.dart';
-import 'features/user_management/pages/role_matrix_screen.dart';
 import 'providers/class_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/exam_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/feature_flag_provider.dart';
 import 'providers/event_bus_provider.dart';
-import 'providers/rbac_provider.dart';
-import 'core/rbac/roles.dart';
-import 'core/rbac/permissions.dart';
+import 'providers/permission_provider.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/feature_flag_service.dart';
+import 'core/services/permission_service.dart';
 import 'core/services/event_bus.dart';
-import 'core/services/image_cache_service.dart';
-import 'core/services/offline_manager.dart';
-import 'core/services/connectivity_service.dart';
-import 'core/services/performance_trace_service.dart';
-
-import 'widgets/offline_banner.dart';
 import 'firebase_options.dart';
-import 'core/config/app_environment.dart';
-import 'core/config/firebase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ─── Print current environment ──────────────────────────────────
-  debugPrint('[Klasivo] Environment: ${EnvironmentConfig.current}');
-
-  // ─── Initialize Firebase with environment-aware config ────────────────
+  // ─── Initialize Firebase with error handling ────────────────────────
   try {
     await Firebase.initializeApp(
-      options: FirebaseConfig.getOptions(EnvironmentConfig.current.environment),
+      options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Configure environment-specific Firebase settings
-    FirebaseConfig.configureFirestore();
-    FirebaseConfig.configureAuth();
-    await FirebaseConfig.configureCrashlytics();
-
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    FlutterError.onError = (details) {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      // Also report to Sentry for cross-platform visibility
+      Sentry.captureException(details.exception, stackTrace: details.stack);
+    };
 
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      // Also report to Sentry for cross-platform visibility
+      Sentry.captureException(error, stackTrace: stack);
       return true;
     };
 
-    // ─── Initialize Firebase App Check ─────────────────────────────
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.playIntegrity,
-      appleProvider: AppleProvider.deviceCheck,
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+      !kDebugMode,
     );
-    debugPrint('[main] Firebase App Check activated');
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }
@@ -172,83 +141,13 @@ Future<void> main() async {
     debugPrint('Image cache initialization failed: $e');
   }
 
-  // ─── Initialize Image Cache Service ───────────────────────────────
-  try {
-    await ImageCacheService.instance.init();
-  } catch (e) {
-    debugPrint('Image cache initialization failed: $e');
-  }
-
   try {
     await NotificationService.initialize();
   } catch (e) {
     debugPrint('Notification initialization failed: $e');
   }
 
-  // ─── Initialize Performance Monitoring ────────────────────────────────
-  try {
-    await PerformanceTraceService.instance.initialize();
-    debugPrint('[Klasivo] Performance monitoring initialized');
-  } catch (e) {
-    debugPrint('Performance monitoring initialization failed: $e');
-  }
-
-  // ─── Initialize Offline Mode ─────────────────────────────────────────
-  try {
-    await OfflineManager.instance.enableOfflineMode();
-    await ConnectivityService.instance.startMonitoring();
-    debugPrint('[Klasivo] Offline mode initialized');
-  } catch (e) {
-    debugPrint('Offline mode initialization failed: $e');
-  }
-
-  // ─── Initialize Sentry ─────────────────────────────────────────────
-  await SentryFlutter.init(
-    (options) {
-      options.dsn = 'https://c523c263a4f3fee05ea0fce5b477d606@o4511553244692480.ingest.us.sentry.io/4511553494319105';
-      options.tracesSampleRate = 1.0;
-      options.profilesSampleRate = 1.0;
-      options.release = 'klasivo@2.0.0';
-    },
-    appRunner: () => runApp(const ProviderScope(child: MyApp())),
-  );
-
-  // ─── Identify users in Sentry + Analytics after auth state changes ────
-  FirebaseAuth.instance.authStateChanges().listen((user) {
-    if (user != null) {
-      Sentry.configureScope((scope) {
-        scope.setUser(SentryUser(
-          id: user.uid,
-          email: user.email,
-        ));
-      });
-
-      // ─── Set Firebase Analytics user properties ────────────────
-      try {
-        FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get()
-            .then((userDoc) {
-          if (userDoc.exists) {
-            final data = userDoc.data()!;
-            FirebaseAnalyticsService.setUserProperties(
-              uid: user.uid,
-              role: data['role'] as String? ?? 'unknown',
-              organizationId: data['organizationId'] as String?,
-            );
-          }
-        });
-      } catch (_) {
-        // Non-critical — don't block app startup
-      }
-    } else {
-      Sentry.configureScope((scope) {
-        scope.setUser(null);
-      });
-      FirebaseAnalyticsService.clearUserProperties();
-    }
-  });
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -273,25 +172,14 @@ class _MyAppState extends ConsumerState<MyApp> {
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
       final orgId = box.get('organizationId') as String?;
 
-      // Register notification deep-link handler
-      NotificationService.onNotificationTap = (data) {
-        _handleNotificationNavigation(data);
-      };
-
       if (isLoggedIn && orgId != null) {
         // Load feature flags for the organization
         final flagService = ref.read(featureFlagServiceProvider);
         await flagService.loadFlags(orgId);
 
-        // Initialize RBAC from Firebase Auth + Firestore
-        // Replaces old permissionServiceProvider.loadPermissions()
-        // Loads claims, scope, overrides, and starts roleVersion listener
-        try {
-          await ref.read(rbacInitProvider.future);
-          debugPrint('[MyApp] RBAC initialized from Firestore');
-        } catch (e) {
-          debugPrint('[MyApp] RBAC initialization failed — scope will be denied: $e');
-        }
+        // Load custom permissions for the organization
+        final permService = ref.read(permissionServiceProvider);
+        await permService.loadPermissions(orgId);
 
         debugPrint('[MyApp] Enterprise services initialized for org: $orgId');
       }
@@ -304,51 +192,9 @@ class _MyAppState extends ConsumerState<MyApp> {
     }
   }
 
-  /// Handle notification tap navigation using GoRouter.
-  void _handleNotificationNavigation(Map<String, dynamic> data) {
-    final router = ref.read(routerProvider);
-    final relatedType = data['relatedType'] as String? ?? '';
-    final relatedId = data['relatedId'] as String? ?? '';
-
-    switch (relatedType) {
-      case 'conversation':
-        if (relatedId.isNotEmpty) {
-          router.go('/inbox/messages/$relatedId');
-        } else {
-          router.go('/inbox/messages');
-        }
-        break;
-      case 'exam':
-        if (relatedId.isNotEmpty) {
-          router.go('/teacher/exams/$relatedId');
-        }
-        break;
-      case 'assignment':
-        if (relatedId.isNotEmpty) {
-          router.go('/teacher/assignments/$relatedId');
-        }
-        break;
-      case 'attendance':
-        router.go('/teacher/attendance');
-        break;
-      case 'announcement':
-        if (relatedId.isNotEmpty) {
-          router.go('/inbox/announcements/$relatedId');
-        } else {
-          router.go('/inbox/announcements');
-        }
-        break;
-      default:
-        router.go('/inbox');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
-
-    // Force English locale — Klasivo is English-only (no RTL)
-    const forcedLocale = Locale('en', 'US');
 
     // Show splash while enterprise services are loading
     if (!_initialized) {
@@ -356,14 +202,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        themeMode: ref.watch(themeModeProvider),
-        locale: forcedLocale,
-        supportedLocales: const [forcedLocale],
-        localizationsDelegates: const [
-          ...GlobalMaterialLocalizations.delegates,
-          ...GlobalCupertinoLocalizations.delegates,
-          GlobalWidgetsLocalizations.delegate,
-        ],
+        themeMode: ThemeMode.system,
         home: Scaffold(
           body: Center(
             child: Column(
@@ -389,26 +228,13 @@ class _MyAppState extends ConsumerState<MyApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ref.watch(themeModeProvider),
-      locale: forcedLocale,
-      supportedLocales: const [forcedLocale],
-      localizationsDelegates: const [
-        ...GlobalMaterialLocalizations.delegates,
-        ...GlobalCupertinoLocalizations.delegates,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      builder: (context, child) {
-        // Force LTR direction regardless of device locale
-        return Directionality(
-          textDirection: TextDirection.ltr,
-          child: OfflineBanner(child: child!),
-        );
-      },
+      themeMode: ThemeMode.system,
       routerConfig: router,
     );
   }
-
 }
+
+// ─── Auth Change Notifier for GoRouter refresh ──────────────────────────────
 
 class AuthChangeNotifier extends ChangeNotifier {
   StreamSubscription<User?>? _firebaseSub;
@@ -451,13 +277,12 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     debugLogDiagnostics: true,
-    observers: [FirebaseAnalyticsService.observer],
     refreshListenable: notifier,
     redirect: (context, state) {
       final box = Hive.box(AppConstants.authBox);
       final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
       final userRole = box.get('userRole', defaultValue: '') as String;
-      final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: true) as bool;
+      final hasCompletedSetup = box.get('hasCompletedSetup', defaultValue: false) as bool;
       final mustChangePassword = box.get('mustChangePassword', defaultValue: false) as bool;
       final isOnChangePassword = state.matchedLocation == '/change-password';
 
@@ -495,14 +320,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Splash → redirect based on auth state
       if (isOnSplash) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
+          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (KlasivoRole.managementRoles.contains(userRole)) {
+          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
             return '/dashboard';
           }
-          if (userRole == KlasivoRole.student) return '/student';
-          if (userRole == KlasivoRole.parent) return '/parent';
+          if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return '/auth';
       }
@@ -510,7 +335,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Welcome screen — only accessible to logged-in owners who haven't completed setup
       if (isOnWelcome) {
         if (!isLoggedIn) return '/auth';
-        if (userRole != KlasivoRole.owner) return '/dashboard';
+        if (userRole != AppConstants.roleOwner) return '/dashboard';
         if (hasCompletedSetup) return '/dashboard';
         return null;
       }
@@ -518,14 +343,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Auth screens → redirect if already logged in
       if (isOnAuth) {
         if (isLoggedIn && userRole.isNotEmpty) {
-          if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
+          if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (KlasivoRole.managementRoles.contains(userRole)) {
+          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
             return '/dashboard';
           }
-          if (userRole == KlasivoRole.student) return '/student';
-          if (userRole == KlasivoRole.parent) return '/parent';
+          if (userRole == AppConstants.roleStudent) return '/student';
+          if (userRole == AppConstants.roleParent) return '/parent';
         }
         return null;
       }
@@ -535,7 +360,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!isLoggedIn) return '/auth';
         if (userRole.isEmpty) return '/auth';
 
-        if (userRole == KlasivoRole.owner && !hasCompletedSetup) {
+        if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
           return '/welcome';
         }
 
@@ -553,49 +378,27 @@ final routerProvider = Provider<GoRouter>((ref) {
             state.matchedLocation.startsWith('/auth/parent')) {
           final flagService = ref.read(featureFlagServiceProvider);
           if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
-            if (userRole == KlasivoRole.parent) return '/auth';
+            if (userRole == AppConstants.roleParent) return '/auth';
             return '/dashboard';
           }
         }
 
-        // ─── Permission-Based Route Guards ───────────────────────────────
-        // Sensitive routes require specific permissions beyond just role.
-        final rbacService = ref.read(rbacPermissionServiceProvider);
-        final location = state.matchedLocation;
+        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
+            isOnDashboard) {
+          return null;
+        }
+        if (userRole == AppConstants.roleStudent && isOnStudent) {
+          return null;
+        }
+        if (userRole == AppConstants.roleParent && isOnParent) {
+          return null;
+        }
 
-        // Audit log — org:audit required
-        if (location.startsWith('/audit') && !rbacService.can(Permission.orgAudit)) {
+        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
           return '/dashboard';
         }
-
-        // Organization settings — org:settings required
-        if (location == '/settings/organization' && !rbacService.can(Permission.orgSettings)) {
-          return '/settings';
-        }
-
-        // Feature flags — owner+admin only (no specific permission yet)
-        if (location == '/settings/feature-flags' &&
-            ![KlasivoRole.superAdmin, KlasivoRole.owner, KlasivoRole.admin].contains(userRole)) {
-          return '/settings';
-        }
-
-        // All management roles can access dashboard
-        if (KlasivoRole.managementRoles.contains(userRole) && isOnDashboard) {
-          return null;
-        }
-        if (userRole == KlasivoRole.student && isOnStudent) {
-          return null;
-        }
-        if (userRole == KlasivoRole.parent && isOnParent) {
-          return null;
-        }
-
-        // Redirect to correct area based on role
-        if (KlasivoRole.managementRoles.contains(userRole)) {
-          return '/dashboard';
-        }
-        if (userRole == KlasivoRole.student) return '/student';
-        if (userRole == KlasivoRole.parent) return '/parent';
+        if (userRole == AppConstants.roleStudent) return '/student';
+        if (userRole == AppConstants.roleParent) return '/parent';
       }
 
       return null;
@@ -649,10 +452,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const WelcomeScreen(),
       ),
 
-      // ─── Change Password (forced or voluntary) ────────────────────────
+      // ─── Contact Us (public — no auth required) ─────────────────────
       GoRoute(
-        path: '/change-password',
-        builder: (context, state) => const ChangePasswordScreen(isForced: true),
+        path: '/contact',
+        builder: (context, state) => const ContactUsScreen(),
       ),
 
       // ─── Parent Link Screen ──────────────────────────────────────────
@@ -661,19 +464,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ParentLinkScreen(),
       ),
 
-      // ─── Owner Shell Navigation (role-aware wrapper) ────────────────
+      // ─── Teacher/Owner Shell Navigation ──────────────────────────────
       ShellRoute(
-        builder: (context, state, child) {
-          final box = Hive.box(AppConstants.authBox);
-          final userRole = box.get('userRole', defaultValue: '') as String;
-          // Admin-level roles (owner, admin, super_admin) get the themed
-          // OwnerShell with admin-specific navigation items. All other
-          // management roles get TeacherShell.
-          if ([KlasivoRole.owner, KlasivoRole.admin, KlasivoRole.superAdmin].contains(userRole)) {
-            return OwnerShell(child: child);
-          }
-          return TeacherShell(child: child);
-        },
+        builder: (context, state, child) => TeacherShell(child: child),
         routes: [
           // Dashboard
           GoRoute(
@@ -709,23 +502,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // People Hub (Sprint 3B — replaces flat AllStudentsScreen)
+          // People
           GoRoute(
             path: '/people',
-            builder: (context, state) => const PeopleHubScreen(),
-            routes: [
-              GoRoute(
-                path: 'users/:userId',
-                builder: (context, state) {
-                  final userId = state.pathParameters['userId']!;
-                  return UserDetailScreen(userId: userId);
-                },
-              ),
-              GoRoute(
-                path: 'roles',
-                builder: (context, state) => const RoleMatrixScreen(),
-              ),
-            ],
+            builder: (context, state) => const AllStudentsScreen(),
           ),
 
           // Inbox (Messages + Notifications + Announcements)
@@ -792,10 +572,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'feature-flags',
                 builder: (context, state) => const FeatureFlagsScreen(),
               ),
-              GoRoute(
-                path: 'language',
-                builder: (context, state) => const LanguageScreen(),
-              ),
             ],
           ),
         ],
@@ -819,7 +595,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/lms/lessons/:lessonId',
         builder: (context, state) {
           final lessonId = state.pathParameters['lessonId']!;
-          final subjectId = state.uri.queryParameters['subjectId'] ?? '';
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final subjectId = extra['subjectId'] as String? ?? '';
           return LessonDetailScreen(
             lessonId: lessonId,
             subjectId: subjectId,
@@ -830,7 +607,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/lms/materials/:materialId',
         builder: (context, state) {
           final materialId = state.pathParameters['materialId']!;
-          final subjectId = state.uri.queryParameters['subjectId'];
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final subjectId = extra['subjectId'] as String?;
           return MaterialViewerScreen(
             materialId: materialId,
             subjectId: subjectId,
@@ -946,6 +724,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) {
                       final examId = state.pathParameters['examId']!;
                       return ExamResultsScreen(examId: examId);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'instances',
+                    builder: (context, state) {
+                      final examId = state.pathParameters['examId']!;
+                      return ExamInstancesScreen(examId: examId);
                     },
                   ),
                 ],

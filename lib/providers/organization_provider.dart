@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/organization_service.dart';
+import '../features/staff_approval/domain/staff_approval_policy.dart';
 import 'auth_provider.dart';
 
 // ─── Service Provider ────────────────────────────────────────────────────────
@@ -69,6 +70,12 @@ class OrganizationData {
   final String? website;
   final bool isActive;
   final bool isPortalEnabled;
+
+  /// Staff approval policy for this organization.
+  /// Controls how staff members join: manual review, invite-only, or auto-approve.
+  /// Defaults to [StaffApprovalPolicy.manual] if missing in Firestore.
+  final StaffApprovalPolicy staffApprovalPolicy;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -84,9 +91,14 @@ class OrganizationData {
     this.website,
     this.isActive = true,
     this.isPortalEnabled = false,
+    this.staffApprovalPolicy = StaffApprovalPolicy.manual,
     this.createdAt,
     this.updatedAt,
   });
+
+  /// Whether this organization allows self-registration by staff.
+  bool get allowsStaffSelfRegistration =>
+      staffApprovalPolicy.allowsSelfRegistration;
 
   /// Get the public portal URL for this organization.
   String get portalUrl => slug != null
@@ -107,6 +119,9 @@ class OrganizationData {
       website: data['website'],
       isActive: data['isActive'] ?? true,
       isPortalEnabled: data['isPortalEnabled'] ?? false,
+      // Defensive: missing field defaults to manual
+      staffApprovalPolicy: StaffApprovalPolicy.fromId(
+          data['staffApprovalPolicy'] as String?),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -125,6 +140,9 @@ class OrganizationData {
       website: map['website'],
       isActive: map['isActive'] ?? true,
       isPortalEnabled: map['isPortalEnabled'] ?? false,
+      // Defensive: missing field defaults to manual
+      staffApprovalPolicy: StaffApprovalPolicy.fromId(
+          map['staffApprovalPolicy'] as String?),
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : null,
@@ -147,6 +165,7 @@ class OrganizationData {
       'website': website,
       'isActive': isActive,
       'isPortalEnabled': isPortalEnabled,
+      'staffApprovalPolicy': staffApprovalPolicy.id,
     };
   }
 }

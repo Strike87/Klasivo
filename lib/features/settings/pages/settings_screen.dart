@@ -7,9 +7,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
-import '../../../core/rbac/permissions.dart';
-import '../../../core/config/theme_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../widgets/klasivo_avatar.dart';
@@ -20,6 +17,7 @@ import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
 import '../../../widgets/klasivo_toast.dart';
+import '../../../providers/theme_provider.dart';
 
 // ─── Settings Screen — Full implementation replacing placeholder ────────────────
 
@@ -77,15 +75,15 @@ class SettingsScreen extends ConsumerWidget {
                             vertical: KlasivoSpacing.xs,
                           ),
                           decoration: BoxDecoration(
-                            color: userRole == KlasivoRole.owner
+                            color: userRole == AppConstants.roleOwner
                                 ? KlasivoColors.primary.withValues(alpha: 0.1)
                                 : KlasivoColors.secondary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                           ),
                           child: Text(
-                            userRole == KlasivoRole.owner ? 'Owner' : 'Teacher',
+                            userRole == AppConstants.roleOwner ? 'Owner' : 'Teacher',
                             style: KlasivoTypography.labelSmall.copyWith(
-                              color: userRole == KlasivoRole.owner
+                              color: userRole == AppConstants.roleOwner
                                   ? KlasivoColors.primary
                                   : KlasivoColors.secondary,
                             ),
@@ -105,9 +103,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── Organization Section (org:settings permission) ──
-            KlasivoPermissionGate(
-              permission: Permission.orgSettings,
+            // ── Organization Section (Owner/Admin only) ──
+            KlasivoRoleGate(
+              allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
               fallback: const SizedBox.shrink(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -445,12 +443,16 @@ class _SettingsTile extends StatelessWidget {
   }
 }
 
-class _ThemeToggleTile extends ConsumerWidget {
+class _ThemeToggleTile extends ConsumerStatefulWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  ConsumerState<_ThemeToggleTile> createState() => _ThemeToggleTileState();
+}
 
+class _ThemeToggleTileState extends ConsumerState<_ThemeToggleTile> {
+  @override
+  Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(KlasivoSpacing.sm),
@@ -458,110 +460,100 @@ class _ThemeToggleTile extends ConsumerWidget {
           color: KlasivoColors.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         ),
-        child: Icon(
-          themeModeIcon(themeMode),
-          color: KlasivoColors.accent,
-          size: 20,
-        ),
+        child: Icon(themeMode.icon,
+          color: KlasivoColors.accent, size: 20),
       ),
       title: Text('Appearance', style: KlasivoTypography.titleMedium),
       subtitle: Text(
-        themeModeLabel(themeMode),
+        themeMode.label,
         style: KlasivoTypography.bodySmall.copyWith(
-          color: isDark
-              ? KlasivoColors.darkTextTertiary
-              : KlasivoColors.lightTextTertiary,
+          color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
         ),
       ),
-      trailing: _ThemeSegmentedControl(
-        currentMode: themeMode,
-        onModeChanged: (mode) {
-          ref.read(themeModeProvider.notifier).setThemeMode(mode);
-        },
+      trailing: _ThemeSegmentedControl(currentMode: themeMode),
+      onTap: () => _showThemePicker(context, themeMode),
+    );
+  }
+
+  void _showThemePicker(BuildContext context, AppThemeMode currentMode) {
+    KlasivoModal.showContent(
+      context: context,
+      title: 'Appearance',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: AppThemeMode.values.map((mode) {
+          final isSelected = mode == currentMode;
+          return ListTile(
+            leading: Icon(mode.icon,
+              color: isSelected ? KlasivoColors.primary : null),
+            title: Text(mode.label,
+              style: isSelected
+                ? KlasivoTypography.titleMedium.copyWith(color: KlasivoColors.primary)
+                : KlasivoTypography.titleMedium),
+            subtitle: Text(_themeDescription(mode),
+              style: KlasivoTypography.bodySmall.copyWith(
+                color: Theme.of(context).brightness == Brightness.dark
+                  ? KlasivoColors.darkTextTertiary
+                  : KlasivoColors.lightTextTertiary,
+              ),
+            ),
+            trailing: isSelected
+              ? Icon(Icons.check_rounded, color: KlasivoColors.primary)
+              : null,
+            onTap: () {
+              ref.read(themeProvider.notifier).setThemeMode(mode);
+              Navigator.pop(context);
+            },
+          );
+        }).toList(),
       ),
     );
+  }
+
+  String _themeDescription(AppThemeMode mode) {
+    switch (mode) {
+      case AppThemeMode.light:
+        return 'Always use light theme';
+      case AppThemeMode.dark:
+        return 'Always use dark theme';
+      case AppThemeMode.system:
+        return 'Follow your device settings';
+    }
   }
 }
 
-class _ThemeSegmentedControl extends StatelessWidget {
-  final ThemeMode currentMode;
-  final ValueChanged<ThemeMode> onModeChanged;
-
-  const _ThemeSegmentedControl({
-    required this.currentMode,
-    required this.onModeChanged,
-  });
+/// Compact segmented control for quick theme switching
+class _ThemeSegmentedControl extends ConsumerWidget {
+  final AppThemeMode currentMode;
+  const _ThemeSegmentedControl({required this.currentMode});
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: isDark
-            ? KlasivoColors.darkBorder.withValues(alpha: 0.6)
-            : KlasivoColors.lightBorder,
-        borderRadius: BorderRadius.circular(KlasivoRadius.sm + 2),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _segmentButton(
-            icon: Icons.light_mode_rounded,
-            mode: ThemeMode.light,
-            isSelected: currentMode == ThemeMode.light,
-            colorScheme: colorScheme,
-            isDark: isDark,
-          ),
-          _segmentButton(
-            icon: Icons.dark_mode_rounded,
-            mode: ThemeMode.dark,
-            isSelected: currentMode == ThemeMode.dark,
-            colorScheme: colorScheme,
-            isDark: isDark,
-          ),
-          _segmentButton(
-            icon: Icons.brightness_auto_rounded,
-            mode: ThemeMode.system,
-            isSelected: currentMode == ThemeMode.system,
-            colorScheme: colorScheme,
-            isDark: isDark,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _segmentButton({
-    required IconData icon,
-    required ThemeMode mode,
-    required bool isSelected,
-    required ColorScheme colorScheme,
-    required bool isDark,
-  }) {
-    return GestureDetector(
-      onTap: () => onModeChanged(mode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(KlasivoRadius.sm),
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SegmentedButton<AppThemeMode>(
+      segments: [
+        ButtonSegment(
+          value: AppThemeMode.light,
+          icon: Icon(Icons.light_mode_rounded, size: 16),
+          tooltip: 'Light',
         ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: isSelected
-              ? colorScheme.onPrimary
-              : isDark
-                  ? KlasivoColors.darkTextTertiary
-                  : KlasivoColors.lightTextTertiary,
+        ButtonSegment(
+          value: AppThemeMode.system,
+          icon: Icon(Icons.brightness_auto_rounded, size: 16),
+          tooltip: 'System',
         ),
+        ButtonSegment(
+          value: AppThemeMode.dark,
+          icon: Icon(Icons.dark_mode_rounded, size: 16),
+          tooltip: 'Dark',
+        ),
+      ],
+      selected: {currentMode},
+      onSelectionChanged: (selected) {
+        ref.read(themeProvider.notifier).setThemeMode(selected.first);
+      },
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)),
       ),
     );
   }
@@ -691,7 +683,7 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
                       KlasivoToast.success(context, message: 'Password updated successfully');
                     }
                   } catch (e) {
-                    KlasivoToast.error(context, message: formatAuthError(e));
+                    KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
                   }
                 },
               ),
@@ -879,7 +871,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
       final snapshot = await FirebaseFirestore.instance
           .collection(AppConstants.usersCollection)
           .where('organizationId', isEqualTo: widget.orgId)
-          .where('role', whereIn: [KlasivoRole.teacher, KlasivoRole.owner])
+          .where('role', whereIn: [AppConstants.roleTeacher, AppConstants.roleOwner])
           .orderBy('createdAt', descending: true)
           .get();
       setState(() {
@@ -928,7 +920,7 @@ class _TeacherListSheetState extends ConsumerState<_TeacherListSheet> {
           ),
         ),
         ..._teachers.map((teacher) {
-          final isOwner = teacher['role'] == KlasivoRole.owner;
+          final isOwner = teacher['role'] == AppConstants.roleOwner;
           final name = teacher['fullName'] ?? 'Unknown';
           return KlasivoCard(
             margin: const EdgeInsets.symmetric(vertical: KlasivoSpacing.xs),

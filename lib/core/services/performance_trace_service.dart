@@ -196,13 +196,9 @@ class PerformanceTraceService {
   /// Trace an HTTP request.
   Future<HttpMetric> traceHttpRequest(
     String url,
-    String method,
+    HttpMethod method,
   ) async {
-    final httpMethod = HttpMethod.values.firstWhere(
-      (e) => e.name.toLowerCase() == method.toLowerCase(),
-      orElse: () => HttpMethod.Get,
-    );
-    final metric = _performance.newHttpMetric(url, httpMethod);
+    final metric = _performance.newHttpMetric(url, method);
     return metric;
   }
 

@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -11,7 +12,39 @@ import '../config/app_constants.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await FirebaseMessaging.instance.getInitialMessage();
+  // Initialize Firebase for background isolate
+  await Firebase.initializeApp();
+
+  // If this is a data-only message (no notification payload), show a local notification
+  // Notification+data messages are auto-displayed by the system
+  if (message.notification == null && message.data.isNotEmpty) {
+    final title = message.data['title'] as String? ?? 'Klasivo';
+    final body = message.data['body'] as String? ?? 'You have a new notification';
+    final channelId = message.data['channelId'] as String? ?? 'klasivo_channel';
+
+    final flutterLocalNotifications = FlutterLocalNotificationsPlugin();
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidSettings);
+    await flutterLocalNotifications.initialize(initSettings);
+
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelId == 'klasivo_messages'
+          ? 'Messages'
+          : channelId == 'klasivo_attendance'
+              ? 'Attendance'
+              : channelId == 'klasivo_scheduled'
+                  ? 'Exam Reminders'
+                  : 'Klasivo',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    final id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await flutterLocalNotifications.show(id, title, body, details);
+  }
 }
 
 class NotificationService {
@@ -228,6 +261,49 @@ class NotificationService {
 
   static Future<void> subscribeToOrganization(String orgId) async {
     await _fcm.subscribeToTopic('org_$orgId');
+  }
+
+  // ─── Auto-subscribe on Login ─────────────────────────────────────────────
+
+  /// Subscribe the current user to all relevant FCM topics based on their role.
+  /// Call this after a successful login. Subscribes to:
+  /// - Organization topic (all users)
+  /// - Class topic (students + teachers assigned to a class)
+  static Future<void> subscribeUserToTopics({
+    required String userId,
+    required String role,
+    String? organizationId,
+    String? classId,
+  }) async {
+    try {
+      // Subscribe to organization topic
+      if (organizationId != null && organizationId.isNotEmpty) {
+        await subscribeToOrganization(organizationId);
+      }
+
+      // Subscribe to class topic
+      if (classId != null && classId.isNotEmpty) {
+        await subscribeToClass(classId);
+      }
+
+      // Teachers may be assigned to multiple classes
+      if (role == 'teacher' && organizationId != null) {
+        final assignmentsSnapshot = await _firestore
+            .collection(AppConstants.teacherAssignmentsCollection)
+            .where('teacherId', isEqualTo: userId)
+            .get();
+        for (final doc in assignmentsSnapshot.docs) {
+          final assignedClassId = doc.data()['classId'] as String?;
+          if (assignedClassId != null) {
+            await subscribeToClass(assignedClassId);
+          }
+        }
+      }
+
+      debugPrint('[NotificationService] Subscribed user $userId to FCM topics');
+    } catch (e) {
+      debugPrint('[NotificationService] Failed to subscribe to topics: $e');
+    }
   }
 
   // ─── Show Local Notification ─────────────────────────────────────────────

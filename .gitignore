@@ -97,12 +97,17 @@ pubspec.lock
 
 # Cloud Functions
 functions/node_modules/
-functions/lib/
 functions/.runtimeconfig.json
 
-# AI agent artifacts
-upload/
-fixes/
+# ============================================================
+# AI agent / unrelated artifacts — NEVER track these
+# ============================================================
 skills/
-*.py
-worklog.md
+download/
+fixes/
+Smart-Exam-Pro*/
+smart-exam-pro*/
+Klasivo/
+klasivo/
+functions-js-backup/
+*.pyc

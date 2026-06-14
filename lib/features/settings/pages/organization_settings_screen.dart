@@ -6,13 +6,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/rbac.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../providers/rbac_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_card.dart';
-import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 // ─── Organization Settings Screen ──────────────────────────────────────────────
@@ -94,7 +91,7 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
       }
     } catch (e) {
       if (mounted) {
-        KlasivoToast.error(context, message: 'Failed to update: ${formatAuthError(e)}');
+        KlasivoToast.error(context, message: 'Failed to update: ${e.toString().replaceAll('Exception: ', '')}');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -105,24 +102,7 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return KlasivoPermissionGate(
-      permission: Permission.orgSettings,
-      fallback: Scaffold(
-        appBar: AppBar(title: const Text('Workspace Settings')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text('Access Denied', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey)),
-              const SizedBox(height: 8),
-              Text('You need organization settings permission', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
-            ],
-          ),
-        ),
-      ),
-      child: Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: const Text('Workspace Settings'),
       ),
@@ -250,7 +230,6 @@ class _OrganizationSettingsScreenState extends ConsumerState<OrganizationSetting
                 ],
               ),
             ),
-    ),
     );
   }
 }

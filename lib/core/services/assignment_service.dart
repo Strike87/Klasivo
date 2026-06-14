@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'notification_service.dart';
 import 'search_keyword_service.dart';
 
 class AssignmentService {
@@ -103,6 +104,36 @@ class AssignmentService {
         'status': AppConstants.assignmentStatusPublished,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Notify all students in the class
+      final assignmentDoc = await _firestore
+          .collection(AppConstants.assignmentsCollection)
+          .doc(assignmentId)
+          .get();
+      if (assignmentDoc.exists) {
+        final data = assignmentDoc.data()!;
+        final classId = data['classId'] as String? ?? '';
+        final orgId = data['organizationId'] as String?;
+        final title = data['title'] as String? ?? '';
+
+        if (classId.isNotEmpty) {
+          final studentsSnapshot = await _firestore
+              .collection(AppConstants.usersCollection)
+              .where('classId', isEqualTo: classId)
+              .where('role', isEqualTo: AppConstants.roleStudent)
+              .get();
+          final studentIds = studentsSnapshot.docs.map((d) => d.id).toList();
+
+          if (studentIds.isNotEmpty) {
+            await NotificationService.notifyAssignmentPublished(
+              organizationId: orgId ?? '',
+              assignmentId: assignmentId,
+              assignmentTitle: title,
+              studentIds: studentIds,
+            );
+          }
+        }
+      }
     } catch (e) {
       rethrow;
     }
@@ -232,6 +263,12 @@ class AssignmentService {
     required String gradedBy,
   }) async {
     try {
+      // Get submission details before updating
+      final submissionDoc = await _firestore
+          .collection(AppConstants.assignmentSubmissionsCollection)
+          .doc(submissionId)
+          .get();
+
       await _firestore
           .collection(AppConstants.assignmentSubmissionsCollection)
           .doc(submissionId)
@@ -243,6 +280,32 @@ class AssignmentService {
         'gradedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Notify the student about the grade
+      if (submissionDoc.exists) {
+        final subData = submissionDoc.data()!;
+        final studentId = subData['studentId'] as String?;
+        final assignmentId = subData['assignmentId'] as String?;
+
+        if (studentId != null && assignmentId != null) {
+          // Get assignment title
+          final assignmentDoc = await _firestore
+              .collection(AppConstants.assignmentsCollection)
+              .doc(assignmentId)
+              .get();
+          final assignmentTitle =
+              assignmentDoc.data()?['title'] as String? ?? 'Assignment';
+          final orgId = assignmentDoc.data()?['organizationId'] as String?;
+
+          await NotificationService.notifyAssignmentGraded(
+            studentId: studentId,
+            assignmentTitle: assignmentTitle,
+            score: grade,
+            organizationId: orgId,
+            assignmentId: assignmentId,
+          );
+        }
+      }
     } catch (e) {
       rethrow;
     }

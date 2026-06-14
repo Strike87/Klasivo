@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -53,20 +52,17 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? true,
         authProvider: 'password',
+        ref: ref,
       );
 
       if (mounted) {
         context.go(AppConstants.routeParentHome);
       }
     } catch (e) {
-      if (mounted) {
-        ref.read(authErrorProvider.notifier).state =
-            formatAuthError(e);
-      }
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        ref.read(authLoadingProvider.notifier).state = false;
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
   }
 
@@ -77,7 +73,7 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
     try {
       final authService = ref.read(authServiceProvider);
       final result = await authService.loginWithGoogle(
-        expectedRole: KlasivoRole.parent,
+        expectedRole: AppConstants.roleParent,
       );
 
       await saveParentAuthData(
@@ -87,7 +83,8 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? true,
         authProvider: 'google',
-      );
+      
+        ref: ref,);
 
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
@@ -98,14 +95,10 @@ class _ParentLoginScreenState extends ConsumerState<ParentLoginScreen> {
         }
       }
     } catch (e) {
-      if (mounted) {
-        ref.read(authErrorProvider.notifier).state =
-            formatAuthError(e);
-      }
+      ref.read(authErrorProvider.notifier).state =
+          e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        ref.read(authLoadingProvider.notifier).state = false;
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
   }
 

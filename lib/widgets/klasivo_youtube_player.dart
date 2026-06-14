@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/theme.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/content_progress_service.dart';
+import '../providers/content_progress_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO YOUTUBE PLAYER — Embedded player with progress tracking & resume
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class KlasivoYouTubePlayer extends StatefulWidget {
+class KlasivoYouTubePlayer extends ConsumerStatefulWidget {
   final String videoUrl;
   final String lessonId;
   final String subjectId;
@@ -27,12 +29,11 @@ class KlasivoYouTubePlayer extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<KlasivoYouTubePlayer> createState() => _KlasivoYouTubePlayerState();
+  ConsumerState<KlasivoYouTubePlayer> createState() => _KlasivoYouTubePlayerState();
 }
 
-class _KlasivoYouTubePlayerState extends State<KlasivoYouTubePlayer> {
+class _KlasivoYouTubePlayerState extends ConsumerState<KlasivoYouTubePlayer> {
   late YoutubePlayerController _controller;
-  final ContentProgressService _progressService = ContentProgressService();
   bool _isInitialized = false;
   int _lastSavedPosition = 0;
   static const _saveIntervalSeconds = 10; // Save every 10 seconds
@@ -51,11 +52,12 @@ class _KlasivoYouTubePlayerState extends State<KlasivoYouTubePlayer> {
       return;
     }
 
-    // Get saved resume position
+    // Get saved resume position via provider
+    final progressService = ref.read(contentProgressServiceProvider);
     final studentId = _getCurrentStudentId();
     int startPosition = 0;
     if (studentId != null) {
-      startPosition = await _progressService.getVideoResumePosition(
+      startPosition = await progressService.getVideoResumePosition(
         studentId: studentId,
         lessonId: widget.lessonId,
       );
@@ -103,8 +105,9 @@ class _KlasivoYouTubePlayerState extends State<KlasivoYouTubePlayer> {
     if (studentId == null) return;
 
     final durationSeconds = _controller.value.metaData.duration.inSeconds;
+    final progressService = ref.read(contentProgressServiceProvider);
 
-    await _progressService.saveVideoProgress(
+    await progressService.saveVideoProgress(
       studentId: studentId,
       lessonId: widget.lessonId,
       subjectId: widget.subjectId,
@@ -113,6 +116,9 @@ class _KlasivoYouTubePlayerState extends State<KlasivoYouTubePlayer> {
       durationSeconds: durationSeconds,
       organizationId: widget.organizationId,
     );
+
+    // Invalidate the video progress provider so the UI refreshes
+    ref.invalidate(videoProgressProvider(widget.lessonId));
   }
 
   Future<void> _saveFinalProgress() async {

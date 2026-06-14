@@ -1,0 +1,203 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/config/theme.dart';
+import '../../../widgets/klasivo_card.dart';
+
+class RoleSelectionScreen extends StatelessWidget {
+  const RoleSelectionScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(
+            horizontal: KlasivoSpacing.xxl,
+            vertical: KlasivoSpacing.hero,
+          ),
+          child: Column(
+            children: [
+              // ── Logo ──
+              Container(
+                padding: const EdgeInsets.all(KlasivoSpacing.lg),
+                decoration: BoxDecoration(
+                  color: KlasivoColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(KlasivoRadius.lg),
+                ),
+                child: const Icon(
+                  Icons.school_outlined,
+                  size: 52,
+                  color: KlasivoColors.primary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.xxl),
+
+              // ── App Name ──
+              Text(
+                'Welcome to Klasivo',
+                style: KlasivoTypography.headlineLarge.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextPrimary
+                      : KlasivoColors.lightTextPrimary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.sm),
+              Text(
+                'Professional Exam Management',
+                style: KlasivoTypography.bodyMedium.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.xxxl),
+
+              // ── Continue As ──
+              Text(
+                'Continue as',
+                style: KlasivoTypography.titleLarge.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextSecondary
+                      : KlasivoColors.lightTextSecondary,
+                ),
+              ),
+              const SizedBox(height: KlasivoSpacing.xxl),
+
+              // ── Organization Owner Card ──
+              _RoleCard(
+                icon: Icons.business_outlined,
+                emoji: '🏢',
+                title: 'Organization Owner',
+                subtitle: 'Create and manage your educational workspace',
+                color: KlasivoColors.primary,
+                onTap: () => context.go('/auth/owner-register'),
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
+              // ── Teacher Card ──
+              _RoleCard(
+                icon: Icons.person_outline_rounded,
+                emoji: '👨‍🏫',
+                title: 'Teacher',
+                subtitle: 'Create exams, manage classes, and grade students',
+                color: KlasivoColors.secondary,
+                onTap: () => context.go('/auth/teacher-login'),
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
+              // ── Student Card ──
+              _RoleCard(
+                icon: Icons.school_outlined,
+                emoji: '🎓',
+                title: 'Student',
+                subtitle: 'Take exams, view results, and track progress',
+                color: KlasivoColors.accent,
+                onTap: () => context.go('/auth/student-login'),
+              ),
+              const SizedBox(height: KlasivoSpacing.lg),
+
+              // ── Parent Card ──
+              _RoleCard(
+                icon: Icons.family_restroom_outlined,
+                emoji: '👨‍👩‍👧',
+                title: 'Parent',
+                subtitle: 'View your child\'s results and attendance',
+                color: const Color(0xFF845EF7),
+                onTap: () => context.go('/auth/parent-login'),
+              ),
+              const SizedBox(height: KlasivoSpacing.xxxl),
+
+              // ── Footer ──
+              Text(
+                'By continuing, you agree to our Terms of Service\nand Privacy Policy',
+                textAlign: TextAlign.center,
+                style: KlasivoTypography.caption.copyWith(
+                  color: isDark
+                      ? KlasivoColors.darkTextTertiary
+                      : KlasivoColors.lightTextTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleCard extends StatelessWidget {
+  final IconData icon;
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _RoleCard({
+    required this.icon,
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return KlasivoCard(
+      variant: KlasivoCardVariant.interactive,
+      onTap: onTap,
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      margin: EdgeInsets.zero,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(KlasivoSpacing.md),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(KlasivoRadius.md),
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(width: KlasivoSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: KlasivoTypography.titleLarge.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextPrimary
+                        : KlasivoColors.lightTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xs),
+                Text(
+                  subtitle,
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: isDark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: isDark
+                ? KlasivoColors.darkTextTertiary
+                : KlasivoColors.lightTextTertiary,
+            size: 18,
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1199,7 +1199,7 @@ class _LessonTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         onTap: () {
-          context.go('/teacher/lms/lessons/${lesson.id}');
+          // TODO: Navigate to lesson detail / player
         },
         child: Container(
           padding: const EdgeInsets.symmetric(
@@ -1362,7 +1362,7 @@ class _MaterialTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(KlasivoRadius.sm),
         onTap: () {
-          context.go('/teacher/lms/materials/${material.id}');
+          // TODO: Navigate to material detail / download
         },
         child: Container(
           padding: const EdgeInsets.symmetric(

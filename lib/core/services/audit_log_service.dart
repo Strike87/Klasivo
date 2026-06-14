@@ -2,42 +2,41 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../config/app_constants.dart';
 
-/// Service for reading audit logs.
-///
-/// ⚠️ Client-side audit writes are permanently disabled.
-/// Firestore rules block all client-side creates (CF-only, append-only).
-/// Use Cloud Functions for all audit log writes.
-///
-/// Target audit schema (Phase 3 canonical):
-///   { organizationId, performedBy, performedByRole, performedByOrgId,
-///     action, targetType, targetId, metadata, timestamp }
 class AuditLogService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// @deprecated Client-side audit writes are disabled — use Cloud Functions.
-  /// Throws [UnsupportedError] to prevent silent failures.
-  Never _throwWriteDisabled() {
-    throw UnsupportedError(
-      'Client-side audit writes are disabled. Use Cloud Functions.',
-    );
-  }
-
-  /// @deprecated Client-side audit writes are disabled — use Cloud Functions.
+  /// Log an audit event
   Future<void> log({
     required String organizationId,
     required String userId,
     required String userName,
     required String action,
-    required String targetType,
+    required String targetType, // 'exam', 'class', 'student', 'assignment', 'announcement', etc.
     required String targetId,
     String? targetName,
     String? details,
     Map<String, dynamic>? metadata,
   }) async {
-    _throwWriteDisabled();
+    try {
+      await _firestore.collection(AppConstants.auditLogsCollection).add({
+        'organizationId': organizationId,
+        'userId': userId,
+        'userName': userName,
+        'action': action, // 'create', 'update', 'delete', 'publish', 'archive', etc.
+        'targetType': targetType,
+        'targetId': targetId,
+        'targetName': targetName,
+        'details': details,
+        'metadata': metadata ?? {},
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error logging audit event: $e');
+      // Don't rethrow — audit logging should never break the main flow
+    }
   }
 
-  /// @deprecated Client-side audit writes are disabled — use Cloud Functions.
+  /// Convenience: Log a create action
   Future<void> logCreate({
     required String organizationId,
     required String userId,
@@ -46,11 +45,18 @@ class AuditLogService {
     required String targetId,
     String? targetName,
     String? details,
-  }) async {
-    _throwWriteDisabled();
-  }
+  }) => log(
+    organizationId: organizationId,
+    userId: userId,
+    userName: userName,
+    action: 'create',
+    targetType: targetType,
+    targetId: targetId,
+    targetName: targetName,
+    details: details,
+  );
 
-  /// @deprecated Client-side audit writes are disabled — use Cloud Functions.
+  /// Convenience: Log an update action
   Future<void> logUpdate({
     required String organizationId,
     required String userId,
@@ -59,11 +65,18 @@ class AuditLogService {
     required String targetId,
     String? targetName,
     String? details,
-  }) async {
-    _throwWriteDisabled();
-  }
+  }) => log(
+    organizationId: organizationId,
+    userId: userId,
+    userName: userName,
+    action: 'update',
+    targetType: targetType,
+    targetId: targetId,
+    targetName: targetName,
+    details: details,
+  );
 
-  /// @deprecated Client-side audit writes are disabled — use Cloud Functions.
+  /// Convenience: Log a delete action
   Future<void> logDelete({
     required String organizationId,
     required String userId,
@@ -72,9 +85,16 @@ class AuditLogService {
     required String targetId,
     String? targetName,
     String? details,
-  }) async {
-    _throwWriteDisabled();
-  }
+  }) => log(
+    organizationId: organizationId,
+    userId: userId,
+    userName: userName,
+    action: 'delete',
+    targetType: targetType,
+    targetId: targetId,
+    targetName: targetName,
+    details: details,
+  );
 
   /// Stream audit logs by organization
   Stream<QuerySnapshot> getAuditLogsStream(String orgId, {int limit = 100}) {

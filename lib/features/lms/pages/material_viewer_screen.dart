@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/material_provider.dart';
+import '../../../providers/content_progress_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
@@ -98,6 +100,9 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
           _material = material;
           _isLoading = false;
         });
+
+        // Record that this material was viewed (for content progress tracking)
+        _recordMaterialView(material);
       }
     } catch (e) {
       if (mounted) {
@@ -117,6 +122,30 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
       return value.toDate();
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Record that this material was viewed for content progress tracking.
+  Future<void> _recordMaterialView(MaterialData material) async {
+    try {
+      final box = Hive.box(AppConstants.authBox);
+      final studentId = box.get('userId') as String?;
+      final userRole = box.get('userRole') as String?;
+      if (studentId == null || userRole != 'student') return;
+
+      final progressService = ref.read(contentProgressServiceProvider);
+      await progressService.markMaterialViewed(
+        studentId: studentId,
+        materialId: material.id,
+        lessonId: material.lessonId,
+        subjectId: material.subjectId,
+        classId: '', // Material may not have classId; progress service handles it
+        organizationId: material.organizationId.isNotEmpty
+            ? material.organizationId
+            : null,
+      );
+    } catch (_) {
+      // Non-critical: progress tracking failure shouldn't block viewing
     }
   }
 
@@ -290,7 +319,9 @@ class _MaterialViewerScreenState extends ConsumerState<MaterialViewerScreen> {
             onSelected: (value) {
               switch (value) {
                 case 'edit':
-                  context.go('/teacher/lms/materials/${widget.materialId}/edit');
+                  // TODO: Navigate to edit material screen
+                  KlasivoToast.info(context,
+                      message: 'Edit material — coming soon');
                   break;
                 case 'archive':
                   _archiveMaterial();

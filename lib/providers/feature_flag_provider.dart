@@ -3,7 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/feature_flag_service.dart';
-import 'rbac_provider.dart' show rbacOrgIdProvider;
+import 'permission_provider.dart' show currentOrgIdProvider;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO FEATURE FLAG PROVIDERS
@@ -18,7 +18,7 @@ final featureFlagServiceProvider = Provider<FeatureFlagService>((ref) {
 // ─── Feature Flags Stream Provider ────────────────────────────────────────
 // Loads flags once and streams real-time updates from Firestore.
 final featureFlagsStreamProvider = StreamProvider<Map<String, FeatureFlag>>((ref) {
-  final orgId = ref.watch(rbacOrgIdProvider);
+  final orgId = ref.watch(currentOrgIdProvider);
   if (orgId == null) return Stream.value({});
 
   final service = ref.watch(featureFlagServiceProvider);
@@ -36,7 +36,7 @@ final allFeatureFlagsProvider = Provider<Map<String, FeatureFlag>>((ref) {
 // Usage: ref.watch(featureFlagEnabledProvider('lms'))
 final featureFlagEnabledProvider = Provider.family<bool, String>((ref, flagKey) {
   final service = ref.watch(featureFlagServiceProvider);
-  final orgId = ref.watch(rbacOrgIdProvider);
+  final orgId = ref.watch(currentOrgIdProvider);
 
   // Get userId for user-level targeting
   final box = Hive.box(AppConstants.authBox);
@@ -73,7 +73,7 @@ final featureFlagUpdateProvider = FutureProvider.family.autoDispose<void, Featur
   update,
 ) async {
   final service = ref.watch(featureFlagServiceProvider);
-  final orgId = ref.watch(rbacOrgIdProvider);
+  final orgId = ref.watch(currentOrgIdProvider);
   if (orgId == null) throw Exception('No organization ID');
 
   await service.setFlag(

@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_functions/firebase_functions.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import 'domain/livekit_room_model.dart';
 import 'domain/livekit_chat_message.dart';

@@ -185,10 +185,13 @@ class _RoleCard extends StatelessWidget {
                         ? KlasivoColors.darkTextTertiary
                         : KlasivoColors.lightTextTertiary,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: KlasivoSpacing.sm),
           Icon(
             Icons.arrow_forward_ios_rounded,
             color: isDark

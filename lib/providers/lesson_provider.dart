@@ -15,6 +15,7 @@ class LessonData {
   final String organizationId;
   final String subjectId;
   final String chapterId;
+  final String classId;
   final String title;
   final String description;
   final String type; // recorded/youtube/zoom/google_drive
@@ -34,6 +35,7 @@ class LessonData {
     required this.organizationId,
     required this.subjectId,
     required this.chapterId,
+    this.classId = '',
     required this.title,
     required this.description,
     required this.type,
@@ -56,6 +58,7 @@ class LessonData {
       organizationId: data['organizationId'] ?? '',
       subjectId: data['subjectId'] ?? '',
       chapterId: data['chapterId'] ?? '',
+      classId: data['classId'] ?? '',
       title: data['title'] ?? '',
       description: data['description'] ?? '',
       type: data['type'] ?? 'recorded',
@@ -77,6 +80,7 @@ class LessonData {
     'organizationId': organizationId,
     'subjectId': subjectId,
     'chapterId': chapterId,
+    'classId': classId,
     'title': title,
     'description': description,
     'type': type,

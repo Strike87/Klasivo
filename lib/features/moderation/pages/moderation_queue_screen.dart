@@ -1,18 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/rbac.dart';
 import '../../../core/services/moderation_service.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../providers/rbac_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
-import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_toast.dart';
 
 // ─── Moderation Service Provider ──────────────────────────────────────────────
@@ -57,24 +54,7 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
   Widget build(BuildContext context) {
     final orgId = ref.watch(currentOrganizationIdProvider) ?? '';
 
-    return KlasivoRoleGate(
-      allowedRoles: [KlasivoRole.owner, KlasivoRole.admin, KlasivoRole.superAdmin],
-      fallback: Scaffold(
-        appBar: AppBar(title: const Text('Moderation Queue'), centerTitle: true),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text('Access Denied', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey)),
-              const SizedBox(height: 8),
-              Text('Only admins can access the moderation queue', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
-            ],
-          ),
-        ),
-      ),
-      child: Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: const Text('Moderation Queue'),
         centerTitle: true,
@@ -93,7 +73,6 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
           _buildAllList(orgId),
         ],
       ),
-    ),
     );
   }
 
@@ -101,14 +80,14 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
     final asyncItems = ref.watch(moderationPendingStreamProvider(orgId));
 
     return asyncItems.when(
-      loading: () => const Center(child: KlasivoLoading()),
+      loading: () => Center(child: KlasivoLoading()),
       error: (e, _) => ErrorWidgetCustom(
         message: 'Failed to load: $e',
         onRetry: () => ref.invalidate(moderationPendingStreamProvider(orgId)),
       ),
       data: (snapshot) {
         if (snapshot.docs.isEmpty) {
-          return const KlasivoEmptyState(
+          return KlasivoEmptyState(
             icon: Icons.verified_outlined,
             title: 'All Clear',
             subtitle: 'No resources pending review.',
@@ -136,14 +115,14 @@ class _ModerationQueueScreenState extends ConsumerState<ModerationQueueScreen>
     final asyncItems = ref.watch(moderationAllStreamProvider(orgId));
 
     return asyncItems.when(
-      loading: () => const Center(child: KlasivoLoading()),
+      loading: () => Center(child: KlasivoLoading()),
       error: (e, _) => ErrorWidgetCustom(
         message: 'Failed to load: $e',
         onRetry: () => ref.invalidate(moderationAllStreamProvider(orgId)),
       ),
       data: (snapshot) {
         if (snapshot.docs.isEmpty) {
-          return const KlasivoEmptyState(
+          return KlasivoEmptyState(
             icon: Icons.inbox_outlined,
             title: 'No Items',
             subtitle: 'No resources have been submitted for review yet.',

@@ -1,121 +1,103 @@
-/// Domain model for a Klasivo exam.
-class ExamModel {
+// ─── Exam Domain Models ──────────────────────────────────────────────────────
+// Extracted from exam_provider.dart
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../../core/config/app_constants.dart';
+
+class ExamData {
   final String id;
-  final String title;
-  final String description;
-  final String classId;
-  final String subjectId;
   final String teacherId;
-  final String organizationId;
-  final String status; // draft, published, archived
+  final String title;
+  final String? description;
+  final String classId;
   final int durationMinutes;
+  final DateTime startDate;
+  final DateTime endDate;
   final int totalMarks;
+  final int passingScore;
+  final String status;
   final int questionCount;
   final bool isRandomized;
   final bool allowRetake;
-  final DateTime? startDate;
-  final DateTime? endDate;
-  final DateTime createdAt;
-  final int version;
+  final String organizationId;
+  final DateTime? createdAt;
+  final DateTime? publishedAt;
 
-  const ExamModel({
+  ExamData({
     required this.id,
-    required this.title,
-    this.description = '',
-    required this.classId,
-    required this.subjectId,
     required this.teacherId,
-    required this.organizationId,
-    this.status = 'draft',
-    this.durationMinutes = 60,
+    required this.title,
+    this.description,
+    required this.classId,
+    required this.durationMinutes,
+    required this.startDate,
+    required this.endDate,
     this.totalMarks = 0,
+    this.passingScore = 0,
+    this.status = AppConstants.statusDraft,
     this.questionCount = 0,
     this.isRandomized = false,
     this.allowRetake = false,
-    this.startDate,
-    this.endDate,
-    required this.createdAt,
-    this.version = 1,
+    this.organizationId = AppConstants.defaultInstitutionId,
+    this.createdAt,
+    this.publishedAt,
   });
 
-  factory ExamModel.fromFirestore(Map<String, dynamic> data, String id) {
-    return ExamModel(
-      id: id,
-      title: data['title'] as String? ?? '',
-      description: data['description'] as String? ?? '',
-      classId: data['classId'] as String? ?? '',
-      subjectId: data['subjectId'] as String? ?? '',
-      teacherId: data['teacherId'] as String? ?? '',
-      organizationId: data['organizationId'] as String? ?? '',
-      status: data['status'] as String? ?? 'draft',
-      durationMinutes: data['durationMinutes'] as int? ?? 60,
+  factory ExamData.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return ExamData(
+      id: doc.id,
+      teacherId: data['teacherId'] ?? '',
+      title: data['title'] ?? '',
+      description: data['description'],
+      classId: data['classId'] ?? '',
+      durationMinutes: data['durationMinutes'] as int? ?? 30,
+      startDate: (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      endDate: (data['endDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       totalMarks: data['totalMarks'] as int? ?? 0,
+      passingScore: data['passingScore'] as int? ?? 0,
+      status: data['status'] ?? AppConstants.statusDraft,
       questionCount: data['questionCount'] as int? ?? 0,
       isRandomized: data['isRandomized'] as bool? ?? false,
       allowRetake: data['allowRetake'] as bool? ?? false,
-      startDate: data['startDate'] != null
-          ? (data['startDate'] as dynamic).toDate() as DateTime?
-          : null,
-      endDate: data['endDate'] != null
-          ? (data['endDate'] as dynamic).toDate() as DateTime?
-          : null,
-      createdAt: data['createdAt'] != null
-          ? (data['createdAt'] as dynamic).toDate() as DateTime?
-          : DateTime.now(),
-      version: data['version'] as int? ?? 1,
+      organizationId: data['organizationId'] ?? data['institutionId'] ?? AppConstants.defaultInstitutionId,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      publishedAt: (data['publishedAt'] as Timestamp?)?.toDate(),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  bool get isActive =>
+      status == AppConstants.statusPublished &&
+      DateTime.now().isAfter(startDate) &&
+      DateTime.now().isBefore(endDate);
+
+  bool get canStart =>
+      status == AppConstants.statusPublished &&
+      DateTime.now().isAfter(startDate);
+
+  bool get isEnded => DateTime.now().isAfter(endDate);
+
+  // Note: getClassName requires ClassData — use from classes feature domain
+  Map<String, dynamic> toMap() {
     return {
+      'id': id,
+      'teacherId': teacherId,
       'title': title,
       'description': description,
       'classId': classId,
-      'subjectId': subjectId,
-      'teacherId': teacherId,
-      'organizationId': organizationId,
-      'status': status,
       'durationMinutes': durationMinutes,
+      'startDate': startDate,
+      'endDate': endDate,
       'totalMarks': totalMarks,
+      'passingScore': passingScore,
+      'status': status,
       'questionCount': questionCount,
       'isRandomized': isRandomized,
       'allowRetake': allowRetake,
-      'version': version,
+      'organizationId': organizationId,
+      'createdAt': createdAt,
+      'publishedAt': publishedAt,
     };
   }
-
-  ExamModel copyWith({
-    String? title,
-    String? description,
-    String? status,
-    int? totalMarks,
-    int? questionCount,
-    bool? isRandomized,
-    bool? allowRetake,
-    int? version,
-  }) {
-    return ExamModel(
-      id: id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      classId: classId,
-      subjectId: subjectId,
-      teacherId: teacherId,
-      organizationId: organizationId,
-      status: status ?? this.status,
-      durationMinutes: durationMinutes,
-      totalMarks: totalMarks ?? this.totalMarks,
-      questionCount: questionCount ?? this.questionCount,
-      isRandomized: isRandomized ?? this.isRandomized,
-      allowRetake: allowRetake ?? this.allowRetake,
-      startDate: startDate,
-      endDate: endDate,
-      createdAt: createdAt,
-      version: version ?? this.version,
-    );
-  }
-
-  bool get isDraft => status == 'draft';
-  bool get isPublished => status == 'published';
-  bool get isArchived => status == 'archived';
 }

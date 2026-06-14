@@ -12,6 +12,7 @@ import '../../../widgets/klasivo_youtube_player.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/lesson_provider.dart';
 import '../../../providers/material_provider.dart';
+import '../../../providers/content_progress_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_badge.dart';
@@ -79,6 +80,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
         organizationId: data['organizationId'] ?? '',
         subjectId: data['subjectId'] ?? '',
         chapterId: data['chapterId'] ?? '',
+        classId: data['classId'] ?? '',
         title: data['title'] ?? '',
         description: data['description'] ?? '',
         type: data['type'] ?? 'recorded',
@@ -214,7 +216,9 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: 'Edit Lesson',
                     onPressed: () {
-                      context.go('/teacher/lms/lessons/${widget.lessonId}/edit');
+                      // TODO: Navigate to lesson edit screen
+                      KlasivoToast.info(context,
+                          message: 'Lesson editing coming soon');
                     },
                   ),
                   // Overflow menu
@@ -320,6 +324,22 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
             0,
           ),
           child: _DescriptionSection(lesson: lesson),
+        ),
+      ),
+
+      // ── Mark as Done (for students) ──────────────────────────────────────
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            KlasivoSpacing.lg,
+            KlasivoSpacing.md,
+            KlasivoSpacing.lg,
+            0,
+          ),
+          child: _MarkDoneSection(
+            lesson: lesson,
+            subjectId: widget.subjectId,
+          ),
         ),
       ),
 
@@ -464,7 +484,7 @@ class _VideoPlayerCard extends StatelessWidget {
 
 // ── YouTube Card — Embedded player with progress tracking ────────────────────
 
-class _YouTubeCard extends StatefulWidget {
+class _YouTubeCard extends ConsumerStatefulWidget {
   final LessonData lesson;
   final bool isDark;
   final _LessonTypeConfig typeConfig;
@@ -478,31 +498,13 @@ class _YouTubeCard extends StatefulWidget {
   });
 
   @override
-  State<_YouTubeCard> createState() => _YouTubeCardState();
+  ConsumerState<_YouTubeCard> createState() => _YouTubeCardState();
 }
 
-class _YouTubeCardState extends State<_YouTubeCard> {
-  int _videoProgressPercent = 0;
-  final ContentProgressService _progressService = ContentProgressService();
-
+class _YouTubeCardState extends ConsumerState<_YouTubeCard> {
   @override
   void initState() {
     super.initState();
-    _loadProgress();
-  }
-
-  Future<void> _loadProgress() async {
-    final studentId = _getCurrentStudentId();
-    if (studentId == null) return;
-
-    final percent = await _progressService.getVideoProgressPercent(
-      studentId: studentId,
-      lessonId: widget.lesson.id,
-    );
-
-    if (mounted) {
-      setState(() => _videoProgressPercent = percent);
-    }
   }
 
   String? _getCurrentStudentId() {
@@ -516,6 +518,12 @@ class _YouTubeCardState extends State<_YouTubeCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the video progress provider for reactive updates
+    final videoProgressAsync = ref.watch(videoProgressProvider(widget.lesson.id));
+    final videoProgressPercent = videoProgressAsync.whenOrNull(
+          data: (percent) => percent,
+        ) ?? 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -525,33 +533,33 @@ class _YouTubeCardState extends State<_YouTubeCard> {
             videoUrl: widget.lesson.videoUrl,
             lessonId: widget.lesson.id,
             subjectId: widget.lesson.subjectId,
-            classId: '',
+            classId: widget.lesson.classId,
             organizationId: widget.lesson.organizationId,
           ),
 
         // Progress indicator
-        if (_videoProgressPercent > 0) ...[
+        if (videoProgressPercent > 0) ...[
           const SizedBox(height: KlasivoSpacing.sm),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: KlasivoSpacing.lg),
             child: Row(
               children: [
                 Icon(
-                  _videoProgressPercent >= 90
+                  videoProgressPercent >= 90
                       ? Icons.check_circle_rounded
                       : Icons.play_circle_outline_rounded,
                   size: 16,
-                  color: _videoProgressPercent >= 90
+                  color: videoProgressPercent >= 90
                       ? KlasivoColors.secondary
                       : KlasivoColors.accent,
                 ),
                 const SizedBox(width: KlasivoSpacing.xs),
                 Text(
-                  _videoProgressPercent >= 90
+                  videoProgressPercent >= 90
                       ? 'Completed'
-                      : '$_videoProgressPercent% watched',
+                      : '$videoProgressPercent% watched',
                   style: KlasivoTypography.caption.copyWith(
-                    color: _videoProgressPercent >= 90
+                    color: videoProgressPercent >= 90
                         ? KlasivoColors.secondary
                         : KlasivoColors.accent,
                   ),
@@ -588,12 +596,12 @@ class _YouTubeCardState extends State<_YouTubeCard> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(KlasivoRadius.xs),
               child: LinearProgressIndicator(
-                value: _videoProgressPercent / 100,
+                value: videoProgressPercent / 100,
                 backgroundColor: widget.isDark
                     ? KlasivoColors.darkBorder
                     : KlasivoColors.lightBorder,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  _videoProgressPercent >= 90
+                  videoProgressPercent >= 90
                       ? KlasivoColors.secondary
                       : KlasivoColors.primary,
                 ),
@@ -1325,4 +1333,116 @@ Color _materialTypeColor(String type) {
     'link' => const Color(0xFF3B5BDB),
     _ => KlasivoColors.accent,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK AS DONE SECTION — Manual lesson completion for students
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _MarkDoneSection extends ConsumerWidget {
+  final LessonData lesson;
+  final String subjectId;
+
+  const _MarkDoneSection({
+    required this.lesson,
+    required this.subjectId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Only show for students
+    final userRole = Hive.box(AppConstants.authBox).get('userRole') as String?;
+    if (userRole != 'student') return const SizedBox.shrink();
+
+    // Check completion status
+    final completionAsync = ref.watch(subjectCompletionProvider(subjectId));
+    final isCompleted = completionAsync.whenOrNull(
+          data: (stats) {
+            final completed = stats['lessonsCompleted'] as int? ?? 0;
+            return completed > 0; // Simplified: check if any lesson completed
+          },
+        ) ?? false;
+
+    // Check if this specific lesson is completed via video progress
+    final videoProgressAsync = ref.watch(videoProgressProvider(lesson.id));
+    final videoCompleted = videoProgressAsync.whenOrNull(
+          data: (percent) => percent >= 90,
+        ) ?? false;
+
+    final isDone = isCompleted || videoCompleted;
+
+    return KlasivoCard(
+      variant: KlasivoCardVariant.outlined,
+      padding: const EdgeInsets.all(KlasivoSpacing.lg),
+      child: Row(
+        children: [
+          Icon(
+            isDone
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            color: isDone ? KlasivoColors.secondary : KlasivoColors.accent,
+            size: 24,
+          ),
+          const SizedBox(width: KlasivoSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isDone ? 'Lesson Completed' : 'Mark as Done',
+                  style: KlasivoTypography.titleMedium.copyWith(
+                    color: isDone ? KlasivoColors.secondary : null,
+                  ),
+                ),
+                const SizedBox(height: KlasivoSpacing.xs),
+                Text(
+                  isDone
+                      ? 'Great job! You\'ve completed this lesson.'
+                      : 'Mark this lesson as completed when you\'re done.',
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isDone)
+            KlasivoButton(
+              label: 'Done',
+              icon: Icons.check_rounded,
+              variant: KlasivoButtonVariant.primary,
+              size: KlasivoButtonSize.sm,
+              onPressed: () => _markDone(ref),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _markDone(WidgetRef ref) async {
+    try {
+      final box = Hive.box(AppConstants.authBox);
+      final studentId = box.get('userId') as String?;
+      if (studentId == null) return;
+
+      final progressService = ref.read(contentProgressServiceProvider);
+      await progressService.markLessonCompleted(
+        studentId: studentId,
+        lessonId: lesson.id,
+        subjectId: subjectId,
+        classId: lesson.classId,
+        organizationId: lesson.organizationId.isNotEmpty
+            ? lesson.organizationId
+            : null,
+      );
+
+      // Invalidate providers so the UI refreshes
+      ref.invalidate(subjectCompletionProvider(subjectId));
+      ref.invalidate(videoProgressProvider(lesson.id));
+    } catch (_) {
+      // Non-critical
+    }
+  }
 }

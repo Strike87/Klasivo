@@ -8,8 +8,8 @@ import '../../../providers/organization_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
-import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_toast.dart';
+import '../../../widgets/klasivo_avatar.dart';
 
 class ExcelImportScreen extends ConsumerStatefulWidget {
   final String classId;

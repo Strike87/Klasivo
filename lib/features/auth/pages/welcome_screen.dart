@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
@@ -48,25 +50,54 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       final userId = ref.read(userIdProvider);
       final orgId = ref.read(organizationIdProvider);
 
-      if (userId == null || orgId == null) {
-        throw Exception('Missing user or organization data');
+      if (userId == null || orgId == null || orgId.isEmpty) {
+        // Log the missing data to Crashlytics for diagnostics
+        final detail = 'userId=${userId ?? "null"}, orgId=${orgId ?? "null"}';
+        FirebaseCrashlytics.instance.recordError(
+          'Missing user or organization data ($detail)',
+          StackTrace.current,
+          reason: 'Welcome screen _completeSetup: providers returned null/empty',
+        );
+
+        // Providers may be stale — read directly from Hive as fallback
+        final box = Hive.box(AppConstants.authBox);
+        final hiveUserId = userId ?? box.get('userId') as String?;
+        var hiveOrgId = orgId?.isEmpty == true ? null : (orgId ?? box.get('organizationId') as String?);
+
+        if (hiveUserId == null || hiveOrgId == null || hiveOrgId.isEmpty) {
+          throw Exception('Missing user or organization data. Please sign out and try again.');
+        }
+
+        // Sync providers with Hive values
+        ref.read(userIdProvider.notifier).state = hiveUserId;
+        ref.read(organizationIdProvider.notifier).state = hiveOrgId;
+
+        await authService.completeOwnerSetup(
+          userId: hiveUserId,
+          organizationId: hiveOrgId,
+          workspaceName: _nameController.text.trim(),
+        );
+      } else {
+        await authService.completeOwnerSetup(
+          userId: userId,
+          organizationId: orgId,
+          workspaceName: _nameController.text.trim(),
+        );
       }
 
-      await authService.completeOwnerSetup(
-        userId: userId,
-        organizationId: orgId,
-        workspaceName: _nameController.text.trim(),
-      );
-
-      // Update local state
+      // Persist to both Riverpod AND Hive so the GoRouter redirect
+      // and splash screen see the updated value immediately.
       ref.read(hasCompletedSetupProvider.notifier).state = true;
+      final box = Hive.box(AppConstants.authBox);
+      await box.put('hasCompletedSetup', true);
 
       if (mounted) {
         context.go('/dashboard');
       }
-    } catch (e) {
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Welcome screen _completeSetup failed');
       if (mounted) {
-        KlasivoToast.error(context, message: formatAuthError(e));
+        KlasivoToast.error(context, message: e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -156,8 +187,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   'Suggestions',
                   style: KlasivoTypography.labelMedium.copyWith(
                     color: isDark
-                        ? KlasivoColors.darkTextSecondary
-                        : KlasivoColors.lightTextSecondary,
+                        ? KlasivoColors.darkTextTertiary
+                        : KlasivoColors.lightTextTertiary,
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.sm),
@@ -171,21 +202,19 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                         style: KlasivoTypography.bodySmall.copyWith(
                           color: isDark
                               ? KlasivoColors.darkTextPrimary
-                              : KlasivoColors.primary,
+                              : KlasivoColors.lightTextPrimary,
                         ),
                       ),
-                      backgroundColor: isDark
-                          ? KlasivoColors.darkSurface
-                          : KlasivoColors.primarySurface,
                       onPressed: () {
                         _nameController.text = suggestion;
                       },
+                      backgroundColor: isDark
+                          ? KlasivoColors.darkSurface
+                          : KlasivoColors.lightSurface,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(KlasivoRadius.pill),
                         side: BorderSide(
-                          color: isDark
-                              ? KlasivoColors.darkBorder
-                              : KlasivoColors.primary.withValues(alpha: 0.3),
+                          color: KlasivoColors.primary.withValues(alpha: 0.3),
                         ),
                       ),
                     );

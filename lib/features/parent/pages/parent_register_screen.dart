@@ -53,7 +53,8 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
         organizationId: result['organizationId'],
         hasCompletedSetup: false,
         authProvider: 'password',
-      );
+      
+        ref: ref,);
 
       if (mounted) {
         // Parents need to link their child after registration
@@ -61,7 +62,7 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -82,7 +83,8 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? false,
         authProvider: 'google',
-      );
+      
+        ref: ref,);
 
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
@@ -94,7 +96,7 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }

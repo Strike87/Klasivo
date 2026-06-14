@@ -1,25 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/config/theme.dart';
 import '../core/tokens/tokens.dart';
-import '../core/config/theme.dart'; // Klasivo* typedef aliases (KlasivoSpacing, KlasivoColors, etc.)
-import '../core/rbac/rbac.dart';
-import '../providers/rbac_provider.dart'; // RBAC v2.0 providers
+import '../providers/permission_provider.dart';
 import '../providers/feature_flag_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO PERMISSION GATE v2.0 — Declarative RBAC UI control
-//
-// Scope-aware permission checks using the RBAC v2.0 provider system.
+// KLASIVO PERMISSION GATE — Declarative RBAC UI control
+// Wraps UI elements to show/hide based on user permissions.
+// Replaces manual role-checking in build methods.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Shows [child] only if the current user has the specified permission.
 /// Optionally shows [fallback] when permission is denied.
 ///
+/// Usage:
 /// ```dart
 /// KlasivoPermissionGate(
-///   permission: Permission.examCreate,
-///   scopeType: 'class',     // Optional scope validation
-///   scopeId: 'class_5A',    // Optional scope validation
+///   permission: Permission.createExam,
 ///   child: KlasivoButton(label: 'New Exam', onPressed: ...),
 ///   fallback: Text('No permission'),
 /// )
@@ -28,35 +26,27 @@ class KlasivoPermissionGate extends ConsumerWidget {
   final String permission;
   final Widget child;
   final Widget? fallback;
-
-  // Scope fields for scoped permission checks
-  final String? scopeType;
-  final String? scopeId;
+  final String? resourceId;      // For resource-level permissions
+  final String? resourceType;    // e.g., 'class', 'exam', 'organization'
 
   const KlasivoPermissionGate({
     Key? key,
     required this.permission,
     required this.child,
     this.fallback,
-    this.scopeType,
-    this.scopeId,
+    this.resourceId,
+    this.resourceType,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    bool hasPermission;
-
-    if (scopeType != null && scopeId != null) {
-      hasPermission = ref.watch(rbacCanScopedProvider(
-        RbacScopedCheck(
-          permission: permission,
-          scopeType: scopeType!,
-          scopeId: scopeId!,
-        ),
-      ));
-    } else {
-      hasPermission = ref.watch(rbacCanProvider(permission));
-    }
+    final hasPermission = ref.watch(hasPermissionProvider(
+      PermissionCheck(
+        permission: permission,
+        resourceId: resourceId,
+        resourceType: resourceType,
+      ),
+    ));
 
     if (hasPermission) return child;
     return fallback ?? const SizedBox.shrink();
@@ -65,116 +55,24 @@ class KlasivoPermissionGate extends ConsumerWidget {
 
 /// Shows [child] only if the current user has one of the specified roles.
 /// Optionally shows [fallback] when role check fails.
-///
-/// Uses hierarchy-aware role checking via [hasRole].
 class KlasivoRoleGate extends ConsumerWidget {
   final List<String> allowedRoles;
   final Widget child;
   final Widget? fallback;
-
-  /// When true, uses hierarchy-aware hasRole() instead of exact match.
-  final bool useHierarchy;
 
   const KlasivoRoleGate({
     Key? key,
     required this.allowedRoles,
     required this.child,
     this.fallback,
-    this.useHierarchy = true,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final service = ref.watch(rbacPermissionServiceProvider);
-    bool hasRole;
-
-    if (useHierarchy) {
-      // Hierarchy-aware: owner is considered to "have" admin role, etc.
-      hasRole = allowedRoles.any((role) => service.hasRole(role));
-    } else {
-      // Exact match only
-      hasRole = allowedRoles.any((role) => service.hasExactRole(role));
-    }
+    final userRole = ref.watch(currentUserRoleProvider);
+    final hasRole = allowedRoles.contains(userRole);
 
     if (hasRole) return child;
-    return fallback ?? const SizedBox.shrink();
-  }
-}
-
-/// Shows [child] only if the current user's scope includes the specified resource.
-/// Optionally shows [fallback] when scope validation fails.
-///
-/// ```dart
-/// KlasivoScopeGate(
-///   scopeType: 'class',
-///   scopeId: 'class_5A',
-///   child: ClassDetailScreen(classId: 'class_5A'),
-///   fallback: Text('No access to this class'),
-/// )
-/// ```
-class KlasivoScopeGate extends ConsumerWidget {
-  final String scopeType;
-  final String scopeId;
-  final Widget child;
-  final Widget? fallback;
-
-  const KlasivoScopeGate({
-    Key? key,
-    required this.scopeType,
-    required this.scopeId,
-    required this.child,
-    this.fallback,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final hasScope = ref.watch(rbacScopeValidatorProvider(
-      RbacScopeCheck(scopeType: scopeType, scopeId: scopeId),
-    ));
-
-    if (hasScope) return child;
-    return fallback ?? const SizedBox.shrink();
-  }
-}
-
-/// Combined permission + scope gate.
-/// Checks both permission AND scope in one widget.
-///
-/// ```dart
-/// KlasivoPermissionScopeGate(
-///   permission: Permission.examCreate,
-///   scopeType: 'class',
-///   scopeId: 'class_5A',
-///   child: ExamFormScreen(classId: 'class_5A'),
-/// )
-/// ```
-class KlasivoPermissionScopeGate extends ConsumerWidget {
-  final String permission;
-  final String scopeType;
-  final String scopeId;
-  final Widget child;
-  final Widget? fallback;
-
-  const KlasivoPermissionScopeGate({
-    Key? key,
-    required this.permission,
-    required this.scopeType,
-    required this.scopeId,
-    required this.child,
-    this.fallback,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final hasPermission = ref.watch(rbacCanScopedProvider(
-      RbacScopedCheck(
-        permission: permission,
-        scopeType: scopeType,
-        scopeId: scopeId,
-      ),
-    ));
-
-    if (hasPermission) return child;
     return fallback ?? const SizedBox.shrink();
   }
 }
@@ -227,10 +125,12 @@ class KlasivoFeaturePreview extends ConsumerWidget {
 
     return Stack(
       children: [
+        // Dimmed content
         Opacity(opacity: 0.4, child: child),
+        // Lock overlay
         Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(
+            padding: EdgeInsets.symmetric(
               horizontal: KlasivoSpacing.lg,
               vertical: KlasivoSpacing.md,
             ),
@@ -253,7 +153,7 @@ class KlasivoFeaturePreview extends ConsumerWidget {
                   size: KlasivoSpacing.iconSizeMd,
                   color: KlasivoColors.lightTextTertiary,
                 ),
-                const SizedBox(width: KlasivoSpacing.sm),
+                SizedBox(width: KlasivoSpacing.sm),
                 Text(
                   '$featureName — Coming Soon',
                   style: KlasivoTypography.labelMedium.copyWith(

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -43,13 +42,14 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       );
 
       await saveTeacherAuthData(
-        role: result['role'] ?? KlasivoRole.teacher,
+        role: result['role'] ?? AppConstants.roleTeacher,
         name: result['fullName'] ?? 'Teacher',
         userId: result['id'],
         email: result['email'] ?? _emailController.text.trim(),
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? true,
         authProvider: result['authProvider'] ?? 'password',
+        ref: ref,
       );
 
       // Sync email verification status (non-blocking)
@@ -58,23 +58,19 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
 
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-        final role = result['role'] ?? KlasivoRole.teacher;
-        if (!hasCompletedSetup && role == KlasivoRole.owner) {
+        final role = result['role'] ?? AppConstants.roleTeacher;
+        if (!hasCompletedSetup && role == AppConstants.roleOwner) {
           context.go('/welcome');
-        } else if (!hasCompletedSetup && role == KlasivoRole.parent) {
+        } else if (!hasCompletedSetup && role == AppConstants.roleParent) {
           context.go('/parent');
         } else {
           context.go('/dashboard');
         }
       }
     } catch (e) {
-      if (mounted) {
-        ref.read(authErrorProvider.notifier).state = formatAuthError(e);
-      }
+      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        ref.read(authLoadingProvider.notifier).state = false;
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
   }
 
@@ -87,34 +83,31 @@ class _TeacherLoginScreenState extends ConsumerState<TeacherLoginScreen> {
       final result = await authService.loginWithGoogle();
 
       await saveTeacherAuthData(
-        role: result['role'] ?? KlasivoRole.teacher,
+        role: result['role'] ?? AppConstants.roleTeacher,
         name: result['fullName'] ?? 'User',
         userId: result['id'],
         email: result['email'] ?? '',
         organizationId: result['organizationId'],
         hasCompletedSetup: result['hasCompletedSetup'] ?? true,
         authProvider: result['authProvider'] ?? 'google',
-      );
+      
+        ref: ref,);
 
       if (mounted) {
         final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-        final role = result['role'] ?? KlasivoRole.teacher;
-        if (!hasCompletedSetup && role == KlasivoRole.owner) {
+        final role = result['role'] ?? AppConstants.roleTeacher;
+        if (!hasCompletedSetup && role == AppConstants.roleOwner) {
           context.go('/welcome');
-        } else if (!hasCompletedSetup && role == KlasivoRole.parent) {
+        } else if (!hasCompletedSetup && role == AppConstants.roleParent) {
           context.go('/parent');
         } else {
           context.go('/dashboard');
         }
       }
     } catch (e) {
-      if (mounted) {
-        ref.read(authErrorProvider.notifier).state = formatAuthError(e);
-      }
+      ref.read(authErrorProvider.notifier).state = e.toString().replaceAll('Exception: ', '');
     } finally {
-      if (mounted) {
-        ref.read(authLoadingProvider.notifier).state = false;
-      }
+      ref.read(authLoadingProvider.notifier).state = false;
     }
   }
 

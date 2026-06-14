@@ -32,6 +32,9 @@ dependencies:
   firebase_analytics: ^11.6.0
   sentry_flutter: ^9.0.0
 
+  # LiveKit (Video Classes)
+  livekit_client: ^2.3.0
+
   # Deep Links
   app_links: ^6.3.2
 
@@ -100,6 +103,8 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+  assets:
+    - assets/icon/
   fonts:
     - family: PlusJakartaSans
       fonts:

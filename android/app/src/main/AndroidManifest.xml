@@ -54,10 +54,10 @@
         <!-- Firebase Messaging -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="exam_notifications" />
+            android:value="klasivo_channel" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_name"
-            android:value="Exam Notifications" />
+            android:value="Klasivo" />
 
         <meta-data
             android:name="flutterEmbedding"

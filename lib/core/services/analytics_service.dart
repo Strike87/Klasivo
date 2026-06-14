@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
-import '../rbac/roles.dart';
 
 class AnalyticsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -187,7 +186,7 @@ class AnalyticsService {
           .collection(AppConstants.usersCollection)
           .where('organizationId', isEqualTo: organizationId)
           .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: KlasivoRole.student)
+          .where('role', isEqualTo: AppConstants.roleStudent)
           .where('isActive', isEqualTo: true)
           .get();
 
@@ -320,7 +319,7 @@ class AnalyticsService {
             .collection(AppConstants.usersCollection)
             .where('organizationId', isEqualTo: organizationId)
             .where('classId', isEqualTo: classId)
-            .where('role', isEqualTo: KlasivoRole.student)
+            .where('role', isEqualTo: AppConstants.roleStudent)
             .where('isActive', isEqualTo: true)
             .get();
         studentsManaged += studentsSnapshot.docs.length;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -121,12 +122,13 @@ final themeModeProvider = Provider<ThemeMode>((ref) {
 });
 
 /// Derived provider: whether dark mode is currently active
+/// Correctly resolves system mode by checking platform brightness.
 final isDarkModeProvider = Provider<bool>((ref) {
   final themeMode = ref.watch(themeModeProvider);
   if (themeMode == ThemeMode.system) {
-    // This will be resolved at the widget level using PlatformDispatcher
-    // For provider-level access, we default to false
-    return false;
+    final platformBrightness =
+        SchedulerBinding.instance.platformDispatcher.platformBrightness;
+    return platformBrightness == Brightness.dark;
   }
   return themeMode == ThemeMode.dark;
 });

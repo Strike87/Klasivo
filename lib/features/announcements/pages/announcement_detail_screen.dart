@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/rbac/roles.dart';
+import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/announcement_provider.dart';
 import '../../../providers/auth_provider.dart';
@@ -74,7 +74,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
     }
 
     final a = _announcement!;
-    final isOwnerOrCreator = ref.read(userRoleProvider) == KlasivoRole.owner || a.createdBy == userId;
+    final isOwnerOrCreator = ref.read(userRoleProvider) == AppConstants.roleOwner || a.createdBy == userId;
 
     return Scaffold(
       appBar: AppBar(

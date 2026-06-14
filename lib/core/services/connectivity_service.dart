@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -8,9 +9,13 @@ import '../config/app_constants.dart';
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO CONNECTIVITY SERVICE — Monitors network status for offline mode
 //
-// Uses Firestore ping + periodic health checks to determine connectivity.
+// Uses DNS lookup + Firestore metadata to determine connectivity.
 // Debounces rapid status changes (500ms) to avoid UI flicker.
 // Persists last known status to Hive for cold-start awareness.
+//
+// NOTE: Previous implementation used Source.server on a Firestore collection
+// which fails when the user is not authenticated (security rules deny the read),
+// causing a false "offline" status. Now uses DNS lookup as the primary check.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Connectivity status levels.
@@ -130,17 +135,29 @@ class ConnectivityService {
     }
   }
 
-  /// Performs a Firestore ping to check connectivity and latency.
+  /// Performs a DNS-based connectivity check.
+  ///
+  /// Uses DNS lookup to a well-known host (google.com) to verify
+  /// actual internet connectivity. This works regardless of whether
+  /// the user is authenticated with Firebase or not.
+  ///
+  /// Previously used Source.server on a Firestore collection, but that
+  /// fails when the user is not authenticated (security rules deny the read),
+  /// causing a false "offline" status.
   Future<void> _performPingCheck() async {
     try {
       final stopwatch = Stopwatch()..start();
 
-      // Attempt to fetch a lightweight document (Firestore health check)
-      await _firestore.collection('.health_check').limit(1).get(
-        const GetOptions(source: Source.server),
-      );
-
+      // DNS lookup to verify internet connectivity.
+      // This is lightweight and works without authentication.
+      final result = await InternetAddress.lookup('google.com');
       stopwatch.stop();
+
+      if (result.isEmpty || result.first.rawAddress.isEmpty) {
+        _emitStatus(ConnectivityStatus.offline);
+        return;
+      }
+
       final latency = stopwatch.elapsed;
 
       if (latency > _poorThreshold) {
@@ -148,19 +165,28 @@ class ConnectivityService {
       } else {
         _emitStatus(ConnectivityStatus.online);
       }
-    } catch (e) {
-      // Any error means we can't reach Firestore
+    } on SocketException catch (_) {
+      // No internet connectivity
       _emitStatus(ConnectivityStatus.offline);
+    } catch (e) {
+      // Other errors — don't assume offline, keep current status
+      debugPrint('[ConnectivityService] Ping check error (not marking offline): $e');
     }
   }
 
   /// Listens to Firestore snapshot metadata for real-time online/offline detection.
+  ///
+  /// Only uses Firestore metadata as a secondary signal. Errors from
+  /// security rules (unauthenticated access) are NOT treated as offline
+  /// since they are not connectivity issues.
   void _listenToFirestoreMetadata() {
     _pingSubscription?.cancel();
 
-    // Listen to a lightweight snapshot to detect metadata changes
+    // Listen to a lightweight snapshot to detect metadata changes.
+    // Use default source (cache + server) to avoid security rule errors
+    // being misinterpreted as connectivity issues.
     _pingSubscription = _firestore
-        .collection('.health_check')
+        .collection(AppConstants.usersCollection)
         .limit(1)
         .snapshots(includeMetadataChanges: true)
         .listen(
@@ -168,19 +194,19 @@ class ConnectivityService {
         final isFromCache = snapshot.metadata.isFromCache;
         final pendingWrites = snapshot.metadata.hasPendingWrites;
 
-        if (isFromCache && !pendingWrites) {
-          // Data is from cache — likely offline
-          _emitStatus(ConnectivityStatus.offline);
-        } else if (!isFromCache) {
-          // Data is from server — online
+        if (!isFromCache) {
+          // Data is from server — definitely online
           _emitStatus(ConnectivityStatus.online);
         }
-        // If from cache with pending writes, we might be temporarily offline
-        // but Firestore is still trying — don't change status yet
+        // NOTE: isFromCache no longer treated as offline because
+        // Firestore may serve cached data when security rules deny
+        // the server read, which is NOT a connectivity issue.
+        // The DNS-based _performPingCheck is the primary offline detector.
       },
       onError: (error) {
-        // Stream error — likely offline
-        _emitStatus(ConnectivityStatus.offline);
+        // Stream error — could be permissions, not connectivity.
+        // Don't mark as offline; let the DNS check handle that.
+        debugPrint('[ConnectivityService] Firestore metadata stream error (not marking offline): $error');
       },
     );
   }

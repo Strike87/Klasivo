@@ -4,9 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config/app_constants.dart';
-import '../core/rbac/roles.dart';
 import '../core/services/auth_service.dart';
 import '../core/services/event_bus.dart';
+import '../core/services/notification_service.dart';
 
 // ─── Auth Service Provider ───────────────────────────────────────────────────
 
@@ -75,14 +75,10 @@ final organizationIdProvider = StateProvider<String?>((ref) {
 
 final hasCompletedSetupProvider = StateProvider<bool>((ref) {
   final box = Hive.box(AppConstants.authBox);
-  return box.get('hasCompletedSetup', defaultValue: true) as bool;
-});
-
-// ─── Must Change Password Provider ──────────────────────────────────────────
-
-final mustChangePasswordProvider = StateProvider<bool>((ref) {
-  final box = Hive.box(AppConstants.authBox);
-  return box.get('mustChangePassword', defaultValue: false) as bool;
+  // Default must be false — if Hive hasn't been written yet (cold start before
+  // registration completes), assuming true would redirect owners past /welcome
+  // to a broken dashboard with no organization data.
+  return box.get('hasCompletedSetup', defaultValue: false) as bool;
 });
 
 // ─── Student Class ID Provider (persisted with Hive) ─────────────────────────
@@ -121,75 +117,6 @@ final authLoadingProvider = StateProvider<bool>((ref) => false);
 
 final authErrorProvider = StateProvider<String?>((ref) => null);
 
-// ─── Helper: Format auth errors into user-friendly messages ─────────────────
-
-/// Converts raw Firebase Auth exceptions into short, user-friendly messages.
-/// This prevents showing PlatformException / stack traces to users.
-String formatAuthError(dynamic error) {
-  final msg = error.toString();
-
-  // Network / connectivity
-  if (msg.contains('network-request-failed') ||
-      msg.contains('network_error') ||
-      msg.contains('NetworkError') ||
-      msg.contains('java.net') ||
-      msg.contains('SocketException') ||
-      msg.contains('Failed host lookup')) {
-    return 'No internet connection. Please check your network and try again.';
-  }
-
-  // Firebase Auth specific codes
-  if (msg.contains('user-not-found') || msg.contains('userNotFound')) {
-    return 'No account found with this email.';
-  }
-  if (msg.contains('wrong-password') || msg.contains('wrongPassword')) {
-    return 'Incorrect password. Please try again.';
-  }
-  if (msg.contains('email-already-in-use') || msg.contains('emailAlreadyInUse')) {
-    return 'This email is already registered. Try signing in instead.';
-  }
-  if (msg.contains('weak-password') || msg.contains('weakPassword')) {
-    return 'Password is too weak. Use at least 6 characters.';
-  }
-  if (msg.contains('invalid-email') || msg.contains('invalidEmail')) {
-    return 'Please enter a valid email address.';
-  }
-  if (msg.contains('too-many-requests') || msg.contains('tooManyRequests')) {
-    return 'Too many attempts. Please wait a moment and try again.';
-  }
-  if (msg.contains('user-disabled') || msg.contains('userDisabled')) {
-    return 'This account has been disabled. Contact support.';
-  }
-  if (msg.contains('invalid-credential') || msg.contains('invalidCredential')) {
-    return 'Invalid email or password. Please try again.';
-  }
-  if (msg.contains('operation-not-allowed')) {
-    return 'This sign-in method is not enabled. Contact support.';
-  }
-  if (msg.contains('account-exists-with-different-credential')) {
-    return 'An account already exists with a different sign-in method.';
-  }
-  if (msg.contains('requires-recent-login')) {
-    return 'Please sign out and sign in again before making this change.';
-  }
-
-  // Google Sign-In
-  if (msg.contains('sign_in_canceled') || msg.contains('Sign in canceled')) {
-    return 'Sign in was cancelled.';
-  }
-  if (msg.contains('GoogleSignIn')) {
-    return 'Google Sign-In failed. Please try again.';
-  }
-
-  // PlatformException fallback
-  if (msg.contains('PlatformException')) {
-    return 'Something went wrong. Please try again.';
-  }
-
-  // Generic cleanup — strip "Exception: " prefix
-  return msg.replaceAll('Exception: ', '').replaceAll(RegExp(r'\s+'), ' ').trim();
-}
-
 // ─── Helper: Save auth data locally (for OWNER / TEACHER / PARENT login) ────
 
 Future<void> saveTeacherAuthData({
@@ -200,6 +127,7 @@ Future<void> saveTeacherAuthData({
   String? organizationId,
   bool hasCompletedSetup = true,
   String authProvider = 'password',
+  WidgetRef? ref,
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
@@ -212,7 +140,19 @@ Future<void> saveTeacherAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
-  await box.put('mustChangePassword', false);
+
+  // Update Riverpod StateProviders so they reflect the new data immediately
+  if (ref != null) {
+    ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(userRoleProvider.notifier).state = role;
+    ref.read(userNameProvider.notifier).state = name;
+    ref.read(userIdProvider.notifier).state = userId;
+    ref.read(authMethodProvider.notifier).state = authProvider;
+    if (organizationId != null) {
+      ref.read(organizationIdProvider.notifier).state = organizationId;
+    }
+    ref.read(hasCompletedSetupProvider.notifier).state = hasCompletedSetup;
+  }
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
@@ -220,6 +160,13 @@ Future<void> saveTeacherAuthData({
     role: role,
     orgId: organizationId,
   ));
+
+  // Subscribe to FCM topics for push notifications
+  NotificationService.subscribeUserToTopics(
+    userId: userId,
+    role: role,
+    organizationId: organizationId,
+  );
 }
 
 // ─── Helper: Save auth data locally (for STUDENT login) ──────────────────────
@@ -232,10 +179,11 @@ Future<void> saveStudentAuthData({
   String? studentCode,
   String? className,
   String? organizationId,
+  WidgetRef? ref,
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
-  await box.put('userRole', KlasivoRole.student);
+  await box.put('userRole', AppConstants.roleStudent);
   await box.put('userName', name);
   await box.put('userId', userId);
   if (classId != null) await box.put('studentClassId', classId);
@@ -245,14 +193,36 @@ Future<void> saveStudentAuthData({
   if (organizationId != null) await box.put('organizationId', organizationId);
   await box.put('authMethod', 'student_code');
   await box.put('hasCompletedSetup', true);
-  await box.put('mustChangePassword', true); // Students must change password on first login
+
+  // Update Riverpod StateProviders so they reflect the new data immediately
+  if (ref != null) {
+    ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(userRoleProvider.notifier).state = AppConstants.roleStudent;
+    ref.read(userNameProvider.notifier).state = name;
+    ref.read(userIdProvider.notifier).state = userId;
+    ref.read(authMethodProvider.notifier).state = 'student_code';
+    if (classId != null) ref.read(studentClassIdProvider.notifier).state = classId;
+    if (teacherId != null) ref.read(studentTeacherIdProvider.notifier).state = teacherId;
+    if (studentCode != null) ref.read(studentCodeProvider.notifier).state = studentCode;
+    if (className != null) ref.read(studentClassNameProvider.notifier).state = className;
+    if (organizationId != null) ref.read(organizationIdProvider.notifier).state = organizationId;
+    ref.read(hasCompletedSetupProvider.notifier).state = true;
+  }
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
     userId: userId,
-    role: KlasivoRole.student,
+    role: AppConstants.roleStudent,
     orgId: organizationId,
   ));
+
+  // Subscribe to FCM topics for push notifications
+  NotificationService.subscribeUserToTopics(
+    userId: userId,
+    role: AppConstants.roleStudent,
+    organizationId: organizationId,
+    classId: classId,
+  );
 }
 
 // ─── Helper: Save auth data locally (for PARENT login) ───────────────────────
@@ -264,10 +234,11 @@ Future<void> saveParentAuthData({
   String? organizationId,
   bool hasCompletedSetup = true,
   String authProvider = 'password',
+  WidgetRef? ref,
 }) async {
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);
-  await box.put('userRole', KlasivoRole.parent);
+  await box.put('userRole', AppConstants.roleParent);
   await box.put('userName', name);
   await box.put('userId', userId);
   await box.put('userEmail', email);
@@ -276,12 +247,24 @@ Future<void> saveParentAuthData({
     await box.put('organizationId', organizationId);
   }
   await box.put('hasCompletedSetup', hasCompletedSetup);
-  await box.put('mustChangePassword', false);
+
+  // Update Riverpod StateProviders so they reflect the new data immediately
+  if (ref != null) {
+    ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(userRoleProvider.notifier).state = AppConstants.roleParent;
+    ref.read(userNameProvider.notifier).state = name;
+    ref.read(userIdProvider.notifier).state = userId;
+    ref.read(authMethodProvider.notifier).state = authProvider;
+    if (organizationId != null) {
+      ref.read(organizationIdProvider.notifier).state = organizationId;
+    }
+    ref.read(hasCompletedSetupProvider.notifier).state = hasCompletedSetup;
+  }
 
   // Fire login event
   KlasivoEventBus.instance.fire(UserLoggedInEvent(
     userId: userId,
-    role: KlasivoRole.parent,
+    role: AppConstants.roleParent,
     orgId: organizationId,
   ));
 }
@@ -309,7 +292,6 @@ Future<void> clearAuthData() async {
   await box.delete('authMethod');
   await box.delete('organizationId');
   await box.delete('hasCompletedSetup');
-  await box.delete('mustChangePassword');
   // Also sign out Firebase Auth + Google Sign-In
   try {
     await FirebaseAuth.instance.signOut();

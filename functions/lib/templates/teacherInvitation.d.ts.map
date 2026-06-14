@@ -1,0 +1,1 @@
+{"version":3,"file":"teacherInvitation.d.ts","sourceRoot":"","sources":["../../src/templates/teacherInvitation.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAMH,MAAM,WAAW,wBAAwB;IACvC,WAAW,EAAE,MAAM,CAAC;IACpB,UAAU,EAAE,MAAM,CAAC;IACnB,WAAW,EAAE,MAAM,CAAC;IACpB,UAAU,EAAE,MAAM,CAAC;IACnB,KAAK,EAAE,MAAM,CAAC;CACf;AAED;;;;GAIG;AACH,wBAAgB,sBAAsB,CAAC,OAAO,EAAE,wBAAwB,GAAG,MAAM,CAmChF"}

@@ -3,7 +3,6 @@ import 'app_environment.dart';
 class AppConstants {
   // Local Storage
   static const String authBox = 'auth_box';
-  static const String appSettingsBox = 'app_settings';
 
   // ─── Firebase Collections ────────────────────────────────────────────────
 
@@ -77,8 +76,6 @@ class AppConstants {
   static const String announcementsCollection = 'announcements';
   static const String calendarEventsCollection = 'calendar_events';
   static const String gradebookCollection = 'gradebook';
-  static const String gradebookCategoriesCollection = 'gradebook_categories';
-  static const String gradebookEntriesCollection = 'gradebook_entries';
 
   // v1.9 ERP Collections
   static const String feesCollection = 'fees';
@@ -87,48 +84,38 @@ class AppConstants {
   static const String payrollCollection = 'payroll';
   static const String inventoryCollection = 'inventory';
 
-  // ─── User Roles ────────────────────────────────────────────────────────
-  //
-  // DEPRECATED: Use KlasivoRole constants from core/rbac/roles.dart instead.
-  // These constants are kept for backward compatibility during migration.
-  // All new code should use KlasivoRole.owner, KlasivoRole.teacher, etc.
-  //
-  // Hierarchy:
-  //   super_admin
-  //    └─ owner
-  //         └─ admin
-  //              ├─ campus_manager
-  //              ├─ stage_manager
-  //              │    └─ academic_supervisor
-  //              │         └─ teacher
-  //              │              └─ assistant_teacher
-  //              └─ observer
-  //
-  //   student (standalone)
-  //   parent  (standalone)
+  // ─── v2.0 Multi-Tenant Collections ──────────────────────────────────────────
 
-  @Deprecated('Use KlasivoRole.superAdmin instead')
-  static const String roleSuperAdmin = 'super_admin';
-  @Deprecated('Use KlasivoRole.owner instead')
+  static const String tenantsCollection = 'tenants';
+  static const String transportRoutesCollection = 'transport_routes';
+  static const String transportAssignmentsCollection = 'transport_assignments';
+
+  // ─── v2.0 Enterprise Analytics Collections (pre-computed) ───────────────────
+
+  static const String analyticsDailyCollection = 'analytics_daily';
+  static const String analyticsWeeklyCollection = 'analytics_weekly';
+  static const String analyticsMonthlyCollection = 'analytics_monthly';
+
+  // ─── User Roles (v2.0: 11 roles for granular RBAC) ─────────────────────────
+
   static const String roleOwner = 'owner';
-  @Deprecated('Use KlasivoRole.admin instead')
   static const String roleAdmin = 'admin';
-  @Deprecated('Use KlasivoRole.campusManager instead')
+  static const String roleAcademicManager = 'academic_manager';
   static const String roleCampusManager = 'campus_manager';
-  @Deprecated('Use KlasivoRole.stageManager instead')
-  static const String roleStageManager = 'stage_manager';
-  @Deprecated('Use KlasivoRole.academicSupervisor instead')
-  static const String roleAcademicSupervisor = 'academic_supervisor';
-  @Deprecated('Use KlasivoRole.teacher instead')
+  static const String roleStageSupervisor = 'stage_supervisor';
   static const String roleTeacher = 'teacher';
-  @Deprecated('Use KlasivoRole.assistantTeacher instead')
   static const String roleAssistantTeacher = 'assistant_teacher';
-  @Deprecated('Use KlasivoRole.observer instead')
-  static const String roleObserver = 'observer';
-  @Deprecated('Use KlasivoRole.student instead')
   static const String roleStudent = 'student';
-  @Deprecated('Use KlasivoRole.parent instead')
   static const String roleParent = 'parent';
+  static const String roleObserver = 'observer';
+  static const String roleSuperAdmin = 'super_admin';
+
+  // ─── Tenant Plans ───────────────────────────────────────────────────────────
+
+  static const String planFree = 'free';
+  static const String planStarter = 'starter';
+  static const String planProfessional = 'professional';
+  static const String planEnterprise = 'enterprise';
 
   // ─── Navigation Tabs ─────────────────────────────────────────────────────
   // Dashboard / Academic / People / Inbox / Settings
@@ -415,43 +402,12 @@ class AppConstants {
 
   static const int autoSaveInterval = 5;
   static const int violationThreshold = 3;
-  // ─── Password Generation ──────────────────────────────────────────────
-  // Replaced static '123456' with secure random generation.
-  // Use PasswordGenerator.generateTempPassword() instead.
-
-  /// DEPRECATED — Use PasswordGenerator.generateTempPassword() instead.
-  /// Kept for backward compatibility with existing student records.
-  @Deprecated('Use PasswordGenerator.generateTempPassword() instead')
-  static const String defaultStudentPassword = 'Klasivo2024!';
+  static const String defaultStudentPassword = '123456';
   static const int maxMessageLength = 2000;
   static const int analyticsCacheDurationHours = 1;
   static const int inviteCodeLength = 8;
   static const int maxSlugLength = 40;
   static const int notificationsPageSize = 50;
-
-  // ─── Timing (seconds) ───────────────────────────────────────────────────
-
-  /// Splash screen display duration before navigation
-  static const int splashDurationSeconds = 2;
-  /// Default toast/snackbar display duration
-  static const int toastDurationSeconds = 3;
-  /// Clipboard monitoring check interval during exams
-  static const int clipboardCheckIntervalSeconds = 2;
-  /// Connectivity ping interval (Firestore health check)
-  static const int connectivityPingIntervalSeconds = 30;
-  /// Threshold for "poor" connectivity detection
-  static const int poorConnectivityThresholdSeconds = 2;
-  /// Sync indicator animation duration
-  static const int syncIndicatorAnimSeconds = 1;
-  /// Sync queue batch size per cycle
-  static const int syncBatchSize = 10;
-  /// Max retry attempts before dead-lettering a sync queue entry
-  static const int syncMaxRetries = 5;
-  /// Image cache max size in MB
-  static const int imageCacheMaxSizeMB = 100;
-  /// Firestore cache size in MB
-  static const int firestoreCacheSizeMB = 100;
-
 
   // ─── Environment ────────────────────────────────────────────────────────
 
@@ -467,9 +423,47 @@ class AppConstants {
   /// Environment-aware default institution ID.
   /// Both dev and prod use 'default'; the prefix isolation is handled
   /// via [EnvironmentConfig.databasePrefix] at the collection level.
-  static String get defaultInstitutionId => 'default';
+  static const String defaultInstitutionId = 'default';
 
   // ─── Extra Collections (referenced by services) ─────────────────────────
 
   static const String examInstancesCollection = 'exam_instances';
+  static const String gradebookCategoriesCollection = 'gradebook_categories';
+  static const String gradebookEntriesCollection = 'gradebook_entries';
+
+  // ─── v2.2 Staff Approval Collections ───────────────────────────────────────
+
+  static const String staffApplicationsCollection = 'staff_applications';
+  static const String notificationEventsCollection = 'notification_events';
+
+  // ─── Staff Approval Status ─────────────────────────────────────────────────
+
+  static const String staffStatusPendingReview = 'pending_review';
+  static const String staffStatusInvited = 'invited';
+  static const String staffStatusApproved = 'approved';
+  static const String staffStatusRejected = 'rejected';
+  static const String staffStatusRevoked = 'revoked';
+  static const String staffStatusExpired = 'expired';
+  static const String staffStatusDeclined = 'declined';
+
+  // ─── Staff Approval Policy ─────────────────────────────────────────────────
+
+  static const String staffPolicyManual = 'manual';
+  static const String staffPolicyInviteOnly = 'invite_only';
+  static const String staffPolicyAutoApprove = 'auto_approve';
+
+  // ─── Staff Types ───────────────────────────────────────────────────────────
+
+  static const String staffTypeTeacher = 'teacher';
+  static const String staffTypeAssistantTeacher = 'assistant_teacher';
+  static const String staffTypeCounselor = 'counselor';
+
+  // ─── Staff Notification Event Types ────────────────────────────────────────
+
+  static const String staffEventApplicationSubmitted = 'staff_application_submitted';
+  static const String staffEventApplicationApproved = 'staff_application_approved';
+  static const String staffEventApplicationRejected = 'staff_application_rejected';
+  static const String staffEventApplicationRevoked = 'staff_application_revoked';
+  static const String staffEventInvitationSent = 'staff_invitation_sent';
+  static const String staffEventInvitationExpired = 'staff_invitation_expired';
 }

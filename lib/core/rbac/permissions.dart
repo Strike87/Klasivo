@@ -9,7 +9,7 @@
 //   Questions · Messaging · Analytics · Billing · Reports · Notifications
 //   Stages · Classes · Subjects · Groups · Results
 //   LMS (Lessons, Materials, Progress) · Parent · Integrity
-//   ERP (Fees, Payments, Payroll, Inventory)
+//   ERP (Fees, Payments, Payroll, Inventory) · Staff Approval
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Comprehensive permission constants for Klasivo RBAC v2.0.
@@ -182,6 +182,22 @@ class Permission {
   static const String inventoryView = 'inventory:view';
   static const String inventoryManage = 'inventory:manage';
 
+  // ─── Staff Approval ───────────────────────────────────────────────────
+  /// Approve a pending staff application.
+  static const String staffApprove = 'staff:approve';
+
+  /// Reject a pending staff application.
+  static const String staffReject = 'staff:reject';
+
+  /// Revoke access for an approved staff member.
+  static const String staffRevoke = 'staff:revoke';
+
+  /// Send an invitation to a prospective staff member.
+  static const String staffInvite = 'staff:invite';
+
+  /// View staff applications (pending and historical).
+  static const String staffViewApplications = 'staff:view_applications';
+
   // ═══════════════════════════════════════════════════════════════════════
   // Category helpers
   // ═══════════════════════════════════════════════════════════════════════
@@ -255,6 +271,8 @@ class Permission {
     payrollView, payrollManage,
     // ERP: Inventory
     inventoryView, inventoryManage,
+    // Staff Approval
+    staffApprove, staffReject, staffRevoke, staffInvite, staffViewApplications,
   ];
 
   /// Category → permissions mapping (for UI grouping)
@@ -285,5 +303,6 @@ class Permission {
     'payments': [paymentsView, paymentsManage],
     'payroll': [payrollView, payrollManage],
     'inventory': [inventoryView, inventoryManage],
+    'staff': [staffApprove, staffReject, staffRevoke, staffInvite, staffViewApplications],
   };
 }

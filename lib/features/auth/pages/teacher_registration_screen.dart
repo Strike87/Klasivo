@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
-import '../../../core/rbac/roles.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -54,14 +53,15 @@ class _TeacherRegistrationScreenState
         );
 
         await saveTeacherAuthData(
-          role: KlasivoRole.owner,
+          role: AppConstants.roleOwner,
           name: result['fullName'],
           userId: result['id'],
           email: result['email'],
           organizationId: result['organizationId'],
           hasCompletedSetup: false,
           authProvider: 'password',
-        );
+        
+        ref: ref,);
 
         if (mounted) {
           context.go('/welcome');
@@ -76,14 +76,15 @@ class _TeacherRegistrationScreenState
         );
 
         await saveTeacherAuthData(
-          role: KlasivoRole.teacher,
+          role: AppConstants.roleTeacher,
           name: result['fullName'],
           userId: result['id'],
           email: result['email'],
           organizationId: result['organizationId'],
           hasCompletedSetup: true,
           authProvider: 'password',
-        );
+        
+        ref: ref,);
 
         if (mounted) {
           context.go('/dashboard');
@@ -91,7 +92,7 @@ class _TeacherRegistrationScreenState
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }
@@ -109,14 +110,15 @@ class _TeacherRegistrationScreenState
         final result = await authService.registerOwnerWithGoogle();
 
         await saveTeacherAuthData(
-          role: result['role'] ?? KlasivoRole.owner,
+          role: result['role'] ?? AppConstants.roleOwner,
           name: result['fullName'] ?? 'User',
           userId: result['id'],
           email: result['email'] ?? '',
           organizationId: result['organizationId'],
           hasCompletedSetup: result['hasCompletedSetup'] ?? false,
           authProvider: 'google',
-        );
+        
+        ref: ref,);
 
         if (mounted) {
           final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
@@ -140,14 +142,15 @@ class _TeacherRegistrationScreenState
         );
 
         await saveTeacherAuthData(
-          role: result['role'] ?? KlasivoRole.teacher,
+          role: result['role'] ?? AppConstants.roleTeacher,
           name: result['fullName'] ?? 'Teacher',
           userId: result['id'],
           email: result['email'] ?? '',
           organizationId: result['organizationId'],
           hasCompletedSetup: result['hasCompletedSetup'] ?? true,
           authProvider: 'google',
-        );
+        
+        ref: ref,);
 
         if (mounted) {
           context.go('/dashboard');
@@ -155,7 +158,7 @@ class _TeacherRegistrationScreenState
       }
     } catch (e) {
       ref.read(authErrorProvider.notifier).state =
-          formatAuthError(e);
+          e.toString().replaceAll('Exception: ', '');
     } finally {
       ref.read(authLoadingProvider.notifier).state = false;
     }

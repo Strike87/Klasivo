@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import 'notification_service.dart';
 
 class AttendanceService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -51,6 +52,18 @@ class AttendanceService {
           'markedBy': markedBy,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+
+        // Notify student if absent or late (fire-and-forget)
+        if (status == AppConstants.attendanceStatusAbsent ||
+            status == AppConstants.attendanceStatusLate) {
+          _notifyAttendance(
+            studentId: studentId,
+            date: date,
+            status: status,
+            organizationId: organizationId,
+          );
+        }
+
         return existing.docs.first.id;
       }
 
@@ -69,9 +82,41 @@ class AttendanceService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Notify student if absent or late (fire-and-forget)
+      if (status == AppConstants.attendanceStatusAbsent ||
+          status == AppConstants.attendanceStatusLate) {
+        _notifyAttendance(
+          studentId: studentId,
+          date: date,
+          status: status,
+          organizationId: organizationId,
+        );
+      }
+
       return docRef.id;
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Send attendance notification to student if absent or late.
+  /// Called after successful attendance marking.
+  Future<void> _notifyAttendance({
+    required String studentId,
+    required String date,
+    required String status,
+    String? organizationId,
+  }) async {
+    try {
+      await NotificationService.notifyAttendanceMarked(
+        studentId: studentId,
+        date: date,
+        status: status,
+        organizationId: organizationId,
+      );
+    } catch (_) {
+      // Non-critical: notification failure shouldn't block attendance
     }
   }
 
@@ -145,6 +190,20 @@ class AttendanceService {
       }
 
       await batch.commit();
+
+      // Send notifications for absent/late students
+      for (final entry in studentStatuses.entries) {
+        final status = entry.value;
+        if (status == AppConstants.attendanceStatusAbsent ||
+            status == AppConstants.attendanceStatusLate) {
+          await _notifyAttendance(
+            studentId: entry.key,
+            date: date,
+            status: status,
+            organizationId: organizationId,
+          );
+        }
+      }
     } catch (e) {
       rethrow;
     }

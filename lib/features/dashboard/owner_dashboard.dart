@@ -7,11 +7,12 @@ import '../../../core/services/feature_flag_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../providers/exam_stats_provider.dart';
+import '../../../providers/exam_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/student_provider.dart';
-import '../../../core/rbac/roles.dart';
+import '../../../providers/permission_provider.dart';
 import '../../../providers/feature_flag_provider.dart';
-import '../../../providers/exam_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_card.dart';
@@ -204,7 +205,7 @@ class OwnerDashboard extends ConsumerWidget {
 
                     // ── Permission-Gated Admin Section (Owner/Admin only) ──
                     KlasivoRoleGate(
-                      allowedRoles: [KlasivoRole.owner, KlasivoRole.admin],
+                      allowedRoles: [AppConstants.roleOwner, AppConstants.roleAdmin],
                       fallback: const SizedBox.shrink(),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,7 +229,7 @@ class OwnerDashboard extends ConsumerWidget {
                               ),
                               const SizedBox(width: KlasivoSpacing.md),
                               _QuickActionChip(
-                                icon: Icons.admin_panel_settings_outlined,
+                                icon: Icons.shield_outlined,
                                 label: 'Moderation',
                                 color: KlasivoColors.accent,
                                 onTap: () => context.go('/teacher/moderation'),

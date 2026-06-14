@@ -1,6 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/config/theme.dart';
 import '../../../core/services/progress_tracking_service.dart';
@@ -86,7 +86,7 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
 
   Widget _buildOverview(AsyncValue<Map<String, dynamic>> summaryAsync) {
     return summaryAsync.when(
-      loading: () => const Center(child: KlasivoLoading()),
+      loading: () => Center(child: KlasivoLoading()),
       error: (e, _) => ErrorWidgetCustom(
         message: 'Failed to load summary: $e',
         onRetry: () => ref.invalidate(classProgressSummaryProvider(widget.classId)),
@@ -109,20 +109,30 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
               Row(
                 children: [
                   Expanded(
-                    child: KlasivoAnalyticsCard(
-                      value: '${avgProgress.toStringAsFixed(0)}%',
-                      label: 'Average Progress',
-                      icon: Icons.trending_up_rounded,
-                      color: KlasivoColors.primary,
+                    child: KlasivoCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Icon(Icons.trending_up_rounded, color: KlasivoColors.primary, size: 28),
+                          const SizedBox(height: 8),
+                          Text('${avgProgress.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          Text('Average Progress', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: KlasivoAnalyticsCard(
-                      value: '$totalStudents',
-                      label: 'Total Students',
-                      icon: Icons.people_outline,
-                      color: KlasivoColors.secondary,
+                    child: KlasivoCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Icon(Icons.people_outline, color: KlasivoColors.secondary, size: 28),
+                          const SizedBox(height: 8),
+                          Text('$totalStudents', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          Text('Total Students', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -180,14 +190,14 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
     final asyncProgress = ref.watch(classProgressStreamProvider(widget.classId));
 
     return asyncProgress.when(
-      loading: () => const Center(child: KlasivoLoading()),
+      loading: () => Center(child: KlasivoLoading()),
       error: (e, _) => ErrorWidgetCustom(
         message: 'Failed to load: $e',
         onRetry: () => ref.invalidate(classProgressStreamProvider(widget.classId)),
       ),
       data: (snapshot) {
         if (snapshot.docs.isEmpty) {
-          return const KlasivoEmptyState(
+          return KlasivoEmptyState(
             icon: Icons.trending_up_outlined,
             title: 'No Progress Data',
             subtitle: 'Progress data will appear after students take exams.',
@@ -210,14 +220,14 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
     final asyncAtRisk = ref.watch(atRiskStudentsProvider(widget.classId));
 
     return asyncAtRisk.when(
-      loading: () => const Center(child: KlasivoLoading()),
+      loading: () => Center(child: KlasivoLoading()),
       error: (e, _) => ErrorWidgetCustom(
         message: 'Failed to load: $e',
         onRetry: () => ref.invalidate(atRiskStudentsProvider(widget.classId)),
       ),
       data: (snapshot) {
         if (snapshot.docs.isEmpty) {
-          return const KlasivoEmptyState(
+          return KlasivoEmptyState(
             icon: Icons.verified_outlined,
             title: 'No Students At Risk',
             subtitle: 'All students are performing above the risk threshold.',

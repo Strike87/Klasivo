@@ -228,6 +228,16 @@ class FeatureFlags {
   static const String publicApi = 'public_api';
   static const String ltiIntegration = 'lti_integration';
   static const String campusManagement = 'campus_management';
+
+  // Sprint 1+2 — LiveKit + RBAC + User Management
+  static const String livekit = 'livekit';
+  static const String liveClasses = 'live_classes';
+  static const String scheduledClasses = 'scheduled_classes';
+  static const String sessionRecordings = 'session_recordings';
+  static const String rbacV2 = 'rbac_v2';
+  static const String scopeManagement = 'scope_management';
+  static const String permissionOverrides = 'permission_overrides';
+  static const String userManagement = 'user_management';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -48,6 +48,5 @@ class DefaultFirebaseOptions {
     messagingSenderId: '952580193002',
     projectId: 'klasivo-prod',
     storageBucket: 'klasivo-prod.firebasestorage.app',
-    measurementId: 'G-4YN4RBFVDE',
   );
 }

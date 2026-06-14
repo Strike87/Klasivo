@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_constants.dart';
-import '../core/rbac/roles.dart';
 import '../core/services/analytics_service.dart';
 import 'auth_provider.dart';
+import 'organization_provider.dart';
 
 // ─── Service Provider ────────────────────────────────────────────────────────
 
@@ -125,17 +125,17 @@ final currentUserAnalyticsProvider = FutureProvider<Map<String, dynamic>>((ref) 
   }
 
   switch (role) {
-    case KlasivoRole.student:
+    case AppConstants.roleStudent:
       return ref.read(analyticsServiceProvider).getStudentAnalyticsCached(
             organizationId: orgId,
             studentId: userId,
           );
-    case KlasivoRole.teacher:
+    case AppConstants.roleTeacher:
       return ref.read(analyticsServiceProvider).getTeacherAnalyticsCached(
             organizationId: orgId,
             teacherId: userId,
           );
-    case KlasivoRole.owner:
+    case AppConstants.roleOwner:
       // Owner sees organization-wide stats
       return ref.read(analyticsServiceProvider).getTeacherAnalyticsCached(
             organizationId: orgId,

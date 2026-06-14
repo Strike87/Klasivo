@@ -213,7 +213,7 @@ class ImageCacheService {
       int receivedBytes = 0;
 
       await for (final chunk in response.stream) {
-        chunks.add(Uint8List.fromList(chunk));
+        chunks.add(chunk is Uint8List ? chunk : Uint8List.fromList(chunk));
         receivedBytes += chunk.length;
         if (onProgress != null && contentLength > 0) {
           onProgress(receivedBytes, contentLength);

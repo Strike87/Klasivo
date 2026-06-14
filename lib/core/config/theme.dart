@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../tokens/tokens.dart';
 
-// Re-export tokens so that importing theme.dart provides access to
-// AppColors, AppRadius, AppSpacing, AppTypography, etc.
-export '../tokens/tokens.dart';
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO DESIGN SYSTEM — "Academic Neo-Minimalism"
 // Inspired by Notion, Linear, Stripe Dashboard, Duolingo polish, Apple spacing
