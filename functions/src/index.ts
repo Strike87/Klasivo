@@ -20,6 +20,7 @@
  *     sendSchoolAnnouncement — Queue school announcement email
  *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
  *     removeParticipant      — Kick disruptive student from a live class
+ *     createStudent          — Create student Auth + Firestore doc (Admin SDK)
  *     assignRole             — Assign a role to a user (custom claims + Firestore)
  *     assignScope            — Assign scope (campus/stage/class) to a user + refresh claims
  *     syncClaims             — Re-sync custom claims from Firestore user doc
@@ -57,6 +58,9 @@ export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
 export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
 export { generateLiveKitToken } from './functions/generateLiveKitToken';
 export { removeParticipant } from './functions/removeParticipant';
+
+// ─── Student Management Functions (v2) ────────────────────────
+export { createStudent } from './functions/createStudent';
 
 // ─── RBAC Functions (v2 — migrated from v1) ───────────────────
 export { assignRole } from './functions/assignRole';

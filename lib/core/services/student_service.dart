@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -12,6 +13,8 @@ import 'sentry_service.dart';
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
   final Random _random = Random();
 
   /// Hash a password using SHA-256
@@ -50,10 +53,15 @@ class StudentService {
     return 'student_$cleanCode@students.klasivo.app';
   }
 
-  /// Add a student with Firebase Auth backing.
-  /// UX: Student logs in with code + password.
-  /// Backend: Firebase Auth account created for push notifications,
-  /// security rules, multi-device, password reset, and analytics.
+  /// Create a student account via Cloud Function (Admin SDK).
+  ///
+  /// This is the ONLY authorized way to create student accounts.
+  /// The client must never write directly to users/{studentUid} —
+  /// Firestore rules block that (`allow create: if request.auth.uid == userId`).
+  ///
+  /// The Cloud Function uses Admin SDK which bypasses Firestore rules,
+  /// creates the Firebase Auth account, writes the user document, and
+  /// handles rollback on failure.
   Future<String> addStudent({
     required String organizationId,
     required String classId,
@@ -71,210 +79,53 @@ class StudentService {
         'classId': classId,
         'fullName': fullName,
         'createdBy': createdBy,
+        'method': 'cloud_function',
       });
 
-      final studentCode = await generateStudentCode(organizationId);
-      final passwordHash = hashPassword(password);
-      final authEmail = _generateAuthEmail(studentCode);
-
-      // ── Step 1: Try to create Firebase Auth account ──────────────────────
-      KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_CREATE_START', data: {
-        'studentCode': studentCode,
-      });
-
-      String? authUid;
-      try {
-        final currentUser = _auth.currentUser;
-
-        final userCredential = await _auth.createUserWithEmailAndPassword(
-          email: authEmail,
-          password: password,
-        );
-        authUid = userCredential.user?.uid;
-
-        KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_CREATED', data: {
-          'authUid': authUid,
-          'studentCode': studentCode,
-        });
-
-        // Sign out the student account immediately
-        await _auth.signOut();
-
-        // Restore the original teacher/owner session
-        if (currentUser?.email != null) {
-          // Note: Cannot re-sign-in automatically — handled by auth state listener
-          KlasivoCrashlytics.log('[student] Auth session changed after student creation — '
-              'original user may need to re-authenticate');
-        }
-      } catch (authError, authStack) {
-        // If Firebase Auth creation fails, student can still function without Auth
-        KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_FAILED', data: {
-          'error': authError.toString().substring(0, (authError.toString().length).clamp(0, 100)),
-        });
-        await KlasivoObservability.reportError(
-          authError,
-          authStack,
-          reason: 'Firebase Auth creation for student failed (non-fatal — student will use Firestore-only login)',
-          tags: {
-            'flow': 'student_creation',
-            'step': 'STEP_1_AUTH_CREATE',
-            'studentCode': studentCode,
-          },
-        );
-      }
-
-      // ── Step 2: Create student document in Firestore ──────────────────────
-      final currentAuthUid = _auth.currentUser?.uid;
-      KlasivoSentry.breadcrumb.registration('STEP_2_USER_DOC_CREATE_START', data: {
-        'authUid': authUid ?? 'null',
-        'docIdStrategy': authUid != null ? 'uid' : 'auto_id',
-        'writePath': 'users/${authUid ?? "auto_id"}',
-        'currentAuthUid': currentAuthUid ?? 'null',
-        'authUidMatchesDocId': authUid == currentAuthUid,
+      // ── Call createStudent Cloud Function ──────────────────────────────
+      // All Auth + Firestore + class count + audit + notifications
+      // are handled server-side via Admin SDK. No client-side writes.
+      final callable = _functions.httpsCallable('createStudent');
+      final result = await callable.call<Map<String, dynamic>>({
         'organizationId': organizationId,
-      });
-
-      final docRef = authUid != null
-          ? _firestore.collection(AppConstants.usersCollection).doc(authUid)
-          : _firestore.collection(AppConstants.usersCollection).doc();
-
-      final studentData = {
-        'organizationId': organizationId,
-        'role': AppConstants.roleStudent,
+        'classId': classId,
         'fullName': fullName,
-        'studentCode': studentCode,
-        'authEmail': authEmail,
+        'password': password,
         'email': email,
         'phone': phone,
-        'passwordHash': passwordHash,
-        'classId': classId,
-        'photoUrl': null,
-        'isActive': true,
-        'createdBy': createdBy,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+      });
 
-      // Pre-write breadcrumb: captures exact path for permission-denied diagnosis
-      await Sentry.addBreadcrumb(Breadcrumb(
-        category: 'student_creation',
-        message: 'Attempting Firestore write',
-        data: {
-          'collection': AppConstants.usersCollection,
-          'docPath': docRef.path,
-          'docId': docRef.id,
-          'currentAuthUid': currentAuthUid ?? 'null',
-          'docIdMatchesAuthUid': docRef.id == currentAuthUid,
-          'dataRole': studentData['role'],
-          'dataOrgId': studentData['organizationId'],
-        },
-      ));
-
-      try {
-        await SentryFirestoreHelper.docSet(
-          collection: AppConstants.usersCollection,
-          docId: docRef.id,
-          data: studentData,
-          flow: 'student_creation',
-          step: 'STEP_2_USER_DOC_CREATE',
-        );
-      } catch (writeError, writeStack) {
-        // Capture the exact write path + auth context for permission-denied diagnosis
-        await Sentry.captureException(
-          writeError,
-          stackTrace: writeStack,
-          withScope: (scope) {
-            scope.setTag('firestore_write', 'permission_denied');
-            scope.setTag('collection', AppConstants.usersCollection);
-            scope.setTag('doc_path', docRef.path);
-            scope.setExtra('doc_id', docRef.id);
-            scope.setExtra('current_auth_uid', currentAuthUid ?? 'null');
-            scope.setExtra('doc_id_matches_auth_uid', docRef.id == currentAuthUid);
-            scope.setExtra('data_org_id', studentData['organizationId']);
-            scope.setExtra('data_role', studentData['role']);
-          },
-        );
-        rethrow;
-      }
-
-      // ── Read-back verification ──
-      final verifyDoc = await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(docRef.id)
-          .get();
-      if (!verifyDoc.exists) {
-        await KlasivoObservability.reportMessage(
-          'STEP_2 STUDENT DOC SET SUCCEEDED BUT READ-BACK FAILED — '
-          'doc users/${docRef.id} does not exist after .set()',
-          level: SentryLevel.error,
-          tags: {
-            'flow': 'student_creation',
-            'step': 'STEP_2_READBACK',
-            'docId': docRef.id,
-          },
-        );
-      } else {
-        KlasivoSentry.breadcrumb.registration('STEP_2_USER_DOC_READBACK_VERIFIED', data: {
-          'docId': docRef.id,
-          'docExists': true,
-        });
-      }
-
-      // Doc ID audit trail
-      KlasivoSentry.docIdAudit.logUserCreation(
-        flow: 'student_creation',
-        collection: AppConstants.usersCollection,
-        docIdStrategy: authUid != null ? 'uid' : 'auto_id',
-        actualDocId: docRef.id,
-        authUid: authUid,
-      );
-
-      // ── Step 3: Update student count in class ────────────────────────────
-      final countSnapshot = await _firestore
-          .collection(AppConstants.usersCollection)
-          .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
-          .count()
-          .get();
-
-      try {
-        await _firestore
-            .collection(AppConstants.classesCollection)
-            .doc(classId)
-            .update({'studentCount': countSnapshot.count ?? 0});
-      } catch (classUpdateError, classUpdateStack) {
-        await Sentry.captureException(
-          classUpdateError,
-          stackTrace: classUpdateStack,
-          withScope: (scope) {
-            scope.setTag('firestore_write', 'permission_denied');
-            scope.setTag('collection', 'classes');
-            scope.setTag('doc_path', 'classes/$classId');
-            scope.setExtra('operation', 'update');
-            scope.setExtra('field', 'studentCount');
-            scope.setExtra('current_auth_uid', _auth.currentUser?.uid ?? 'null');
-          },
-        );
-        rethrow;
-      }
-
-      // ── Step 4: Notify teachers ──────────────────────────────────────────
-      _notifyStudentJoined(
-        studentName: fullName,
-        classId: classId,
-        organizationId: organizationId,
-        createdBy: createdBy,
-      );
+      final data = result.data;
+      final studentUid = data['uid'] as String;
+      final studentCode = data['studentCode'] as String;
 
       KlasivoSentry.breadcrumb.registration('student_add_success', data: {
-        'docId': docRef.id,
+        'studentUid': studentUid,
         'studentCode': studentCode,
-        'authUid': authUid ?? 'null',
+        'method': 'cloud_function',
       });
 
       transaction.status = const SpanStatus.ok();
 
-      return docRef.id;
+      return studentUid;
+    } on FirebaseFunctionsException catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+
+      KlasivoSentry.breadcrumb.registration('student_add_failed', data: {
+        'code': e.code,
+        'message': e.message,
+        'details': e.details?.toString(),
+      });
+
+      await KlasivoObservability.reportRegistrationError(
+        e,
+        st,
+        flow: 'student_creation',
+        step: 'addStudent',
+        role: 'student',
+        reason: 'Cloud Function createStudent failed: ${e.code} — ${e.message}',
+      );
+      rethrow;
     } catch (e, st) {
       transaction.status = const SpanStatus.internalError();
       await KlasivoObservability.reportRegistrationError(
@@ -283,7 +134,7 @@ class StudentService {
         flow: 'student_creation',
         step: 'addStudent',
         role: 'student',
-        reason: 'Student creation failed',
+        reason: 'Student creation failed (unexpected error)',
       );
       rethrow;
     } finally {
@@ -417,6 +268,16 @@ class StudentService {
     }
   }
 
+  /// Create multiple student accounts via Cloud Function (Admin SDK).
+  ///
+  /// Each student is created individually via the createStudent callable.
+  /// This ensures every student gets a Firebase Auth account, a proper
+  /// user document at users/{uid}, and full audit trail — no more
+  /// auto-ID docs with lazy Auth account creation.
+  ///
+  /// If any individual student creation fails, the error is recorded
+  /// but remaining students continue to be processed. The method
+  /// returns the IDs of all successfully created students.
   Future<List<String>> bulkAddStudents({
     required String organizationId,
     required String classId,
@@ -431,78 +292,40 @@ class StudentService {
         'classId': classId,
         'studentCount': students.length,
         'createdBy': createdBy,
+        'method': 'cloud_function',
       });
 
       final List<String> createdIds = [];
-
-      // Bulk add creates Firestore documents only.
-      // Firebase Auth accounts created lazily on first login.
-      final batch = _firestore.batch();
+      final callable = _functions.httpsCallable('createStudent');
 
       for (final student in students) {
-        final studentCode = await generateStudentCode(organizationId);
-        final password =
-            student['password'] ?? AppConstants.defaultStudentPassword;
-        final passwordHash = hashPassword(password);
-        final authEmail = _generateAuthEmail(studentCode);
+        try {
+          final result = await callable.call<Map<String, dynamic>>({
+            'organizationId': organizationId,
+            'classId': classId,
+            'fullName': student['fullName']!,
+            'password': student['password'] ?? AppConstants.defaultStudentPassword,
+            'email': student['email'],
+            'phone': student['phone'],
+          });
 
-        // WARNING: Uses auto-ID — no auth UID available yet
-        // Auth accounts are created lazily on first login
-        final docRef =
-            _firestore.collection(AppConstants.usersCollection).doc();
-
-        batch.set(docRef, {
-          'organizationId': organizationId,
-          'role': AppConstants.roleStudent,
-          'fullName': student['fullName']!,
-          'studentCode': studentCode,
-          'authEmail': authEmail,
-          'email': student['email'],
-          'phone': student['phone'],
-          'passwordHash': passwordHash,
-          'classId': classId,
-          'photoUrl': null,
-          'isActive': true,
-          'createdBy': createdBy,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        createdIds.add(docRef.id);
-
-        // Doc ID audit — auto-ID used (Auth accounts created lazily)
-        KlasivoSentry.docIdAudit.logUserCreation(
-          flow: 'bulk_student_creation',
-          collection: AppConstants.usersCollection,
-          docIdStrategy: 'auto_id',
-          actualDocId: docRef.id,
-          authUid: null, // No auth UID yet — created lazily on first login
-        );
+          final uid = result.data['uid'] as String;
+          createdIds.add(uid);
+        } catch (e, st) {
+          // Record failure but continue with remaining students
+          KlasivoCrashlytics.recordError(
+            e, st,
+            reason: 'Bulk add: failed to create student "${student['fullName']}" — skipping',
+          );
+        }
       }
 
-      await SentryFirestoreHelper.batchCommit(
-        batch: batch,
-        collection: AppConstants.usersCollection,
-        operationCount: students.length,
-        flow: 'bulk_student_creation',
-        step: 'BATCH_COMMIT',
-      );
-
-      // Update student count
-      final countSnapshot = await _firestore
-          .collection(AppConstants.usersCollection)
-          .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
-          .count()
-          .get();
-
-      await _firestore
-          .collection(AppConstants.classesCollection)
-          .doc(classId)
-          .update({'studentCount': countSnapshot.count ?? 0});
-
-      KlasivoSentry.breadcrumb.registration('bulk_student_add_success', data: {
+      KlasivoSentry.breadcrumb.registration('bulk_student_add_completed', data: {
+        'requestedCount': students.length,
         'createdCount': createdIds.length,
+        'failedCount': students.length - createdIds.length,
         'classId': classId,
+        'method': 'cloud_function',
       });
 
       transaction.status = const SpanStatus.ok();
