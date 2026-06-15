@@ -1,7 +1,7 @@
 /**
  * Klasivo — Scheduled Class Reminders
  *
- * Pub/Sub-triggered function that runs every 5 minutes and sends
+ * Pub/Sub-triggered function that runs every 15 minutes and sends
  * push notifications for scheduled classes starting in the next
  * 10 minutes. Prevents duplicate notifications via a `reminderSent` flag.
  */
@@ -16,7 +16,7 @@ const db = admin.firestore();
 
 export const scheduledClassReminder = onSchedule(
   {
-    schedule: 'every 5 minutes',
+    schedule: 'every 15 minutes',
     secrets: ['SENTRY_DSN'],
     region: 'us-central1',
     timeZone: 'UTC',
