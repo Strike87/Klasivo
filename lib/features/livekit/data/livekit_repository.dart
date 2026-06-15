@@ -50,6 +50,7 @@ class LiveKitRepository {
       KlasivoSentry.breadcrumb.livekit('token_generation_started', data: {
         'roomId': roomId,
       });
+      KlasivoCrashlytics.log('[livekit] Connecting to room: $roomId');
 
       final callable = _functions.httpsCallable('generateLiveKitToken');
       final result = await callable.call<Map<String, dynamic>>({
@@ -77,6 +78,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: token generation failed');
       rethrow;
     } finally {
       await transaction.finish();
@@ -106,6 +108,7 @@ class LiveKitRepository {
           scope.setTag('flow', 'livekit');
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: create room failed');
       rethrow;
     }
   }
@@ -126,6 +129,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: get room failed');
       rethrow;
     }
   }
@@ -172,6 +176,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: update room failed');
       rethrow;
     }
   }
@@ -196,6 +201,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: delete room failed');
       rethrow;
     }
   }
@@ -229,6 +235,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: mark attendance (joined) failed');
       rethrow;
     }
   }
@@ -242,6 +249,7 @@ class LiveKitRepository {
       'roomId': roomId,
       'uid': uid,
     });
+    KlasivoCrashlytics.log('[livekit] Disconnected from room');
     try {
       await _firestore
           .collection('livekit_rooms')
@@ -262,6 +270,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: mark left failed');
       rethrow;
     }
   }
@@ -301,6 +310,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: send chat message failed');
       rethrow;
     }
   }
@@ -342,6 +352,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: toggle raised hand failed');
       rethrow;
     }
   }
@@ -370,6 +381,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: lower hand failed');
       rethrow;
     }
   }
@@ -401,6 +413,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: lower all hands failed');
       rethrow;
     }
   }
@@ -454,6 +467,7 @@ class LiveKitRepository {
           scope.setTag('roomId', roomId);
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: remove participant failed');
       rethrow;
     }
   }
@@ -501,6 +515,7 @@ class LiveKitRepository {
           scope.setTag('operation', 'create');
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: create scheduled class failed');
       rethrow;
     }
   }
@@ -519,6 +534,7 @@ class LiveKitRepository {
           scope.setTag('operation', 'update');
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: update scheduled class failed');
       rethrow;
     }
   }
@@ -536,6 +552,7 @@ class LiveKitRepository {
           scope.setTag('operation', 'delete');
         },
       );
+      KlasivoCrashlytics.recordError(e, st, reason: 'livekit: delete scheduled class failed');
       rethrow;
     }
   }
