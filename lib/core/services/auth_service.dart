@@ -658,6 +658,26 @@ class AuthService {
           authUid: user.uid,
         );
 
+        // Read-back verification for teacher registration
+        final verifyTeacherDoc = await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .get();
+        if (!verifyTeacherDoc.exists) {
+          await KlasivoObservability.reportMessage(
+            'STEP_2 TEACHER DOC SET SUCCEEDED BUT READ-BACK FAILED — '
+            'doc users/${user.uid} does not exist after .set()',
+            level: SentryLevel.error,
+            tags: {'flow': 'teacher_registration', 'step': 'STEP_2_READBACK'},
+          );
+        } else {
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'registration',
+            message: 'STEP_2_USER_DOC_READBACK_VERIFIED',
+            data: {'uid': user.uid, 'docExists': true},
+          ));
+        }
+
         createUserDocSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         createUserDocSpan.status = const SpanStatus.internalError();
@@ -927,7 +947,27 @@ class AuthService {
           authUid: user.uid,
         );
 
-        createUserDocSpan.status = const SpanStatus.ok();
+        // Read-back verification for parent email registration
+        final verifyParentDoc = await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .get();
+        if (!verifyParentDoc.exists) {
+          await KlasivoObservability.reportMessage(
+            'STEP_2 PARENT DOC SET SUCCEEDED BUT READ-BACK FAILED — '
+            'doc users/${user.uid} does not exist after .set()',
+            level: SentryLevel.error,
+            tags: {'flow': 'parent_registration', 'step': 'STEP_2_READBACK'},
+          );
+        } else {
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'registration',
+            message: 'STEP_2_USER_DOC_READBACK_VERIFIED',
+            data: {'uid': user.uid, 'docExists': true},
+          ));
+        }
+
+createUserDocSpan.status = const SpanStatus.ok();
       } catch (e, st) {
         createUserDocSpan.status = const SpanStatus.internalError();
         rethrow;

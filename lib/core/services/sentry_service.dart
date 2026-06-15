@@ -1,18 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// KLASIVO — Centralized Sentry Observability Service
+// KLASIVO — Centralized Observability Service (Sentry + Crashlytics)
 //
-// Production-grade observability layer providing:
+// Production-grade dual-reporting observability layer providing:
+//   - Unified error reporting to BOTH Sentry AND Crashlytics
 //   - Standardized breadcrumbs (auth, registration, firestore, cloud_function,
-//     navigation, livekit)
+//     navigation, livekit) — sent to both platforms
 //   - Firestore operation wrappers with automatic error tagging
 //   - Guarded async operation runner (runGuarded)
-//   - User context management
+//   - User context management (mirrors to both platforms)
 //   - Transaction / span helpers
 //   - Security sanitization (never sends passwords, tokens, OTPs, invite codes)
 //   - Doc ID audit trail for all user creation paths
+//   - Crashlytics-specific: log breadcrumbs, custom keys, non-fatal reporting
 //
 // Usage:
 //   import 'package:klasivo/core/services/sentry_service.dart';
+//   await KlasivoObservability.reportError(e, st, reason: 'auth failed');
 //   await KlasivoSentry.breadcrumb.auth('login_started');
 //   await KlasivoSentry.runGuarded('create_exam', () => examService.create(...));
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -117,6 +120,7 @@ class SentryBreadcrumbBuilder {
       data: data != null ? _SensitiveFields.sanitize(data) : null,
       level: SentryLevel.info,
     ));
+    KlasivoCrashlytics.log('[auth] $message');
   }
 
   /// Registration breadcrumb (account creation steps)
@@ -127,6 +131,7 @@ class SentryBreadcrumbBuilder {
       data: data != null ? _SensitiveFields.sanitize(data) : null,
       level: SentryLevel.info,
     ));
+    KlasivoCrashlytics.log('[registration] $message');
   }
 
   /// Firestore breadcrumb (create, update, delete, read)
@@ -147,6 +152,7 @@ class SentryBreadcrumbBuilder {
       }),
       level: SentryLevel.info,
     ));
+    KlasivoCrashlytics.log('[firestore] $operation $collection${docId != null ? '/$docId' : ''}');
   }
 
   /// Cloud Function breadcrumb (callable invoked/succeeded/failed)
@@ -196,6 +202,7 @@ class SentryBreadcrumbBuilder {
       data: data != null ? _SensitiveFields.sanitize(data) : null,
       level: SentryLevel.info,
     ));
+    KlasivoCrashlytics.log('[livekit] $message');
   }
 
   /// Hive local storage breadcrumb
@@ -488,6 +495,16 @@ class SentryFirestoreHelper {
         }
       },
     );
+
+    // ── Dual-report to Crashlytics ──
+    KlasivoCrashlytics.recordError(
+      exception,
+      stackTrace,
+      reason: 'Firestore $operation on $collection${docId != null ? '/$docId' : ''} failed '
+          '(flow=$flow, step=$step, firebase_code=$errorCode)',
+    );
+    KlasivoCrashlytics.setCustomKey('last_firestore_error', '$collection/$operation');
+    if (errorCode != null) KlasivoCrashlytics.setCustomKey('firebase_code', errorCode);
   }
 }
 
@@ -561,6 +578,12 @@ class KlasivoSentryGuard {
           }
         },
       );
+
+      // ── Dual-report to Crashlytics ──
+      KlasivoCrashlytics.recordError(e, st, reason: 'runGuarded: $operationName failed');
+      if (tags != null) {
+        tags.forEach(KlasivoCrashlytics.setCustomKey);
+      }
 
       rethrow;
     }
@@ -963,5 +986,220 @@ class KlasivoSentrySanitizer {
     }
 
     return event;
+  }
+}
+
+// ─── Crashlytics Helper ──────────────────────────────────────────────────────
+
+/// Crashlytics-specific operations that complement Sentry reporting.
+/// Use this when you need Crashlytics-only features like `log()` breadcrumbs
+/// or custom keys that help cluster issues in the Firebase console.
+///
+/// For unified dual-reporting, use [KlasivoObservability] instead.
+class KlasivoCrashlytics {
+  KlasivoCrashlytics._();
+
+  static FirebaseCrashlytics get _crashlytics => FirebaseCrashlytics.instance;
+
+  /// Log a breadcrumb to Crashlytics.
+  /// Crashlytics `log()` messages appear in the "Logs" tab of each crash issue.
+  /// Max 64KB total per session — logs are buffered and sent with the next crash.
+  static void log(String message) {
+    try {
+      _crashlytics.log(message);
+    } catch (_) {
+      // Crashlytics may not be initialized in dev — safe to ignore
+    }
+  }
+
+  /// Set a custom key for Crashlytics issue clustering.
+  /// Custom keys appear in the "Keys" tab of each crash issue.
+  static void setCustomKey(String key, Object value) {
+    try {
+      _crashlytics.setCustomKey(key, value);
+    } catch (_) {}
+  }
+
+  /// Record a non-fatal error to Crashlytics.
+  /// Use [KlasivoObservability.reportError] for unified dual-reporting.
+  static void recordError(
+    Object exception,
+    StackTrace stack, {
+    String? reason,
+    bool fatal = false,
+  }) {
+    try {
+      _crashlytics.recordError(
+        exception,
+        stack,
+        reason: reason,
+        fatal: fatal,
+      );
+    } catch (_) {}
+  }
+
+  /// Record a Flutter fatal error to Crashlytics.
+  static void recordFlutterFatalError(FlutterErrorDetails details) {
+    try {
+      _crashlytics.recordFlutterFatalError(details);
+    } catch (_) {}
+  }
+
+  /// Check if Crashlytics is currently enabled.
+  static bool get isEnabled {
+    try {
+      return _crashlytics.isCrashlyticsCollectionEnabled;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+// ─── Unified Dual-Reporting Facade ────────────────────────────────────────────
+
+/// **THE** recommended way to report errors in Klasivo.
+/// Sends to BOTH Sentry AND Crashlytics in a single call.
+///
+/// This is the belt-and-suspenders pattern: if one platform has an outage,
+/// the other still captures the error.
+///
+/// Usage:
+///   await KlasivoObservability.reportError(
+///     e,
+///     st,
+///     reason: 'Owner registration failed at STEP_2',
+///     tags: {'flow': 'owner_registration', 'step': 'STEP_2'},
+///   );
+///
+///   await KlasivoObservability.reportMessage(
+///     'User doc missing after .set()',
+///     level: SentryLevel.error,
+///     tags: {'collection': 'users'},
+///   );
+class KlasivoObservability {
+  KlasivoObservability._();
+
+  /// Report an error to BOTH Sentry and Crashlytics.
+  ///
+  /// - [exception] — the error object
+  /// - [stackTrace] — the stack trace
+  /// - [reason] — human-readable description (appears in Crashlytics "Reason")
+  /// - [tags] — key-value pairs attached to Sentry scope + Crashlytics custom keys
+  /// - [fatal] — marks as fatal in Crashlytics
+  /// - [extras] — extra data attached to Sentry scope (not sent to Crashlytics)
+  static Future<void> reportError(
+    Object exception,
+    StackTrace stackTrace, {
+    String? reason,
+    Map<String, String>? tags,
+    Map<String, dynamic>? extras,
+    bool fatal = false,
+  }) async {
+    // ── Sentry ──
+    await Sentry.captureException(
+      exception,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        tags?.forEach(scope.setTag);
+        if (extras != null) {
+          extras.forEach((key, value) {
+            scope.setExtra(
+              key,
+              _SensitiveFields.isSensitive(key) ? '[REDACTED]' : value,
+            );
+          });
+        }
+        if (reason != null) {
+          scope.setTag(
+              'reason', reason.length > 200 ? reason.substring(0, 200) : reason);
+        }
+      },
+    );
+
+    // ── Crashlytics ──
+    KlasivoCrashlytics.recordError(
+      exception,
+      stackTrace,
+      reason: reason,
+      fatal: fatal,
+    );
+
+    // Mirror tags as Crashlytics custom keys for issue clustering
+    if (tags != null) {
+      tags.forEach(KlasivoCrashlytics.setCustomKey);
+    }
+  }
+
+  /// Report a message to BOTH Sentry and Crashlytics.
+  ///
+  /// - Sentry: captured as a message event with level
+  /// - Crashlytics: logged via `log()` for crash breadcrumb context
+  static Future<void> reportMessage(
+    String message, {
+    SentryLevel level = SentryLevel.info,
+    Map<String, String>? tags,
+  }) async {
+    // ── Sentry ──
+    await Sentry.captureMessage(message, level: level);
+
+    // ── Crashlytics ──
+    final prefix = level == SentryLevel.error
+        ? 'ERROR'
+        : level == SentryLevel.warning
+            ? 'WARN'
+            : 'INFO';
+    KlasivoCrashlytics.log('[$prefix] $message');
+
+    if (tags != null) {
+      tags.forEach(KlasivoCrashlytics.setCustomKey);
+    }
+  }
+
+  /// Add a breadcrumb to BOTH Sentry and Crashlytics.
+  ///
+  /// Sentry: full structured breadcrumb
+  /// Crashlytics: log message for crash context
+  static void addBreadcrumb(
+    String message, {
+    String category = 'app',
+    Map<String, dynamic>? data,
+    SentryLevel level = SentryLevel.info,
+  }) {
+    // ── Sentry ──
+    Sentry.addBreadcrumb(Breadcrumb(
+      category: category,
+      message: message,
+      data: data != null ? _SensitiveFields.sanitize(data) : null,
+      level: level,
+    ));
+
+    // ── Crashlytics ──
+    final dataStr = data != null && data.isNotEmpty
+        ? ' | ${data.entries.map((e) => '${e.key}=${e.value}').join(',')}'
+        : '';
+    KlasivoCrashlytics.log('[$category] $message$dataStr');
+  }
+
+  /// Convenience: report error with standard registration step tags.
+  static Future<void> reportRegistrationError(
+    Object exception,
+    StackTrace stackTrace, {
+    required String flow,
+    required String step,
+    String? role,
+    String? uid,
+    String? reason,
+  }) async {
+    await reportError(
+      exception,
+      stackTrace,
+      reason: reason ?? '$flow failed at $step',
+      tags: {
+        'flow': flow,
+        'step': step,
+        if (role != null) 'role': role,
+        if (uid != null) 'authUid': uid,
+      },
+    );
   }
 }

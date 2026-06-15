@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
+import 'sentry_service.dart';
 
 class QrService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -59,16 +61,30 @@ class QrService {
       }
 
       // Update student's classId (students are stored in usersCollection)
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .update({
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.usersCollection,
+        docId: studentId,
+        data: {
+          'classId': classId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'qr_enrollment_simple',
+        step: 'updateStudentClass',
+      );
+
+      KlasivoSentry.breadcrumb.registration('qr_simple_enrollment_success', data: {
+        'studentId': studentId,
         'classId': classId,
-        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'QR student enrollment failed',
+        tags: {'flow': 'qr_enrollment_simple', 'studentId': studentId, 'classId': classId},
+      );
       rethrow;
     }
   }

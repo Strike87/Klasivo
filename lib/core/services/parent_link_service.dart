@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
+import 'sentry_service.dart';
 
 class ParentLinkService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -50,7 +52,13 @@ class ParentLinkService {
       });
 
       return code;
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to generate parent linking code',
+        tags: {'flow': 'parent_link', 'step': 'generateLinkingCode'},
+      );
       rethrow;
     }
   }
@@ -64,6 +72,9 @@ class ParentLinkService {
     required String parentId,
   }) async {
     try {
+      KlasivoSentry.breadcrumb.registration('parent_link_started', data: {
+        'parentId': parentId,
+      });
       // Look up the code in parentLinksCollection
       final snapshot = await _firestore
           .collection(AppConstants.parentLinksCollection)
@@ -89,21 +100,30 @@ class ParentLinkService {
       final organizationId = linkData['organizationId'] as String;
 
       // Update the link doc with parentId, status, linkedAt
-      await linkDoc.reference.update({
-        'parentId': parentId,
-        'status': AppConstants.parentLinkApproved,
-        'linkedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.parentLinksCollection,
+        docId: linkDoc.id,
+        data: {
+          'parentId': parentId,
+          'status': AppConstants.parentLinkApproved,
+          'linkedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'parent_link',
+        step: 'UPDATE_LINK_DOC',
+      );
 
       // Add parentId field to the student's doc in usersCollection
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .update({
-        'parentId': parentId,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.usersCollection,
+        docId: studentId,
+        data: {
+          'parentId': parentId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'parent_link',
+        step: 'UPDATE_STUDENT_PARENT_ID',
+      );
 
       // Fetch student name for the return value
       final studentDoc = await _firestore
@@ -112,12 +132,23 @@ class ParentLinkService {
           .get();
       final studentName = studentDoc.data()?['fullName'] as String? ?? '';
 
+      KlasivoSentry.breadcrumb.registration('parent_link_success', data: {
+        'parentId': parentId,
+        'studentId': studentId,
+      });
+
       return {
         'studentId': studentId,
         'studentName': studentName,
         'organizationId': organizationId,
       };
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Parent-student linking failed',
+        tags: {'flow': 'parent_link', 'parentId': parentId},
+      );
       rethrow;
     }
   }
@@ -150,14 +181,23 @@ class ParentLinkService {
   /// Revoke a parent link (admin action).
   Future<void> revokeLink(String linkId) async {
     try {
-      await _firestore
-          .collection(AppConstants.parentLinksCollection)
-          .doc(linkId)
-          .update({
-        'status': AppConstants.parentLinkRevoked,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.parentLinksCollection,
+        docId: linkId,
+        data: {
+          'status': AppConstants.parentLinkRevoked,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'parent_link_revoke',
+        step: 'revokeLink',
+      );
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to revoke parent link',
+        tags: {'flow': 'parent_link_revoke', 'linkId': linkId},
+      );
       rethrow;
     }
   }
@@ -235,8 +275,15 @@ class ParentLinkService {
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
-      await batch.commit();
-    } catch (e) {
+      await SentryFirestoreHelper.batchCommit(
+        batch: batch,
+        collection: AppConstants.parentLinksCollection,
+        operationCount: snapshot.docs.length,
+        flow: 'cleanup_expired_codes',
+        step: 'batchDelete',
+      );
+    } catch (e, st) {
+      KlasivoCrashlytics.recordError(e, st, reason: 'Expired code cleanup failed');
       rethrow;
     }
   }

@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
 import 'deep_link_service.dart';
+import 'sentry_service.dart';
 
 class InviteCodeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -85,7 +87,13 @@ class InviteCodeService {
         type: AppConstants.inviteTypeTeacher,
         organizationId: organizationId,
       );
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to create teacher invite code',
+        tags: {'flow': 'invite_code', 'type': 'teacher', 'organizationId': organizationId},
+      );
       rethrow;
     }
   }
@@ -154,7 +162,13 @@ class InviteCodeService {
         organizationId: organizationId,
         classId: classId,
       );
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to create student invite code',
+        tags: {'flow': 'invite_code', 'type': 'student', 'organizationId': organizationId},
+      );
       rethrow;
     }
   }
@@ -199,7 +213,13 @@ class InviteCodeService {
       }
 
       return {'id': doc.id, ...data};
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to validate invite code',
+        tags: {'flow': 'invite_code', 'step': 'validate'},
+      );
       rethrow;
     }
   }
@@ -216,11 +236,19 @@ class InviteCodeService {
   /// Delete an invite code
   Future<void> deleteInviteCode(String codeId) async {
     try {
-      await _firestore
-          .collection(AppConstants.inviteCodesCollection)
-          .doc(codeId)
-          .delete();
-    } catch (e) {
+      await SentryFirestoreHelper.docDelete(
+        collection: AppConstants.inviteCodesCollection,
+        docId: codeId,
+        flow: 'invite_code_delete',
+        step: 'deleteInviteCode',
+      );
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to delete invite code',
+        tags: {'flow': 'invite_code_delete', 'codeId': codeId},
+      );
       rethrow;
     }
   }
@@ -228,11 +256,20 @@ class InviteCodeService {
   /// Deactivate an invite code
   Future<void> deactivateInviteCode(String codeId) async {
     try {
-      await _firestore
-          .collection(AppConstants.inviteCodesCollection)
-          .doc(codeId)
-          .update({'isUsed': true});
-    } catch (e) {
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.inviteCodesCollection,
+        docId: codeId,
+        data: {'isUsed': true},
+        flow: 'invite_code_deactivate',
+        step: 'deactivateInviteCode',
+      );
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to deactivate invite code',
+        tags: {'flow': 'invite_code_deactivate', 'codeId': codeId},
+      );
       rethrow;
     }
   }

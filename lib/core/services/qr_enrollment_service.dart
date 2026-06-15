@@ -142,6 +142,25 @@ class QREnrollmentService {
         step: 'USER_DOC_CREATE',
       );
 
+      // Read-back verification for QR enrollment
+      final verifyQrDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(docId)
+          .get();
+      if (!verifyQrDoc.exists) {
+        await KlasivoObservability.reportMessage(
+          'QR ENROLLMENT DOC SET SUCCEEDED BUT READ-BACK FAILED — '
+          'doc users/$docId does not exist after .set()',
+          level: SentryLevel.error,
+          tags: {'flow': 'qr_enrollment', 'step': 'READBACK', 'docId': docId},
+        );
+      } else {
+        KlasivoSentry.breadcrumb.registration('qr_enrollment_readback_verified', data: {
+          'docId': docId,
+          'docExists': true,
+        });
+      }
+
       // Update class student count
       final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
       await _firestore.collection(AppConstants.classesCollection).doc(classId).update({

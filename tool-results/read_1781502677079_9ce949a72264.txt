@@ -1,0 +1,1170 @@
+     1→     1→/**
+     2→     2→ * Klasivo — API Gateway v1 (Express on Firebase Functions)
+     3→     3→ *
+     4→     4→ * Central backend gateway for api.klasivo.app.
+     5→     5→ * All sensitive operations route through here — the Flutter app never
+     6→     6→ * touches LiveKit secrets, Resend keys, or admin operations directly.
+     7→     7→ *
+     8→     8→ * Architecture:
+     9→     9→ *   Flutter App → api.klasivo.app/v1/* → Firebase Functions → LiveKit/Resend/Firebase
+    10→    10→ *
+    11→    11→ * Routes (v1):
+    12→    12→ *   GET  /v1/health                 → Health check + service status
+    13→    13→ *   POST /v1/livekit/token          → Generate LiveKit JWT
+    14→    14→ *   POST /v1/livekit/remove         → Remove participant from room
+    15→    15→ *   POST /v1/livekit/mute           → Mute a participant (teacher only)
+    16→    16→ *   POST /v1/livekit/endRoom        → End a live class room
+    17→    17→ *   POST /v1/storage/upload-url     → Generate signed upload URL
+    18→    18→ *   POST /v1/analytics/event        → Record server-side analytics event
+    19→    19→ *   GET  /v1/admin/users            → List users in organization
+    20→    20→ *   GET  /v1/admin/schools          → List organizations
+    21→    21→ *   GET  /v1/admin/reports/summary  → Organization summary stats
+    22→    22→ *   GET  /v1/docs                   → OpenAPI/Swagger JSON
+    23→    23→ *
+    24→    24→ * Security:
+    25→    25→ *   - Bearer token auth (Firebase ID token) on all mutation endpoints
+    26→    26→ *   - Admin endpoints require teacher/owner/admin role
+    27→    27→ *   - Rate limiting at Cloudflare level
+    28→    28→ *   - Security headers via Firebase Hosting config
+    29→    29→ *   - Audit logging for all important actions
+    30→    30→ */
+    31→    31→
+    32→    32→import * as admin from 'firebase-admin';
+    33→    33→import { onRequest } from 'firebase-functions/v2/https';
+    34→    34→import { defineSecret } from 'firebase-functions/params';
+    35→    35→import * as Sentry from '@sentry/node';
+    36→    36→import express, { Request, Response, NextFunction } from 'express';
+    37→    37→
+    38→    38→import { initSentry, withIsolatedScope } from '../config/sentry';
+    39→    39→import { verifyOrgBoundary, verifyScopeAuthorization, LIVEKIT_ADMIN_ROLES } from '../utils/rbac';
+    40→    40→
+    41→    41→// ─── Secrets ──────────────────────────────────────────────────
+    42→    42→const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
+    43→    43→const LIVEKIT_API_SECRET = defineSecret('LIVEKIT_API_SECRET');
+    44→    44→
+    45→    45→// ─── Extend Express Request ─────────────────────────────────────
+    46→    46→declare global {
+    47→    47→  namespace Express {
+    48→    48→    interface Request {
+    49→    49→      user?: admin.auth.DecodedIdToken;
+    50→    50→      userRole?: string;
+    51→    51→      userOrgId?: string;
+    52→    52→      userName?: string;
+    53→    53→    }
+    54→    54→  }
+    55→    55→}
+    56→    56→
+    57→    57→// ─── Express setup ──────────────────────────────────────────────
+    58→    58→const app = express();
+    59→    59→app.use(express.json());
+    60→    60→
+    61→    61→// ─── Sentry scope isolation middleware ──────────────────────────────
+    62→    62→// CRITICAL: Cloud Functions v2 with concurrency means a single instance
+    63→    63→// handles multiple requests. Without scope isolation, Sentry tags and
+    64→    64→// user context from one request leak into the next.
+    65→    65→app.use((_req: Request, _res: Response, next: NextFunction) => {
+    66→    66→  initSentry();
+    67→    67→  // Each request gets its own isolated Sentry scope
+    68→    68→  Sentry.withIsolationScope((scope) => {
+    69→    69→    scope.clear();
+    70→    70→    // Store the scope on the request for route handlers to use
+    71→    71→    (_req as any).sentryScope = scope;
+    72→    72→    next();
+    73→    73→  });
+    74→    74→});
+    75→    75→
+    76→    76→// ═══════════════════════════════════════════════════════════════════
+    77→    77→// Middleware
+    78→    78→// ═══════════════════════════════════════════════════════════════════
+    79→    79→
+    80→    80→// ─── Auth middleware ────────────────────────────────────────────
+    81→    81→
+    82→    82→async function verifyAuthToken(
+    83→    83→  req: Request,
+    84→    84→  res: Response,
+    85→    85→  next: NextFunction,
+    86→    86→): Promise<void> {
+    87→    87→  const authHeader = req.headers.authorization;
+    88→    88→  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    89→    89→    res.status(401).json({
+    90→    90→      error: 'Missing or invalid Authorization header. Use: Bearer <Firebase ID token>',
+    91→    91→    });
+    92→    92→    return;
+    93→    93→  }
+    94→    94→
+    95→    95→  const idToken = authHeader.split('Bearer ')[1];
+    96→    96→  if (!idToken) {
+    97→    97→    res.status(401).json({ error: 'Empty bearer token.' });
+    98→    98→    return;
+    99→    99→  }
+   100→   100→
+   101→   101→  try {
+   102→   102→    const decodedToken = await admin.auth().verifyIdToken(idToken);
+   103→   103→    req.user = decodedToken;
+   104→   104→
+   105→   105→    const userDoc = await admin
+   106→   106→      .firestore()
+   107→   107→      .collection('users')
+   108→   108→      .doc(decodedToken.uid)
+   109→   109→      .get();
+   110→   110→    if (userDoc.exists) {
+   111→   111→      req.userRole = userDoc.data()?.['role'] as string | undefined;
+   112→   112→      req.userOrgId = userDoc.data()?.['organizationId'] as string | undefined;
+   113→   113→      req.userName = userDoc.data()?.['fullName'] as string | undefined;
+   114→   114→    }
+   115→   115→
+   116→   116→    next();
+   117→   117→  } catch (err: unknown) {
+   118→   118→    const msg = err instanceof Error ? err.message : String(err);
+   119→   119→    console.error(`Token verification failed: ${msg}`);
+   120→   120→    res.status(401).json({ error: 'Invalid or expired token.' });
+   121→   121→  }
+   122→   122→}
+   123→   123→
+   124→   124→// ─── Admin-only middleware ──────────────────────────────────────
+   125→   125→
+   126→   126→function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+   127→   127→  if (!req.user) {
+   128→   128→    res.status(401).json({ error: 'Authentication required.' });
+   129→   129→    return;
+   130→   130→  }
+   131→   131→  if (!['teacher', 'owner', 'admin'].includes(req.userRole ?? '')) {
+   132→   132→    res.status(403).json({ error: 'Admin access required.' });
+   133→   133→    return;
+   134→   134→  }
+   135→   135→  next();
+   136→   136→}
+   137→   137→
+   138→   138→// ─── Audit logging middleware ───────────────────────────────────
+   139→   139→
+   140→   140→async function auditLog(
+   141→   141→  req: Request,
+   142→   142→  _res: Response,
+   143→   143→  next: NextFunction,
+   144→   144→): Promise<void> {
+   145→   145→  // Only audit mutation requests from authenticated users
+   146→   146→  if (req.method === 'GET' || !req.user) {
+   147→   147→    next();
+   148→   148→    return;
+   149→   149→  }
+   150→   150→
+   151→   151→  try {
+   152→   152→    const db = admin.firestore();
+   153→   153→    await db.collection('audit_logs').add({
+   154→   154→      actorId: req.user.uid,                                             // legacy — remove in Phase 3
+   155→   155→      actorName: req.userName ?? req.user.email ?? req.user.uid,         // legacy — remove in Phase 3
+   156→   156→      actorRole: req.userRole ?? 'unknown',                              // legacy — keep for backward compat
+   157→   157→      performedBy: req.user.uid,                                         // canonical actor field
+   158→   158→      performedByRole: req.userRole ?? 'unknown',                        // Phase 1: add
+   159→   159→      performedByOrgId: req.userOrgId ?? null,                           // Phase 1: add
+   160→   160→      organizationId: req.userOrgId ?? null,
+   161→   161→      action: `${req.method} ${req.path}`,
+   162→   162→      resource: req.path,
+   163→   163→      requestBody: _sanitizeForAudit(req.body),
+   164→   164→      ipAddress: req.ip ?? req.headers['x-forwarded-for'] ?? 'unknown',
+   165→   165→      userAgent: req.headers['user-agent'] ?? 'unknown',
+   166→   166→      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+   167→   167→    });
+   168→   168→  } catch (err: unknown) {
+   169→   169→    // Audit logging failure should never block the request
+   170→   170→    console.warn(`Audit log write failed: ${err instanceof Error ? err.message : String(err)}`);
+   171→   171→  }
+   172→   172→
+   173→   173→  next();
+   174→   174→}
+   175→   175→
+   176→   176→/** Remove sensitive fields from request body before logging */
+   177→   177→function _sanitizeForAudit(body: Record<string, unknown> | undefined): Record<string, unknown> {
+   178→   178→  if (!body || typeof body !== 'object') return {};
+   179→   179→  const sanitized = { ...body };
+   180→   180→  const sensitiveKeys = ['password', 'token', 'secret', 'apiKey', 'creditCard', 'cvv'];
+   181→   181→  for (const key of Object.keys(sanitized)) {
+   182→   182→    if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk.toLowerCase()))) {
+   183→   183→      sanitized[key] = '[REDACTED]';
+   184→   184→    }
+   185→   185→  }
+   186→   186→  return sanitized;
+   187→   187→}
+   188→   188→
+   189→   189→// Apply audit logging to all v1 routes
+   190→   190→app.use('/v1', auditLog);
+   191→   191→
+   192→   192→// ─── LiveKit Token Denial Audit Helper ─────────────────────────
+   193→   193→
+   194→   194→/**
+   195→   195→ * Write an audit event when a LiveKit token is denied via the API.
+   196→   196→ * Invaluable for monitoring during scope authorization rollout.
+   197→   197→ */
+   198→   198→async function _logTokenDenied(
+   199→   199→  uid: string,
+   200→   200→  role: string,
+   201→   201→  orgId: string,
+   202→   202→  roomId: string,
+   203→   203→  reason: string,
+   204→   204→  message: string,
+   205→   205→): Promise<void> {
+   206→   206→  try {
+   207→   207→    await admin.firestore().collection('audit_logs').add({
+   208→   208→      organizationId: orgId,
+   209→   209→      performedBy: uid,
+   210→   210→      performedByRole: role,
+   211→   211→      performedByOrgId: orgId,
+   212→   212→      action: 'livekit_token_denied',
+   213→   213→      targetType: 'livekit_room',
+   214→   214→      targetId: roomId,
+   215→   215→      metadata: { reason, message },
+   216→   216→      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+   217→   217→    });
+   218→   218→  } catch {
+   219→   219→    console.warn('Failed to write livekit_token_denied audit event');
+   220→   220→  }
+   221→   221→}
+   222→   222→
+   223→   223→// ═══════════════════════════════════════════════════════════════════
+   224→   224→// Health Check
+   225→   225→// ═══════════════════════════════════════════════════════════════════
+   226→   226→
+   227→   227→app.get('/v1/health', async (_req: Request, res: Response) => {
+   228→   228→  const services: Record<string, string> = {};
+   229→   229→
+   230→   230→  // Check Firestore
+   231→   231→  try {
+   232→   232→    await admin.firestore().collection('_health').doc('ping').get();
+   233→   233→    services['firestore'] = 'ok';
+   234→   234→  } catch {
+   235→   235→    services['firestore'] = 'error';
+   236→   236→  }
+   237→   237→
+   238→   238→  // Check Firebase Auth
+   239→   239→  try {
+   240→   240→    await admin.auth().listUsers(1);
+   241→   241→    services['auth'] = 'ok';
+   242→   242→  } catch {
+   243→   243→    services['auth'] = 'error';
+   244→   244→  }
+   245→   245→
+   246→   246→  // Check Storage
+   247→   247→  try {
+   248→   248→    const bucket = admin.storage().bucket();
+   249→   249→    await bucket.exists();
+   250→   250→    services['storage'] = 'ok';
+   251→   251→  } catch {
+   252→   252→    services['storage'] = 'error';
+   253→   253→  }
+   254→   254→
+   255→   255→  const allOk = Object.values(services).every((s) => s === 'ok');
+   256→   256→
+   257→   257→  res.status(allOk ? 200 : 503).json({
+   258→   258→    status: allOk ? 'ok' : 'degraded',
+   259→   259→    version: 'v1',
+   260→   260→    timestamp: new Date().toISOString(),
+   261→   261→    services,
+   262→   262→  });
+   263→   263→});
+   264→   264→
+   265→   265→// ═══════════════════════════════════════════════════════════════════
+   266→   266→// LiveKit Routes
+   267→   267→// ═══════════════════════════════════════════════════════════════════
+   268→   268→
+   269→   269→app.post(
+   270→   270→  '/v1/livekit/token',
+   271→   271→  verifyAuthToken,
+   272→   272→  async (req: Request, res: Response) => {
+   273→   273→    initSentry();
+   274→   274→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   275→   275→    scope?.setTag('service', 'livekit');
+   276→   276→    scope?.setTag('endpoint', '/v1/livekit/token');
+   277→   277→
+   278→   278→    if (!req.user) {
+   279→   279→      res.status(401).json({ error: 'Authentication required.' });
+   280→   280→      return;
+   281→   281→    }
+   282→   282→
+   283→   283→    const { roomId, displayName } = req.body ?? {};
+   284→   284→    // roomName/isTeacher: REMOVED — derived from room document and caller claims
+   285→   285→
+   286→   286→    if (!roomId || typeof roomId !== 'string') {
+   287→   287→      res.status(400).json({ error: 'roomId is required and must be a string.' });
+   288→   288→      return;
+   289→   289→    }
+   290→   290→
+   291→   291→    try {
+   292→   292→      // ── Load room document ──────────────────────────────────
+   293→   293→      const roomDoc = await admin.firestore().collection('livekit_rooms').doc(roomId).get();
+   294→   294→
+   295→   295→      if (!roomDoc.exists) {
+   296→   296→        res.status(404).json({ error: 'Room not found.' });
+   297→   297→        return;
+   298→   298→      }
+   299→   299→
+   300→   300→      const roomData = roomDoc.data()!;
+   301→   301→      const roomName = roomData['name'] as string;
+   302→   302→      if (!roomName) {
+   303→   303→        res.status(500).json({ error: 'Room document is missing a name field.' });
+   304→   304→        return;
+   305→   305→      }
+   306→   306→
+   307→   307→      // Room name sanitization
+   308→   308→      const sanitizedRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '');
+   309→   309→      if (sanitizedRoomName.length === 0 || sanitizedRoomName.length > 128) {
+   310→   310→        res.status(500).json({ error: 'Invalid room name in document.' });
+   311→   311→        return;
+   312→   312→      }
+   313→   313→
+   314→   314→      // ── Org boundary check ──────────────────────────────────
+   315→   315→      const roomOrgId = roomData['organizationId'] as string;
+   316→   316→      if (!verifyOrgBoundary(req.userOrgId ?? '', roomOrgId, req.userRole ?? '')) {
+   317→   317→        await _logTokenDenied(req.user!.uid, req.userRole ?? 'unknown', req.userOrgId ?? '', roomId, 'org_boundary', 'Cross-org access denied');
+   318→   318→        Sentry.captureMessage(`Cross-org LiveKit token attempt (API): caller=${req.userOrgId} room=${roomOrgId}`);
+   319→   319→        res.status(403).json({ error: 'You can only join rooms in your organization.' });
+   320→   320→        return;
+   321→   321→      }
+   322→   322→
+   323→   323→      // ── Scope authorization ────────────────────────────────
+   324→   324→      const scopeAccessLevel = (req.user?.token?.['scopeAccessLevel'] as string) || '';
+   325→   325→      const callerScope: Record<string, string[]> = {};
+   326→   326→
+   327→   327→      // Load caller's scope arrays from user doc (already loaded by verifyAuthToken middleware)
+   328→   328→      const callerDoc = await admin.firestore().collection('users').doc(req.user!.uid).get();
+   329→   329→      if (callerDoc.exists) {
+   330→   330→        const callerData = callerDoc.data()!;
+   331→   331→        callerScope['campusIds'] = callerData['campusIds'] as string[] || [];
+   332→   332→        callerScope['stageIds'] = callerData['stageIds'] as string[] || [];
+   333→   333→        callerScope['classIds'] = callerData['classIds'] as string[] || [];
+   334→   334→        callerScope['subjectIds'] = callerData['subjectIds'] as string[] || [];
+   335→   335→        callerScope['studentIds'] = callerData['studentIds'] as string[] || [];
+   336→   336→      }
+   337→   337→
+   338→   338→      const scopeResult = verifyScopeAuthorization(scopeAccessLevel, callerScope, roomData as Record<string, unknown>);
+   339→   339→      if (!scopeResult.authorized) {
+   340→   340→        await _logTokenDenied(req.user!.uid, req.userRole ?? 'unknown', req.userOrgId ?? '', roomId, scopeResult.reason ?? 'unknown', scopeResult.message ?? 'Scope authorization failed');
+   341→   341→        Sentry.captureMessage(`LiveKit scope denial (API): uid=${req.user!.uid} room=${roomId} reason=${scopeResult.reason}`);
+   342→   342→        res.status(403).json({ error: scopeResult.message || 'You are not authorized to access this room.' });
+   343→   343→        return;
+   344→   344→      }
+   345→   345→
+   346→   346→      // ── Server-side role determination ──────────────────────
+   347→   347→      const isTeacherOrAbove = LIVEKIT_ADMIN_ROLES.includes(req.userRole as any);
+   348→   348→
+   349→   349→      const { AccessToken } = await import('livekit-server-sdk');
+   350→   350→
+   351→   351→      const token = new AccessToken(
+   352→   352→        LIVEKIT_API_KEY.value(),
+   353→   353→        LIVEKIT_API_SECRET.value(),
+   354→   354→        { identity: req.user.uid, name: displayName || req.user.uid },
+   355→   355→      );
+   356→   356→
+   357→   357→      token.addGrant({
+   358→   358→        room: sanitizedRoomName,
+   359→   359→        roomJoin: true,
+   360→   360→        canPublish: true,
+   361→   361→        canSubscribe: true,
+   362→   362→        canPublishData: true,
+   363→   363→        roomAdmin: isTeacherOrAbove,
+   364→   364→      });
+   365→   365→
+   366→   366→      const jwt = await token.toJwt();
+   367→   367→
+   368→   368→      Sentry.addBreadcrumb({
+   369→   369→        category: 'livekit',
+   370→   370→        message: `Token generated for room ${sanitizedRoomName}, roomAdmin=${isTeacherOrAbove}`,
+   371→   371→        level: 'info',
+   372→   372→      });
+   373→   373→
+   374→   374→      res.json({ token: jwt });
+   375→   375→    } catch (err: unknown) {
+   376→   376→      const msg = err instanceof Error ? err.message : String(err);
+   377→   377→      console.error(`LiveKit token generation failed: ${msg}`);
+   378→   378→      Sentry.captureException(err);
+   379→   379→      res.status(500).json({ error: 'Failed to generate token.' });
+   380→   380→    }
+   381→   381→  },
+   382→   382→);
+   383→   383→
+   384→   384→app.post(
+   385→   385→  '/v1/livekit/remove',
+   386→   386→  verifyAuthToken,
+   387→   387→  requireAdmin,
+   388→   388→  async (req: Request, res: Response) => {
+   389→   389→    initSentry();
+   390→   390→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   391→   391→    scope?.setTag('service', 'livekit');
+   392→   392→    scope?.setTag('endpoint', '/v1/livekit/remove');
+   393→   393→
+   394→   394→    const { roomName, participantIdentity, roomId } = req.body ?? {};
+   395→   395→
+   396→   396→    if (!roomName || !participantIdentity || !roomId) {
+   397→   397→      res.status(400).json({ error: 'roomName, participantIdentity, and roomId are required.' });
+   398→   398→      return;
+   399→   399→    }
+   400→   400→
+   401→   401→    try {
+   402→   402→      const { RoomServiceClient } = await import('livekit-server-sdk');
+   403→   403→      const db = admin.firestore();
+   404→   404→      const roomDoc = await db.collection('livekit_rooms').doc(roomId).get();
+   405→   405→
+   406→   406→      if (!roomDoc.exists) {
+   407→   407→        res.status(404).json({ error: 'Room not found.' });
+   408→   408→        return;
+   409→   409→      }
+   410→   410→
+   411→   411→      const roomOrgId = roomDoc.data()?.['organizationId'] as string;
+   412→   412→      if (roomOrgId !== req.userOrgId) {
+   413→   413→        res.status(403).json({ error: 'You can only remove participants from rooms in your organization.' });
+   414→   414→        return;
+   415→   415→      }
+   416→   416→
+   417→   417→      const livekitUrl =
+   418→   418→        (roomDoc.data()?.['metadata']?.['livekitUrl'] as string) ??
+   419→   419→        'https://klasivo.livekit.cloud';
+   420→   420→
+   421→   421→      const roomService = new RoomServiceClient(
+   422→   422→        livekitUrl.replace('wss://', 'https://'),
+   423→   423→        LIVEKIT_API_KEY.value(),
+   424→   424→        LIVEKIT_API_SECRET.value(),
+   425→   425→      );
+   426→   426→
+   427→   427→      try {
+   428→   428→        await roomService.removeParticipant(roomName, participantIdentity);
+   429→   429→      } catch (err: unknown) {
+   430→   430→        console.warn(`Failed to remove participant ${participantIdentity}: ${err instanceof Error ? err.message : String(err)}`);
+   431→   431→      }
+   432→   432→
+   433→   433→      // Update attendance
+   434→   434→      try {
+   435→   435→        await db.collection('livekit_rooms').doc(roomId).collection('attendance').doc(participantIdentity).update({
+   436→   436→          leftAt: admin.firestore.FieldValue.serverTimestamp(),
+   437→   437→          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+   438→   438→          removedBy: req.user!.uid,
+   439→   439→          removedAt: admin.firestore.FieldValue.serverTimestamp(),
+   440→   440→        });
+   441→   441→      } catch (err: unknown) {
+   442→   442→        console.warn(`Could not update attendance for ${participantIdentity}: ${err}`);
+   443→   443→      }
+   444→   444→
+   445→   445→      // Create in-app notification
+   446→   446→      try {
+   447→   447→        await db.collection('notifications').add({
+   448→   448→          userId: participantIdentity,
+   449→   449→          type: 'removed_from_class',
+   450→   450→          title: 'Removed from Class',
+   451→   451→          body: `You have been removed from the live class "${roomDoc.data()?.['name'] ?? roomName}".`,
+   452→   452→          data: { roomId, roomName },
+   453→   453→          read: false,
+   454→   454→          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+   455→   455→        });
+   456→   456→      } catch (err: unknown) {
+   457→   457→        console.warn(`Could not create removal notification: ${err}`);
+   458→   458→      }
+   459→   459→
+   460→   460→      res.json({ success: true, removedIdentity: participantIdentity });
+   461→   461→    } catch (err: unknown) {
+   462→   462→      const msg = err instanceof Error ? err.message : String(err);
+   463→   463→      console.error(`Remove participant failed: ${msg}`);
+   464→   464→      Sentry.captureException(err);
+   465→   465→      res.status(500).json({ error: 'Failed to remove participant.' });
+   466→   466→    }
+   467→   467→  },
+   468→   468→);
+   469→   469→
+   470→   470→app.post(
+   471→   471→  '/v1/livekit/mute',
+   472→   472→  verifyAuthToken,
+   473→   473→  requireAdmin,
+   474→   474→  async (req: Request, res: Response) => {
+   475→   475→    initSentry();
+   476→   476→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   477→   477→    scope?.setTag('service', 'livekit');
+   478→   478→    scope?.setTag('endpoint', '/v1/livekit/mute');
+   479→   479→
+   480→   480→    const { roomName, participantIdentity, mute, roomId } = req.body ?? {};
+   481→   481→
+   482→   482→    if (!roomName || !participantIdentity) {
+   483→   483→      res.status(400).json({ error: 'roomName and participantIdentity are required.' });
+   484→   484→      return;
+   485→   485→    }
+   486→   486→
+   487→   487→    if (typeof mute !== 'boolean') {
+   488→   488→      res.status(400).json({ error: 'mute must be a boolean (true = mute, false = unmute).' });
+   489→   489→      return;
+   490→   490→    }
+   491→   491→
+   492→   492→    try {
+   493→   493→      const { RoomServiceClient } = await import('livekit-server-sdk');
+   494→   494→
+   495→   495→      // Resolve LiveKit URL
+   496→   496→      let livekitUrl = 'https://klasivo.livekit.cloud';
+   497→   497→      if (roomId) {
+   498→   498→        const roomDoc = await admin.firestore().collection('livekit_rooms').doc(roomId).get();
+   499→   499→        if (roomDoc.exists) {
+   500→   500→          livekitUrl = (roomDoc.data()?.['metadata']?.['livekitUrl'] as string) ?? livekitUrl;
+   501→   501→        }
+   502→   502→      }
+   503→   503→
+   504→   504→      const roomService = new RoomServiceClient(
+   505→   505→        livekitUrl.replace('wss://', 'https://'),
+   506→   506→        LIVEKIT_API_KEY.value(),
+   507→   507→        LIVEKIT_API_SECRET.value(),
+   508→   508→      );
+   509→   509→
+   510→   510→      await roomService.updateParticipant(roomName, participantIdentity, {
+   511→   511→        permission: { canPublish: !mute },
+   512→   512→      });
+   513→   513→
+   514→   514→      res.json({
+   515→   515→        success: true,
+   516→   516→        participantIdentity,
+   517→   517→        muted: mute,
+   518→   518→        message: mute ? 'Participant muted.' : 'Participant unmuted.',
+   519→   519→      });
+   520→   520→    } catch (err: unknown) {
+   521→   521→      const msg = err instanceof Error ? err.message : String(err);
+   522→   522→      console.error(`Mute participant failed: ${msg}`);
+   523→   523→      Sentry.captureException(err);
+   524→   524→      res.status(500).json({ error: 'Failed to update participant.' });
+   525→   525→    }
+   526→   526→  },
+   527→   527→);
+   528→   528→
+   529→   529→app.post(
+   530→   530→  '/v1/livekit/endRoom',
+   531→   531→  verifyAuthToken,
+   532→   532→  requireAdmin,
+   533→   533→  async (req: Request, res: Response) => {
+   534→   534→    initSentry();
+   535→   535→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   536→   536→    scope?.setTag('service', 'livekit');
+   537→   537→    scope?.setTag('endpoint', '/v1/livekit/endRoom');
+   538→   538→
+   539→   539→    const { roomName, roomId } = req.body ?? {};
+   540→   540→
+   541→   541→    if (!roomName || !roomId) {
+   542→   542→      res.status(400).json({ error: 'roomName and roomId are required.' });
+   543→   543→      return;
+   544→   544→    }
+   545→   545→
+   546→   546→    try {
+   547→   547→      const { RoomServiceClient } = await import('livekit-server-sdk');
+   548→   548→      const db = admin.firestore();
+   549→   549→      const roomDoc = await db.collection('livekit_rooms').doc(roomId).get();
+   550→   550→
+   551→   551→      if (!roomDoc.exists) {
+   552→   552→        res.status(404).json({ error: 'Room not found.' });
+   553→   553→        return;
+   554→   554→      }
+   555→   555→
+   556→   556→      const roomOrgId = roomDoc.data()?.['organizationId'] as string;
+   557→   557→      if (roomOrgId !== req.userOrgId) {
+   558→   558→        res.status(403).json({ error: 'You can only end rooms in your organization.' });
+   559→   559→        return;
+   560→   560→      }
+   561→   561→
+   562→   562→      const livekitUrl =
+   563→   563→        (roomDoc.data()?.['metadata']?.['livekitUrl'] as string) ??
+   564→   564→        'https://klasivo.livekit.cloud';
+   565→   565→
+   566→   566→      const roomService = new RoomServiceClient(
+   567→   567→        livekitUrl.replace('wss://', 'https://'),
+   568→   568→        LIVEKIT_API_KEY.value(),
+   569→   569→        LIVEKIT_API_SECRET.value(),
+   570→   570→      );
+   571→   571→
+   572→   572→      await roomService.deleteRoom(roomName);
+   573→   573→
+   574→   574→      // Update room status in Firestore
+   575→   575→      await db.collection('livekit_rooms').doc(roomId).update({
+   576→   576→        isActive: false,
+   577→   577→        endedAt: admin.firestore.FieldValue.serverTimestamp(),
+   578→   578→        endedBy: req.user!.uid,
+   579→   579→        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+   580→   580→      });
+   581→   581→
+   582→   582→      res.json({ success: true, roomName, message: 'Room ended successfully.' });
+   583→   583→    } catch (err: unknown) {
+   584→   584→      const msg = err instanceof Error ? err.message : String(err);
+   585→   585→      console.error(`End room failed: ${msg}`);
+   586→   586→      Sentry.captureException(err);
+   587→   587→      res.status(500).json({ error: 'Failed to end room.' });
+   588→   588→    }
+   589→   589→  },
+   590→   590→);
+   591→   591→
+   592→   592→// ═══════════════════════════════════════════════════════════════════
+   593→   593→// Storage — Signed Upload URLs
+   594→   594→// ═══════════════════════════════════════════════════════════════════
+   595→   595→
+   596→   596→/**
+   597→   597→ * POST /v1/storage/upload-url
+   598→   598→ *
+   599→   599→ * Generates a signed URL for the client to upload a file directly to
+   600→   600→ * Firebase Storage. The client never needs storage credentials.
+   601→   601→ *
+   602→   602→ * Request body:
+   603→   603→ *   { "filePath": "organizations/abc123/logo.png", "contentType": "image/png" }
+   604→   604→ *
+   605→   605→ * Response:
+   606→   606→ *   { "uploadUrl": "https://storage.googleapis.com/...", "expiresAt": "..." }
+   607→   607→ */
+   608→   608→app.post(
+   609→   609→  '/v1/storage/upload-url',
+   610→   610→  verifyAuthToken,
+   611→   611→  async (req: Request, res: Response) => {
+   612→   612→    initSentry();
+   613→   613→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   614→   614→    scope?.setTag('service', 'storage');
+   615→   615→    scope?.setTag('endpoint', '/v1/storage/upload-url');
+   616→   616→
+   617→   617→    const { filePath, contentType } = req.body ?? {};
+   618→   618→
+   619→   619→    if (!filePath || typeof filePath !== 'string') {
+   620→   620→      res.status(400).json({ error: 'filePath is required.' });
+   621→   621→      return;
+   622→   622→    }
+   623→   623→
+   624→   624→    // Validate path doesn't escape allowed prefixes
+   625→   625→    const allowedPrefixes = [
+   626→   626→      `users/${req.user!.uid}/`,
+   627→   627→      `organizations/${req.userOrgId ?? ''}/`,
+   628→   628→      'exams/',
+   629→   629→      'materials/',
+   630→   630→      'submissions/',
+   631→   631→    ];
+   632→   632→
+   633→   633→    const isAllowed = allowedPrefixes.some((prefix) => filePath.startsWith(prefix));
+   634→   634→    if (!isAllowed) {
+   635→   635→      res.status(403).json({
+   636→   636→        error: 'File path must start with an allowed prefix.',
+   637→   637→        allowedPrefixes: ['users/{uid}/', 'organizations/{orgId}/', 'exams/', 'materials/', 'submissions/'],
+   638→   638→      });
+   639→   639→      return;
+   640→   640→    }
+   641→   641→
+   642→   642→    // Prevent path traversal
+   643→   643→    if (filePath.includes('..') || filePath.includes('//')) {
+   644→   644→      res.status(400).json({ error: 'Invalid file path.' });
+   645→   645→      return;
+   646→   646→    }
+   647→   647→
+   648→   648→    try {
+   649→   649→      const bucket = admin.storage().bucket();
+   650→   650→      const file = bucket.file(filePath);
+   651→   651→
+   652→   652→      const expiresInMinutes = 15;
+   653→   653→      const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
+   654→   654→
+   655→   655→      const [uploadUrl] = await file.getSignedUrl({
+   656→   656→        action: 'write',
+   657→   657→        expires: expiresAt,
+   658→   658→        contentType: contentType || 'application/octet-stream',
+   659→   659→      });
+   660→   660→
+   661→   661→      // Also generate a read URL
+   662→   662→      const [downloadUrl] = await file.getSignedUrl({
+   663→   663→        action: 'read',
+   664→   664→        expires: expiresAt,
+   665→   665→      });
+   666→   666→
+   667→   667→      res.json({
+   668→   668→        uploadUrl,
+   669→   669→        downloadUrl,
+   670→   670→        filePath,
+   671→   671→        expiresAt: expiresAt.toISOString(),
+   672→   672→      });
+   673→   673→    } catch (err: unknown) {
+   674→   674→      const msg = err instanceof Error ? err.message : String(err);
+   675→   675→      console.error(`Signed URL generation failed: ${msg}`);
+   676→   676→      Sentry.captureException(err);
+   677→   677→      res.status(500).json({ error: 'Failed to generate upload URL.' });
+   678→   678→    }
+   679→   679→  },
+   680→   680→);
+   681→   681→
+   682→   682→// ═══════════════════════════════════════════════════════════════════
+   683→   683→// Analytics — Server-side Event Recording
+   684→   684→// ═══════════════════════════════════════════════════════════════════
+   685→   685→
+   686→   686→/**
+   687→   687→ * POST /v1/analytics/event
+   688→   688→ *
+   689→   689→ * Records an analytics event server-side. Harder to fake than client-side events.
+   690→   690→ *
+   691→   691→ * Request body:
+   692→   692→ *   { "event": "class_joined", "metadata": { "roomId": "..." } }
+   693→   693→ *
+   694→   694→ * Supported events:
+   695→   695→ *   class_joined, class_completed, class_left,
+   696→   696→ *   assignment_submitted, assignment_viewed,
+   697→   697→ *   exam_started, exam_submitted, exam_completed,
+   698→   698→ *   material_viewed, resource_downloaded
+   699→   699→ */
+   700→   700→app.post(
+   701→   701→  '/v1/analytics/event',
+   702→   702→  verifyAuthToken,
+   703→   703→  async (req: Request, res: Response) => {
+   704→   704→    initSentry();
+   705→   705→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   706→   706→    scope?.setTag('service', 'analytics');
+   707→   707→    scope?.setTag('endpoint', '/v1/analytics/event');
+   708→   708→
+   709→   709→    const { event, metadata } = req.body ?? {};
+   710→   710→
+   711→   711→    if (!event || typeof event !== 'string') {
+   712→   712→      res.status(400).json({ error: 'event is required and must be a string.' });
+   713→   713→      return;
+   714→   714→    }
+   715→   715→
+   716→   716→    const allowedEvents = [
+   717→   717→      'class_joined', 'class_completed', 'class_left',
+   718→   718→      'assignment_submitted', 'assignment_viewed',
+   719→   719→      'exam_started', 'exam_submitted', 'exam_completed',
+   720→   720→      'material_viewed', 'resource_downloaded',
+   721→   721→    ];
+   722→   722→
+   723→   723→    if (!allowedEvents.includes(event)) {
+   724→   724→      res.status(400).json({ error: `Unknown event. Allowed: ${allowedEvents.join(', ')}` });
+   725→   725→      return;
+   726→   726→    }
+   727→   727→
+   728→   728→    try {
+   729→   729→      const db = admin.firestore();
+   730→   730→      await db.collection('analytics_events').add({
+   731→   731→        event,
+   732→   732→        userId: req.user!.uid,
+   733→   733→        userRole: req.userRole ?? 'unknown',
+   734→   734→        organizationId: req.userOrgId ?? null,
+   735→   735→        metadata: metadata ?? {},
+   736→   736→        clientIp: req.ip ?? req.headers['x-forwarded-for'] ?? 'unknown',
+   737→   737→        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+   738→   738→      });
+   739→   739→
+   740→   740→      res.json({ success: true, event });
+   741→   741→    } catch (err: unknown) {
+   742→   742→      const msg = err instanceof Error ? err.message : String(err);
+   743→   743→      console.error(`Analytics event recording failed: ${msg}`);
+   744→   744→      Sentry.captureException(err);
+   745→   745→      res.status(500).json({ error: 'Failed to record event.' });
+   746→   746→    }
+   747→   747→  },
+   748→   748→);
+   749→   749→
+   750→   750→// ═══════════════════════════════════════════════════════════════════
+   751→   751→// Admin API
+   752→   752→// ═══════════════════════════════════════════════════════════════════
+   753→   753→
+   754→   754→/**
+   755→   755→ * GET /v1/admin/users?role=student&limit=50&cursor=xxx
+   756→   756→ *
+   757→   757→ * List users in the caller's organization.
+   758→   758→ * Teachers see students. Owners see everyone.
+   759→   759→ */
+   760→   760→app.get(
+   761→   761→  '/v1/admin/users',
+   762→   762→  verifyAuthToken,
+   763→   763→  requireAdmin,
+   764→   764→  async (req: Request, res: Response) => {
+   765→   765→    initSentry();
+   766→   766→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   767→   767→    scope?.setTag('service', 'admin');
+   768→   768→    scope?.setTag('endpoint', '/v1/admin/users');
+   769→   769→
+   770→   770→    if (!req.userOrgId) {
+   771→   771→      res.status(400).json({ error: 'User is not associated with an organization.' });
+   772→   772→      return;
+   773→   773→    }
+   774→   774→
+   775→   775→    try {
+   776→   776→      const db = admin.firestore();
+   777→   777→      const role = req.query['role'] as string | undefined;
+   778→   778→      const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 100);
+   779→   779→      const cursor = req.query['cursor'] as string | undefined;
+   780→   780→
+   781→   781→      let query = db
+   782→   782→        .collection('users')
+   783→   783→        .where('organizationId', '==', req.userOrgId)
+   784→   784→        .orderBy('createdAt', 'desc')
+   785→   785→        .limit(limit + 1); // +1 to detect next page
+   786→   786→
+   787→   787→      // Non-owners can only see students
+   788→   788→      if (req.userRole !== 'owner' && req.userRole !== 'admin') {
+   789→   789→        query = query.where('role', '==', 'student');
+   790→   790→      } else if (role) {
+   791→   791→        query = query.where('role', '==', role);
+   792→   792→      }
+   793→   793→
+   794→   794→      if (cursor) {
+   795→   795→        const cursorDoc = await db.collection('users').doc(cursor).get();
+   796→   796→        if (cursorDoc.exists) {
+   797→   797→          query = query.startAfter(cursorDoc);
+   798→   798→        }
+   799→   799→      }
+   800→   800→
+   801→   801→      const snapshot = await query.get();
+   802→   802→      const users = snapshot.docs.slice(0, limit).map((doc) => {
+   803→   803→        const data = doc.data();
+   804→   804→        return {
+   805→   805→          uid: doc.id,
+   806→   806→          fullName: data['fullName'] ?? '',
+   807→   807→          email: data['email'] ?? '',
+   808→   808→          role: data['role'] ?? '',
+   809→   809→          isActive: data['isActive'] ?? true,
+   810→   810→          createdAt: data['createdAt'] ?? null,
+   811→   811→        };
+   812→   812→      });
+   813→   813→
+   814→   814→      const hasNextPage = snapshot.docs.length > limit;
+   815→   815→      const nextCursor = hasNextPage ? snapshot.docs[limit - 1]?.id : null;
+   816→   816→
+   817→   817→      res.json({ users, nextCursor, hasMore: hasNextPage });
+   818→   818→    } catch (err: unknown) {
+   819→   819→      const msg = err instanceof Error ? err.message : String(err);
+   820→   820→      console.error(`Admin users list failed: ${msg}`);
+   821→   821→      Sentry.captureException(err);
+   822→   822→      res.status(500).json({ error: 'Failed to list users.' });
+   823→   823→    }
+   824→   824→  },
+   825→   825→);
+   826→   826→
+   827→   827→/**
+   828→   828→ * GET /v1/admin/schools
+   829→   829→ *
+   830→   830→ * List organizations. Only available to owners and admins.
+   831→   831→ */
+   832→   832→app.get(
+   833→   833→  '/v1/admin/schools',
+   834→   834→  verifyAuthToken,
+   835→   835→  async (req: Request, res: Response) => {
+   836→   836→    initSentry();
+   837→   837→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   838→   838→    scope?.setTag('service', 'admin');
+   839→   839→    scope?.setTag('endpoint', '/v1/admin/schools');
+   840→   840→
+   841→   841→    // Only owners/admins can list schools
+   842→   842→    if (!['owner', 'admin'].includes(req.userRole ?? '')) {
+   843→   843→      res.status(403).json({ error: 'Only owners can list organizations.' });
+   844→   844→      return;
+   845→   845→    }
+   846→   846→
+   847→   847→    try {
+   848→   848→      const db = admin.firestore();
+   849→   849→      const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 100);
+   850→   850→
+   851→   851→      let query = db.collection('organizations').orderBy('createdAt', 'desc').limit(limit);
+   852→   852→
+   853→   853→      // Non-super-admin users see only their own org
+   854→   854→      if (req.userRole !== 'admin') {
+   855→   855→        query = query.where('ownerId', '==', req.user!.uid);
+   856→   856→      }
+   857→   857→
+   858→   858→      const snapshot = await query.get();
+   859→   859→      const schools = snapshot.docs.map((doc) => {
+   860→   860→        const data = doc.data();
+   861→   861→        return {
+   862→   862→          id: doc.id,
+   863→   863→          name: data['name'] ?? '',
+   864→   864→          slug: data['slug'] ?? '',
+   865→   865→          ownerId: data['ownerId'] ?? '',
+   866→   866→          isActive: data['isActive'] ?? true,
+   867→   867→          plan: data['plan'] ?? 'free',
+   868→   868→          createdAt: data['createdAt'] ?? null,
+   869→   869→        };
+   870→   870→      });
+   871→   871→
+   872→   872→      res.json({ schools });
+   873→   873→    } catch (err: unknown) {
+   874→   874→      const msg = err instanceof Error ? err.message : String(err);
+   875→   875→      console.error(`Admin schools list failed: ${msg}`);
+   876→   876→      Sentry.captureException(err);
+   877→   877→      res.status(500).json({ error: 'Failed to list schools.' });
+   878→   878→    }
+   879→   879→  },
+   880→   880→);
+   881→   881→
+   882→   882→/**
+   883→   883→ * GET /v1/admin/reports/summary
+   884→   884→ *
+   885→   885→ * Organization summary statistics for the admin dashboard.
+   886→   886→ */
+   887→   887→app.get(
+   888→   888→  '/v1/admin/reports/summary',
+   889→   889→  verifyAuthToken,
+   890→   890→  requireAdmin,
+   891→   891→  async (req: Request, res: Response) => {
+   892→   892→    initSentry();
+   893→   893→    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+   894→   894→    scope?.setTag('service', 'admin');
+   895→   895→    scope?.setTag('endpoint', '/v1/admin/reports/summary');
+   896→   896→
+   897→   897→    if (!req.userOrgId) {
+   898→   898→      res.status(400).json({ error: 'User is not associated with an organization.' });
+   899→   899→      return;
+   900→   900→    }
+   901→   901→
+   902→   902→    try {
+   903→   903→      const db = admin.firestore();
+   904→   904→      const orgId = req.userOrgId;
+   905→   905→
+   906→   906→      // Count users by role
+   907→   907→      const usersSnapshot = await db
+   908→   908→        .collection('users')
+   909→   909→        .where('organizationId', '==', orgId)
+   910→   910→        .where('isActive', '==', true)
+   911→   911→        .get();
+   912→   912→
+   913→   913→      const teachers = usersSnapshot.docs.filter(
+   914→   914→        (d) => d.data()['role'] === 'teacher',
+   915→   915→      ).length;
+   916→   916→      const students = usersSnapshot.docs.filter(
+   917→   917→        (d) => d.data()['role'] === 'student',
+   918→   918→      ).length;
+   919→   919→      const parents = usersSnapshot.docs.filter(
+   920→   920→        (d) => d.data()['role'] === 'parent',
+   921→   921→      ).length;
+   922→   922→
+   923→   923→      // Count exams
+   924→   924→      const examsSnapshot = await db
+   925→   925→        .collection('exams')
+   926→   926→        .where('organizationId', '==', orgId)
+   927→   927→        .get();
+   928→   928→      const activeExams = examsSnapshot.docs.filter(
+   929→   929→        (d) => d.data()['isActive'] === true,
+   930→   930→      ).length;
+   931→   931→
+   932→   932→      // Count classes
+   933→   933→      const classesSnapshot = await db
+   934→   934→        .collection('classes')
+   935→   935→        .where('organizationId', '==', orgId)
+   936→   936→        .get();
+   937→   937→
+   938→   938→      // Count active live rooms
+   939→   939→      const liveRoomsSnapshot = await db
+   940→   940→        .collection('livekit_rooms')
+   941→   941→        .where('organizationId', '==', orgId)
+   942→   942→        .where('isActive', '==', true)
+   943→   943→        .get();
+   944→   944→
+   945→   945→      // Count assignments
+   946→   946→      const assignmentsSnapshot = await db
+   947→   947→        .collection('assignments')
+   948→   948→        .where('organizationId', '==', orgId)
+   949→   949→        .get();
+   950→   950→
+   951→   951→      res.json({
+   952→   952→        organizationId: orgId,
+   953→   953→        users: {
+   954→   954→          total: usersSnapshot.size,
+   955→   955→          teachers,
+   956→   956→          students,
+   957→   957→          parents,
+   958→   958→        },
+   959→   959→        exams: {
+   960→   960→          total: examsSnapshot.size,
+   961→   961→          active: activeExams,
+   962→   962→        },
+   963→   963→        classes: classesSnapshot.size,
+   964→   964→        activeLiveRooms: liveRoomsSnapshot.size,
+   965→   965→        assignments: assignmentsSnapshot.size,
+   966→   966→        generatedAt: new Date().toISOString(),
+   967→   967→      });
+   968→   968→    } catch (err: unknown) {
+   969→   969→      const msg = err instanceof Error ? err.message : String(err);
+   970→   970→      console.error(`Admin summary failed: ${msg}`);
+   971→   971→      Sentry.captureException(err);
+   972→   972→      res.status(500).json({ error: 'Failed to generate summary.' });
+   973→   973→    }
+   974→   974→  },
+   975→   975→);
+   976→   976→
+   977→   977→// ═══════════════════════════════════════════════════════════════════
+   978→   978→// API Documentation
+   979→   979→// ═══════════════════════════════════════════════════════════════════
+   980→   980→
+   981→   981→app.get('/v1/docs', (_req: Request, res: Response) => {
+   982→   982→  res.json(OPENAPI_SPEC);
+   983→   983→});
+   984→   984→
+   985→   985→// ═══════════════════════════════════════════════════════════════════
+   986→   986→// Legacy routes (redirect to /v1)
+   987→   987→// ═══════════════════════════════════════════════════════════════════
+   988→   988→
+   989→   989→app.get('/health', (_req: Request, res: Response) => {
+   990→   990→  res.redirect(301, '/v1/health');
+   991→   991→});
+   992→   992→
+   993→   993→// ═══════════════════════════════════════════════════════════════════
+   994→   994→// 404 Catch-all
+   995→   995→// ═══════════════════════════════════════════════════════════════════
+   996→   996→
+   997→   997→app.use((_req: Request, res: Response) => {
+   998→   998→  res.status(404).json({
+   999→   999→    error: 'Not Found',
+  1000→  1000→    message: 'See /v1/docs for available endpoints.',
+  1001→  1001→    availableEndpoints: [
+  1002→  1002→      'GET  /v1/health',
+  1003→  1003→      'POST /v1/livekit/token',
+  1004→  1004→      'POST /v1/livekit/remove',
+  1005→  1005→      'POST /v1/livekit/mute',
+  1006→  1006→      'POST /v1/livekit/endRoom',
+  1007→  1007→      'POST /v1/storage/upload-url',
+  1008→  1008→      'POST /v1/analytics/event',
+  1009→  1009→      'GET  /v1/admin/users',
+  1010→  1010→      'GET  /v1/admin/schools',
+  1011→  1011→      'GET  /v1/admin/reports/summary',
+  1012→  1012→      'GET  /v1/docs',
+  1013→  1013→    ],
+  1014→  1014→  });
+  1015→  1015→});
+  1016→  1016→
+  1017→  1017→// ═══════════════════════════════════════════════════════════════════
+  1018→  1018→// OpenAPI Specification
+  1019→  1019→// ═══════════════════════════════════════════════════════════════════
+  1020→  1020→
+  1021→  1021→const OPENAPI_SPEC = {
+  1022→  1022→  openapi: '3.0.3',
+  1023→  1023→  info: {
+  1024→  1024→    title: 'Klasivo API',
+  1025→  1025→    description: 'Central backend gateway for Klasivo — education platform. All sensitive operations route through this API. The Flutter app never touches LiveKit secrets, Resend keys, or admin operations directly.',
+  1026→  1026→    version: '1.0.0',
+  1027→  1027→    contact: { name: 'Klasivo Support', email: 'support@klasivo.app', url: 'https://klasivo.app' },
+  1028→  1028→    license: { name: 'Proprietary' },
+  1029→  1029→  },
+  1030→  1030→  servers: [{ url: 'https://api.klasivo.app', description: 'Production' }],
+  1031→  1031→  security: [{ BearerAuth: [] }],
+  1032→  1032→  paths: {
+  1033→  1033→    '/v1/health': {
+  1034→  1034→      get: {
+  1035→  1035→        summary: 'Health check',
+  1036→  1036→        description: 'Returns API status and downstream service health.',
+  1037→  1037→        security: [],
+  1038→  1038→        responses: {
+  1039→  1039→          '200': { description: 'All services healthy', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, version: { type: 'string' }, timestamp: { type: 'string' }, services: { type: 'object' } } } } } },
+  1040→  1040→          '503': { description: 'One or more services degraded' },
+  1041→  1041→        },
+  1042→  1042→      },
+  1043→  1043→    },
+  1044→  1044→    '/v1/livekit/token': {
+  1045→  1045→      post: {
+  1046→  1046→        summary: 'Generate LiveKit token',
+  1047→  1047→        description: 'Creates a JWT access token for joining a LiveKit room. roomId is required; roomName and isTeacher are determined server-side. Staff roles (LIVEKIT_ADMIN_ROLES) get roomAdmin grant.',
+  1048→  1048→        requestBody: {
+  1049→  1049→          required: true,
+  1050→  1050→          content: { 'application/json': { schema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string', description: 'Firestore document ID of the livekit_rooms entry' }, displayName: { type: 'string' } } } } },
+  1051→  1051→        },
+  1052→  1052→        responses: {
+  1053→  1053→          '200': { description: 'Token generated', content: { 'application/json': { schema: { type: 'object', properties: { token: { type: 'string' } } } } } },
+  1054→  1054→          '401': { description: 'Missing or invalid auth token' },
+  1055→  1055→          '403': { description: 'Not authorized — cross-org access denied' },
+  1056→  1056→          '404': { description: 'Room not found' },
+  1057→  1057→        },
+  1058→  1058→      },
+  1059→  1059→    },
+  1060→  1060→    '/v1/livekit/remove': {
+  1061→  1061→      post: {
+  1062→  1062→        summary: 'Remove participant from room',
+  1063→  1063→        description: 'Kicks a participant from a LiveKit room. Teacher/owner/admin only.',
+  1064→  1064→        requestBody: {
+  1065→  1065→          required: true,
+  1066→  1066→          content: { 'application/json': { schema: { type: 'object', required: ['roomName', 'participantIdentity', 'roomId'], properties: { roomName: { type: 'string' }, participantIdentity: { type: 'string' }, roomId: { type: 'string' } } } } },
+  1067→  1067→        },
+  1068→  1068→        responses: { '200': { description: 'Participant removed' }, '403': { description: 'Not authorized' }, '404': { description: 'Room not found' } },
+  1069→  1069→      },
+  1070→  1070→    },
+  1071→  1071→    '/v1/livekit/mute': {
+  1072→  1072→      post: {
+  1073→  1073→        summary: 'Mute/unmute participant',
+  1074→  1074→        description: 'Toggles a participant\'s ability to publish audio/video. Teacher only.',
+  1075→  1075→        requestBody: {
+  1076→  1076→          required: true,
+  1077→  1077→          content: { 'application/json': { schema: { type: 'object', required: ['roomName', 'participantIdentity', 'mute'], properties: { roomName: { type: 'string' }, participantIdentity: { type: 'string' }, mute: { type: 'boolean' }, roomId: { type: 'string' } } } } },
+  1078→  1078→        },
+  1079→  1079→        responses: { '200': { description: 'Participant muted/unmuted' }, '403': { description: 'Not authorized' } },
+  1080→  1080→      },
+  1081→  1081→    },
+  1082→  1082→    '/v1/livekit/endRoom': {
+  1083→  1083→      post: {
+  1084→  1084→        summary: 'End a live room',
+  1085→  1085→        description: 'Ends a LiveKit room and updates Firestore status. Teacher/owner/admin only.',
+  1086→  1086→        requestBody: {
+  1087→  1087→          required: true,
+  1088→  1088→          content: { 'application/json': { schema: { type: 'object', required: ['roomName', 'roomId'], properties: { roomName: { type: 'string' }, roomId: { type: 'string' } } } } },
+  1089→  1089→        },
+  1090→  1090→        responses: { '200': { description: 'Room ended' }, '403': { description: 'Not authorized' }, '404': { description: 'Room not found' } },
+  1091→  1091→      },
+  1092→  1092→    },
+  1093→  1093→    '/v1/storage/upload-url': {
+  1094→  1094→      post: {
+  1095→  1095→        summary: 'Generate signed upload URL',
+  1096→  1096→        description: 'Returns a signed URL for direct file upload to Firebase Storage. Client never needs storage credentials.',
+  1097→  1097→        requestBody: {
+  1098→  1098→          required: true,
+  1099→  1099→          content: { 'application/json': { schema: { type: 'object', required: ['filePath'], properties: { filePath: { type: 'string', description: 'Storage path, e.g. organizations/abc/logo.png' }, contentType: { type: 'string', description: 'MIME type, e.g. image/png' } } } } },
+  1100→  1100→        },
+  1101→  1101→        responses: { '200': { description: 'Signed URLs generated', content: { 'application/json': { schema: { type: 'object', properties: { uploadUrl: { type: 'string' }, downloadUrl: { type: 'string' }, filePath: { type: 'string' }, expiresAt: { type: 'string' } } } } } }, '403': { description: 'Path not in allowed prefixes' } },
+  1102→  1102→      },
+  1103→  1103→    },
+  1104→  1104→    '/v1/analytics/event': {
+  1105→  1105→      post: {
+  1106→  1106→        summary: 'Record analytics event',
+  1107→  1107→        description: 'Server-side analytics event recording. Harder to fake than client-side.',
+  1108→  1108→        requestBody: {
+  1109→  1109→          required: true,
+  1110→  1110→          content: { 'application/json': { schema: { type: 'object', required: ['event'], properties: { event: { type: 'string', enum: ['class_joined', 'class_completed', 'class_left', 'assignment_submitted', 'assignment_viewed', 'exam_started', 'exam_submitted', 'exam_completed', 'material_viewed', 'resource_downloaded'] }, metadata: { type: 'object' } } } } },
+  1111→  1111→        },
+  1112→  1112→        responses: { '200': { description: 'Event recorded' }, '400': { description: 'Unknown event type' } },
+  1113→  1113→      },
+  1114→  1114→    },
+  1115→  1115→    '/v1/admin/users': {
+  1116→  1116→      get: {
+  1117→  1117→        summary: 'List organization users',
+  1118→  1118→        description: 'Teachers see students. Owners see everyone. Supports pagination.',
+  1119→  1119→        parameters: [
+  1120→  1120→          { name: 'role', in: 'query', schema: { type: 'string', enum: ['student', 'teacher', 'owner', 'parent'] } },
+  1121→  1121→          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+  1122→  1122→          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+  1123→  1123→        ],
+  1124→  1124→        responses: { '200': { description: 'User list' } },
+  1125→  1125→      },
+  1126→  1126→    },
+  1127→  1127→    '/v1/admin/schools': {
+  1128→  1128→      get: {
+  1129→  1129→        summary: 'List organizations',
+  1130→  1130→        description: 'Owners see their own. Admins see all.',
+  1131→  1131→        parameters: [
+  1132→  1132→          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+  1133→  1133→        ],
+  1134→  1134→        responses: { '200': { description: 'School list' }, '403': { description: 'Not authorized' } },
+  1135→  1135→      },
+  1136→  1136→    },
+  1137→  1137→    '/v1/admin/reports/summary': {
+  1138→  1138→      get: {
+  1139→  1139→        summary: 'Organization summary statistics',
+  1140→  1140→        description: 'Returns user counts, exam counts, active rooms, and more.',
+  1141→  1141→        responses: { '200': { description: 'Summary statistics' } },
+  1142→  1142→      },
+  1143→  1143→    },
+  1144→  1144→  },
+  1145→  1145→  components: {
+  1146→  1146→    securitySchemes: {
+  1147→  1147→      BearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Firebase ID token' },
+  1148→  1148→    },
+  1149→  1149→  },
+  1150→  1150→};
+  1151→  1151→
+  1152→  1152→// ═══════════════════════════════════════════════════════════════════
+  1153→  1153→// Export as Firebase Function
+  1154→  1154→// ═══════════════════════════════════════════════════════════════════
+  1155→  1155→
+  1156→  1156→export const api = onRequest(
+  1157→  1157→  {
+  1158→  1158→    secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
+  1159→  1159→    region: 'us-central1',
+  1160→  1160→    cors: true,
+  1161→  1161→    memory: '512MiB',
+  1162→  1162→    timeoutSeconds: 60,
+  1163→  1163→    minInstances: 1,      // Keep warm — API gateway is latency-critical
+  1164→  1164→    maxInstances: 100,    // Cap — 100 instances × 80 concurrency = 8,000 concurrent req
+  1165→  1165→    concurrency: 80,      // Handle multiple requests per instance
+  1166→  1166→    cpu: 1,               // Full CPU for Express middleware chain
+  1167→  1167→  },
+  1168→  1168→  app,
+  1169→  1169→);
+  1170→  1170→

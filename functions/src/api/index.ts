@@ -113,6 +113,14 @@ async function verifyAuthToken(
       req.userName = userDoc.data()?.['fullName'] as string | undefined;
     }
 
+    // Set Sentry user context on the isolated scope for this request
+    const scope = (req as any).sentryScope as Sentry.Scope | undefined;
+    if (scope) {
+      scope.setUser({ id: decodedToken.uid, email: decodedToken.email });
+      if (req.userRole) scope.setTag('role', req.userRole);
+      if (req.userOrgId) scope.setTag('organizationId', req.userOrgId);
+    }
+
     next();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

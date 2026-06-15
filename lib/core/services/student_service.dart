@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart';
+import 'sentry_service.dart';
 
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -61,19 +63,28 @@ class StudentService {
     String? phone,
     String createdBy = '',
   }) async {
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
+
     try {
+      KlasivoSentry.breadcrumb.registration('student_add_started', data: {
+        'organizationId': organizationId,
+        'classId': classId,
+        'fullName': fullName,
+        'createdBy': createdBy,
+      });
+
       final studentCode = await generateStudentCode(organizationId);
       final passwordHash = hashPassword(password);
       final authEmail = _generateAuthEmail(studentCode);
 
-      // Try to create Firebase Auth account for this student
-      // This enables push notifications, security rules, etc.
+      // ── Step 1: Try to create Firebase Auth account ──────────────────────
+      KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_CREATE_START', data: {
+        'studentCode': studentCode,
+      });
+
       String? authUid;
       try {
-        // Save the current user so we can restore after student creation
         final currentUser = _auth.currentUser;
-        final currentUserEmail = currentUser?.email;
-        final currentUserPassword = ''; // Cannot retrieve password - will use re-auth
 
         final userCredential = await _auth.createUserWithEmailAndPassword(
           email: authEmail,
@@ -81,34 +92,54 @@ class StudentService {
         );
         authUid = userCredential.user?.uid;
 
+        KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_CREATED', data: {
+          'authUid': authUid,
+          'studentCode': studentCode,
+        });
+
         // Sign out the student account immediately
         await _auth.signOut();
 
         // Restore the original teacher/owner session
-        if (currentUserEmail != null) {
-          // Note: We cannot re-sign-in the teacher automatically because
-          // we don't have their password. The teacher will need to sign in again.
-          // This is handled gracefully by the auth state listener.
+        if (currentUser?.email != null) {
+          // Note: Cannot re-sign-in automatically — handled by auth state listener
+          KlasivoCrashlytics.log('[student] Auth session changed after student creation — '
+              'original user may need to re-authenticate');
         }
-      } catch (authError) {
-        // If Firebase Auth creation fails (e.g., email already exists),
-        // the student can still function without Firebase Auth initially.
-        debugPrint('Firebase Auth creation for student failed: $authError');
+      } catch (authError, authStack) {
+        // If Firebase Auth creation fails, student can still function without Auth
+        KlasivoSentry.breadcrumb.registration('STEP_1_AUTH_ACCOUNT_FAILED', data: {
+          'error': authError.toString().substring(0, (authError.toString().length).clamp(0, 100)),
+        });
+        await KlasivoObservability.reportError(
+          authError,
+          authStack,
+          reason: 'Firebase Auth creation for student failed (non-fatal — student will use Firestore-only login)',
+          tags: {
+            'flow': 'student_creation',
+            'step': 'STEP_1_AUTH_CREATE',
+            'studentCode': studentCode,
+          },
+        );
       }
 
-      // If Firebase Auth account was created, use its UID as the document ID
-      // This links the Firestore user doc directly to the Firebase Auth UID
+      // ── Step 2: Create student document in Firestore ──────────────────────
+      KlasivoSentry.breadcrumb.registration('STEP_2_USER_DOC_CREATE_START', data: {
+        'authUid': authUid ?? 'null',
+        'docIdStrategy': authUid != null ? 'uid' : 'auto_id',
+      });
+
       final docRef = authUid != null
           ? _firestore.collection(AppConstants.usersCollection).doc(authUid)
           : _firestore.collection(AppConstants.usersCollection).doc();
 
-      await docRef.set({
+      final studentData = {
         'organizationId': organizationId,
         'role': AppConstants.roleStudent,
         'fullName': fullName,
         'studentCode': studentCode,
-        'authEmail': authEmail, // Internal email for Firebase Auth
-        'email': email,         // User's real email (optional)
+        'authEmail': authEmail,
+        'email': email,
         'phone': phone,
         'passwordHash': passwordHash,
         'classId': classId,
@@ -117,9 +148,49 @@ class StudentService {
         'createdBy': createdBy,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
 
-      // Update student count in class
+      await SentryFirestoreHelper.docSet(
+        collection: AppConstants.usersCollection,
+        docId: docRef.id,
+        data: studentData,
+        flow: 'student_creation',
+        step: 'STEP_2_USER_DOC_CREATE',
+      );
+
+      // ── Read-back verification ──
+      final verifyDoc = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(docRef.id)
+          .get();
+      if (!verifyDoc.exists) {
+        await KlasivoObservability.reportMessage(
+          'STEP_2 STUDENT DOC SET SUCCEEDED BUT READ-BACK FAILED — '
+          'doc users/${docRef.id} does not exist after .set()',
+          level: SentryLevel.error,
+          tags: {
+            'flow': 'student_creation',
+            'step': 'STEP_2_READBACK',
+            'docId': docRef.id,
+          },
+        );
+      } else {
+        KlasivoSentry.breadcrumb.registration('STEP_2_USER_DOC_READBACK_VERIFIED', data: {
+          'docId': docRef.id,
+          'docExists': true,
+        });
+      }
+
+      // Doc ID audit trail
+      KlasivoSentry.docIdAudit.logUserCreation(
+        flow: 'student_creation',
+        collection: AppConstants.usersCollection,
+        docIdStrategy: authUid != null ? 'uid' : 'auto_id',
+        actualDocId: docRef.id,
+        authUid: authUid,
+      );
+
+      // ── Step 3: Update student count in class ────────────────────────────
       final countSnapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('classId', isEqualTo: classId)
@@ -132,10 +203,7 @@ class StudentService {
           .doc(classId)
           .update({'studentCount': countSnapshot.count ?? 0});
 
-      // Re-sign in the creator (owner/teacher) since we signed out above
-      // This is handled by the calling code — the auth state will be restored
-
-      // Notify teacher that a student joined (fire-and-forget)
+      // ── Step 4: Notify teachers ──────────────────────────────────────────
       _notifyStudentJoined(
         studentName: fullName,
         classId: classId,
@@ -143,9 +211,28 @@ class StudentService {
         createdBy: createdBy,
       );
 
+      KlasivoSentry.breadcrumb.registration('student_add_success', data: {
+        'docId': docRef.id,
+        'studentCode': studentCode,
+        'authUid': authUid ?? 'null',
+      });
+
+      transaction.status = const SpanStatus.ok();
+
       return docRef.id;
-    } catch (e) {
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await KlasivoObservability.reportRegistrationError(
+        e,
+        st,
+        flow: 'student_creation',
+        step: 'addStudent',
+        role: 'student',
+        reason: 'Student creation failed',
+      );
       rethrow;
+    } finally {
+      await transaction.finish();
     }
   }
 
@@ -172,7 +259,6 @@ class StudentService {
       if (password != null && password.isNotEmpty) {
         data['passwordHash'] = hashPassword(password);
 
-        // Also update Firebase Auth password if the student has an auth account
         try {
           final studentDoc = await _firestore
               .collection(AppConstants.usersCollection)
@@ -180,38 +266,43 @@ class StudentService {
               .get();
           final authEmail = studentDoc.data()?['authEmail'] as String?;
           if (authEmail != null) {
-            // Firebase Admin SDK would be needed to update password server-side
-            // For now, the password is stored in Firestore for client-side login
+            // Firebase Admin SDK would be needed for server-side password update
           }
         } catch (_) {}
       }
 
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .update(data);
-    } catch (e) {
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.usersCollection,
+        docId: studentId,
+        data: data,
+        flow: 'student_update',
+        step: 'updateStudent',
+      );
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Student update failed',
+        tags: {'flow': 'student_update', 'studentId': studentId},
+      );
       rethrow;
     }
   }
 
   Future<void> deleteStudent(String studentId, String classId) async {
     try {
-      // Get student data before deleting
       final studentDoc = await _firestore
           .collection(AppConstants.usersCollection)
           .doc(studentId)
           .get();
       final studentData = studentDoc.data();
 
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .delete();
-
-      // Try to delete Firebase Auth account
-      // Note: This requires Cloud Functions (Admin SDK) for proper cleanup
-      // The onUserDelete cloud function handles this
+      await SentryFirestoreHelper.docDelete(
+        collection: AppConstants.usersCollection,
+        docId: studentId,
+        flow: 'student_deletion',
+        step: 'deleteStudent',
+      );
 
       // Update student count
       final countSnapshot = await _firestore
@@ -225,7 +316,13 @@ class StudentService {
           .collection(AppConstants.classesCollection)
           .doc(classId)
           .update({'studentCount': countSnapshot.count ?? 0});
-    } catch (e) {
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Student deletion failed',
+        tags: {'flow': 'student_deletion', 'studentId': studentId, 'classId': classId},
+      );
       rethrow;
     }
   }
@@ -259,7 +356,8 @@ class StudentService {
           .count()
           .get();
       return snapshot.count ?? 0;
-    } catch (e) {
+    } catch (e, st) {
+      KlasivoCrashlytics.recordError(e, st, reason: 'getTotalStudentCount failed');
       rethrow;
     }
   }
@@ -270,12 +368,20 @@ class StudentService {
     required List<Map<String, String>> students,
     String createdBy = '',
   }) async {
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
+
     try {
+      KlasivoSentry.breadcrumb.registration('bulk_student_add_started', data: {
+        'organizationId': organizationId,
+        'classId': classId,
+        'studentCount': students.length,
+        'createdBy': createdBy,
+      });
+
       final List<String> createdIds = [];
 
-      // Note: Bulk add creates Firestore documents only.
-      // Firebase Auth accounts will be created lazily on first login
-      // to avoid signing out the current user during bulk operations.
+      // Bulk add creates Firestore documents only.
+      // Firebase Auth accounts created lazily on first login.
       final batch = _firestore.batch();
 
       for (final student in students) {
@@ -284,6 +390,9 @@ class StudentService {
             student['password'] ?? AppConstants.defaultStudentPassword;
         final passwordHash = hashPassword(password);
         final authEmail = _generateAuthEmail(studentCode);
+
+        // WARNING: Uses auto-ID — no auth UID available yet
+        // Auth accounts are created lazily on first login
         final docRef =
             _firestore.collection(AppConstants.usersCollection).doc();
 
@@ -304,9 +413,24 @@ class StudentService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
         createdIds.add(docRef.id);
+
+        // Doc ID audit — auto-ID used (Auth accounts created lazily)
+        KlasivoSentry.docIdAudit.logUserCreation(
+          flow: 'bulk_student_creation',
+          collection: AppConstants.usersCollection,
+          docIdStrategy: 'auto_id',
+          actualDocId: docRef.id,
+          authUid: null, // No auth UID yet — created lazily on first login
+        );
       }
 
-      await batch.commit();
+      await SentryFirestoreHelper.batchCommit(
+        batch: batch,
+        collection: AppConstants.usersCollection,
+        operationCount: students.length,
+        flow: 'bulk_student_creation',
+        step: 'BATCH_COMMIT',
+      );
 
       // Update student count
       final countSnapshot = await _firestore
@@ -321,9 +445,27 @@ class StudentService {
           .doc(classId)
           .update({'studentCount': countSnapshot.count ?? 0});
 
+      KlasivoSentry.breadcrumb.registration('bulk_student_add_success', data: {
+        'createdCount': createdIds.length,
+        'classId': classId,
+      });
+
+      transaction.status = const SpanStatus.ok();
+
       return createdIds;
-    } catch (e) {
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await KlasivoObservability.reportRegistrationError(
+        e,
+        st,
+        flow: 'bulk_student_creation',
+        step: 'bulkAddStudents',
+        role: 'student',
+        reason: 'Bulk student creation failed',
+      );
       rethrow;
+    } finally {
+      await transaction.finish();
     }
   }
 
@@ -343,7 +485,6 @@ class StudentService {
           email: authEmail,
           password: password,
         );
-        // Account exists — sign back out
         await _auth.signOut();
         return true;
       } catch (_) {
@@ -359,19 +500,26 @@ class StudentService {
       final newUid = userCredential.user?.uid;
 
       // Update the Firestore document with the auth email
-      await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .update({
-        'authEmail': authEmail,
-      });
+      await SentryFirestoreHelper.docUpdate(
+        collection: AppConstants.usersCollection,
+        docId: studentId,
+        data: {'authEmail': authEmail},
+        flow: 'student_auth_ensure',
+        step: 'ensureFirebaseAuthAccount',
+      );
 
-      // Sign out — student isn't the one creating this
+      KlasivoCrashlytics.log('[student] FirebaseAuth account ensured for studentId=$studentId, authUid=$newUid');
+
       await _auth.signOut();
 
       return true;
-    } catch (e) {
-      debugPrint('Failed to create Firebase Auth account for student: $e');
+    } catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Failed to ensure Firebase Auth account for student',
+        tags: {'flow': 'student_auth_ensure', 'studentId': studentId},
+      );
       return false;
     }
   }
@@ -384,14 +532,12 @@ class StudentService {
     String createdBy = '',
   }) async {
     try {
-      // Get class name
       final classDoc = await _firestore
           .collection(AppConstants.classesCollection)
           .doc(classId)
           .get();
       final className = classDoc.data()?['name'] as String? ?? 'class';
 
-      // Get teachers assigned to this class
       final teachersSnapshot = await _firestore
           .collection(AppConstants.teacherAssignmentsCollection)
           .where('classId', isEqualTo: classId)
@@ -402,7 +548,6 @@ class StudentService {
           .cast<String>()
           .toList();
 
-      // Also notify the creator if they're a teacher
       if (createdBy.isNotEmpty && !teacherIds.contains(createdBy)) {
         teacherIds.add(createdBy);
       }
@@ -415,8 +560,9 @@ class StudentService {
           organizationId: organizationId,
         );
       }
-    } catch (_) {
+    } catch (e, st) {
       // Non-critical: notification failure shouldn't block student creation
+      KlasivoCrashlytics.recordError(e, st, reason: 'Student join notification failed (non-critical)');
     }
   }
 }
