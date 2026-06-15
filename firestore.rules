@@ -104,10 +104,7 @@ service cloud.firestore {
     // ====== Users Collection ======
     match /users/{userId} {
       allow read: if isAuth();
-      // Users can create their own doc (self-registration)
-      // OR teachers/owners can create user docs in their org (student/teacher onboarding)
-      allow create: if isAuth() && request.auth.uid == userId
-                 || (isAuth() && isTeacherOrOwner() && isIncomingSameOrg());
+      allow create: if isAuth() && request.auth.uid == userId;
       allow update: if isAuth() && request.auth.uid == userId;
       allow delete: if false;
     }

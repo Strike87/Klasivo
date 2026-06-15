@@ -242,14 +242,24 @@ Future<void> main() async {
         buildNumber: packageInfo.buildNumber,
       );
 
-      // NOTE: runZonedGuarded removed — it creates a zone mismatch with
-      // WidgetsFlutterBinding.ensureInitialized(). Error capture is already
-      // handled by FlutterError.onError + PlatformDispatcher.instance.onError
-      // which are set up above during Firebase initialization.
-      runApp(ProviderScope(
-        observers: [SentryRiverpodObserver()],
-        child: const MyApp(),
-      ));
+      // ── Wrap entire app in runZonedGuarded ──────────────────────────
+      // Catches async errors that PlatformDispatcher misses
+      runZonedGuarded<Future<void>>(
+        () async {
+          runApp(ProviderScope(
+            observers: [SentryRiverpodObserver()],
+            child: const MyApp(),
+          ));
+        },
+        (error, stack) {
+          FirebaseCrashlytics.instance.recordError(
+            error,
+            stack,
+            fatal: true,
+          );
+          Sentry.captureException(error, stackTrace: stack);
+        },
+      );
     },
   );
 }
