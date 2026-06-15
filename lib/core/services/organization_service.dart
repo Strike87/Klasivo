@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../config/app_constants.dart';
 
 class OrganizationService {
@@ -15,9 +17,22 @@ class OrganizationService {
     String? contactPhone,
     String? website,
   }) async {
+    Sentry.addBreadcrumb(Breadcrumb(
+      category: 'registration',
+      message: 'STEP_3_ORG_CREATE_FIRESTORE_START',
+      data: {'ownerId': ownerId, 'name': name},
+    ));
+    await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_3_ORG_CREATE_FIRESTORE_START');
+
     try {
       // Generate a unique slug from the name
       final slug = await _generateUniqueSlug(name);
+
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'registration',
+        message: 'STEP_3_ORG_SLUG_GENERATED',
+        data: {'slug': slug},
+      ));
 
       final docRef = await _firestore
           .collection(AppConstants.organizationsCollection)
@@ -36,8 +51,43 @@ class OrganizationService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Read-back verification: confirm the org document actually exists
+      final verifyDoc = await _firestore
+          .collection(AppConstants.organizationsCollection)
+          .doc(docRef.id)
+          .get();
+      if (!verifyDoc.exists) {
+        await Sentry.captureMessage(
+          'STEP_3 ORG DOC SET SUCCEEDED BUT READ-BACK FAILED — organizations/${docRef.id} does not exist',
+          level: SentryLevel.error,
+        );
+        FirebaseCrashlytics.instance.recordError(
+          'ORG_READBACK_FAILED: organizations/${docRef.id} missing after .add()',
+          StackTrace.current,
+          reason: 'Organization creation verification',
+        );
+      } else {
+        Sentry.addBreadcrumb(Breadcrumb(
+          category: 'registration',
+          message: 'STEP_3_ORG_CREATE_FIRESTORE_VERIFIED',
+          data: {'orgId': docRef.id, 'docExists': true, 'ownerId': ownerId},
+        ));
+      }
+
+      await FirebaseCrashlytics.instance.setCustomKey('orgId', docRef.id);
       return docRef.id;
-    } catch (e) {
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'organizations');
+          scope.setTag('operation', 'create');
+          scope.setTag('ownerId', ownerId);
+          scope.setTag('step', 'STEP_3_ORG_CREATE_FIRESTORE');
+        },
+      );
       rethrow;
     }
   }

@@ -73,7 +73,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledClassReminder = exports.onLiveKitRoomUpdated = exports.onLiveKitRoomCreated = exports.emailWorker = exports.setPermissionOverrides = exports.changeUserPassword = exports.syncClaims = exports.assignScope = exports.assignRole = exports.removeParticipant = exports.generateLiveKitToken = exports.sendSchoolAnnouncement = exports.sendTeacherInvitation = exports.sendContactForm = exports.onUserDeleted = exports.onUserCreated = exports.api = void 0;
+exports.scheduledClassReminder = exports.onLiveKitRoomUpdated = exports.onLiveKitRoomCreated = exports.emailWorker = exports.sentryTestEvent = exports.setPermissionOverrides = exports.changeUserPassword = exports.syncClaims = exports.assignScope = exports.assignRole = exports.removeParticipant = exports.generateLiveKitToken = exports.sendSchoolAnnouncement = exports.sendTeacherInvitation = exports.sendContactForm = exports.onUserDeleted = exports.onUserCreated = exports.api = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialise Firebase Admin once — must run before any function invocation
 admin.initializeApp();
@@ -107,6 +107,9 @@ var changeUserPassword_1 = require("./functions/changeUserPassword");
 Object.defineProperty(exports, "changeUserPassword", { enumerable: true, get: function () { return changeUserPassword_1.changeUserPassword; } });
 var setPermissionOverrides_1 = require("./functions/setPermissionOverrides");
 Object.defineProperty(exports, "setPermissionOverrides", { enumerable: true, get: function () { return setPermissionOverrides_1.setPermissionOverrides; } });
+// ─── Diagnostic Functions (v2) ──────────────────────────────────
+var sentryTestEvent_1 = require("./functions/sentryTestEvent");
+Object.defineProperty(exports, "sentryTestEvent", { enumerable: true, get: function () { return sentryTestEvent_1.sentryTestEvent; } });
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 var emailWorker_1 = require("./workers/emailWorker");
 Object.defineProperty(exports, "emailWorker", { enumerable: true, get: function () { return emailWorker_1.emailWorker; } });

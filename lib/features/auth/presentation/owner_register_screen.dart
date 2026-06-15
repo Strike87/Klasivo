@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
@@ -60,7 +62,18 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       if (mounted) {
         context.go('/welcome');
       }
-    } catch (e) {
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner register (presentation) email catch');
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('screen', 'owner_register_presentation');
+          scope.setTag('flow', 'owner_registration');
+          scope.setTag('method', 'email');
+          scope.setTag('step', 'UI_REGISTER_CATCH');
+        },
+      );
       ref.read(authErrorProvider.notifier).state =
           e.toString().replaceAll('Exception: ', '');
     } finally {
@@ -95,7 +108,18 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
           context.go('/dashboard');
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner register (presentation) Google catch');
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('screen', 'owner_register_presentation');
+          scope.setTag('flow', 'owner_registration');
+          scope.setTag('method', 'google');
+          scope.setTag('step', 'UI_REGISTER_GOOGLE_CATCH');
+        },
+      );
       ref.read(authErrorProvider.notifier).state =
           e.toString().replaceAll('Exception: ', '');
     } finally {

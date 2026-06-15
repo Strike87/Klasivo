@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../config/app_constants.dart';
 import 'sentry_service.dart';
 import 'firebase_service.dart';
@@ -46,6 +47,15 @@ class AuthService {
       'registration',
     );
 
+    // ── Forensic bookend: registration start ───────────────────────────
+    Sentry.addBreadcrumb(Breadcrumb(
+      category: 'registration',
+      message: 'REGISTER_START',
+      data: {'method': 'email', 'email': email, 'fullName': fullName},
+    ));
+    await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_START_email');
+    await FirebaseCrashlytics.instance.setCustomKey('registration_email', email);
+
     try {
       // ── Step 1: Create Firebase Auth account ──────────────────────────
       final userCredential =
@@ -58,6 +68,8 @@ class AuthService {
         data: {'uid': user.uid, 'email': email},
       ));
       transaction.setData('uid', user.uid);
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_1_AUTH_USER_CREATED');
+      await FirebaseCrashlytics.instance.setCustomKey('uid', user.uid);
 
       // Set Sentry user context immediately after auth account creation
       await Sentry.configureScope((scope) {
@@ -139,6 +151,7 @@ class AuthService {
         message: 'STEP_2_USER_DOC_CREATE_SUCCESS',
         data: {'uid': user.uid},
       ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_2_USER_DOC_CREATE_SUCCESS');
 
       // ── Step 3: Create organization ────────────────────────────────────
       Sentry.addBreadcrumb(const Breadcrumb(
@@ -179,6 +192,8 @@ class AuthService {
         message: 'STEP_3_ORG_CREATE_SUCCESS',
         data: {'orgId': orgId},
       ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_3_ORG_CREATE_SUCCESS');
+      await FirebaseCrashlytics.instance.setCustomKey('orgId', orgId);
 
       // ── Step 4: Patch user doc with real organizationId ────────────────
       Sentry.addBreadcrumb(const Breadcrumb(
@@ -212,6 +227,46 @@ class AuthService {
         message: 'STEP_4_USER_PATCH_SUCCESS',
         data: {'uid': user.uid, 'organizationId': orgId},
       ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_4_USER_PATCH_SUCCESS');
+
+      // ── Step 4b: Final read-back verification of COMPLETE user doc ─────
+      // After the patch, the user doc should have organizationId set.
+      // Read it back to confirm the full document is consistent.
+      final finalCheck = await _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(user.uid)
+          .get();
+      if (!finalCheck.exists) {
+        await Sentry.captureMessage(
+          'STEP_4b FINAL READ-BACK FAILED — users/${user.uid} does NOT exist after patch',
+          level: SentryLevel.error,
+        );
+        FirebaseCrashlytics.instance.recordError(
+          'FINAL_READBACK_FAILED: users/${user.uid} missing after Step 4 patch',
+          StackTrace.current,
+          reason: 'owner_registration final verification',
+        );
+      } else {
+        final finalOrgId = finalCheck.data()?['organizationId'] as String? ?? '';
+        final finalRole = finalCheck.data()?['role'] as String? ?? '';
+        Sentry.addBreadcrumb(Breadcrumb(
+          category: 'registration',
+          message: 'STEP_4b_FINAL_READBACK_VERIFIED',
+          data: {
+            'uid': user.uid,
+            'docExists': true,
+            'organizationId': finalOrgId,
+            'organizationIdMatches': finalOrgId == orgId,
+            'role': finalRole,
+          },
+        ));
+        if (finalOrgId != orgId) {
+          await Sentry.captureMessage(
+            'STEP_4b ORG_ID_MISMATCH — expected=$orgId actual=$finalOrgId for users/${user.uid}',
+            level: SentryLevel.error,
+          );
+        }
+      }
 
       // Set Sentry org context after creation
       await Sentry.configureScope((scope) {
@@ -220,6 +275,14 @@ class AuthService {
       });
 
       transaction.status = const SpanStatus.ok();
+
+      // ── Forensic bookend: registration complete ────────────────────────
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'registration',
+        message: 'REGISTER_COMPLETE',
+        data: {'uid': user.uid, 'orgId': orgId, 'method': 'email'},
+      ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_COMPLETE');
 
       return {
         'id': user.uid,
@@ -233,6 +296,7 @@ class AuthService {
       };
     } catch (e) {
       transaction.status = const SpanStatus.internalError();
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_FAILED');
       rethrow;
     } finally {
       await transaction.finish();
@@ -1035,6 +1099,16 @@ createUserDocSpan.status = const SpanStatus.ok();
     final flowName = isNewUser ? '${expectedRole ?? 'owner'}_google_registration' : 'google_login';
     final transaction = Sentry.startTransaction(flowName, 'registration');
 
+    // ── Forensic bookend: registration start (Google) ───────────────────
+    if (isNewUser) {
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'registration',
+        message: 'REGISTER_START',
+        data: {'method': 'google', 'expectedRole': expectedRole ?? 'unknown'},
+      ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_START_google');
+    }
+
     try {
       final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
@@ -1055,6 +1129,8 @@ createUserDocSpan.status = const SpanStatus.ok();
         message: 'STEP_1_AUTH_USER_CREATED',
         data: {'uid': user.uid, 'email': user.email ?? '', 'role': expectedRole ?? 'unknown', 'authProvider': 'google'},
       ));
+      await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_1_AUTH_USER_CREATED_google');
+      await FirebaseCrashlytics.instance.setCustomKey('uid', user.uid);
 
       await Sentry.configureScope((scope) {
         scope.setUser(SentryUser(id: user.uid, email: user.email));
@@ -1247,6 +1323,43 @@ createUserDocSpan.status = const SpanStatus.ok();
           message: 'STEP_4_USER_PATCH_SUCCESS',
           data: {'uid': user.uid, 'organizationId': organizationId},
         ));
+        await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_4_USER_PATCH_SUCCESS_google');
+        await FirebaseCrashlytics.instance.setCustomKey('orgId', organizationId ?? '');
+
+        // ── Step 4b: Final read-back verification of COMPLETE user doc ────
+        final finalCheck = await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .get();
+        if (!finalCheck.exists) {
+          await Sentry.captureMessage(
+            'STEP_4b FINAL READ-BACK FAILED (Google) — users/${user.uid} does NOT exist after patch',
+            level: SentryLevel.error,
+          );
+          FirebaseCrashlytics.instance.recordError(
+            'FINAL_READBACK_FAILED: users/${user.uid} missing after Step 4 patch (Google)',
+            StackTrace.current,
+            reason: 'google_owner_registration final verification',
+          );
+        } else {
+          final finalOrgId = finalCheck.data()?['organizationId'] as String? ?? '';
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'registration',
+            message: 'STEP_4b_FINAL_READBACK_VERIFIED',
+            data: {
+              'uid': user.uid,
+              'docExists': true,
+              'organizationId': finalOrgId,
+              'organizationIdMatches': finalOrgId == organizationId,
+            },
+          ));
+          if (finalOrgId != organizationId) {
+            await Sentry.captureMessage(
+              'STEP_4b ORG_ID_MISMATCH (Google) — expected=$organizationId actual=$finalOrgId',
+              level: SentryLevel.error,
+            );
+          }
+        }
 
         hasCompletedSetup = false; // Needs to name workspace
       } else if (role == AppConstants.roleParent) {
@@ -1318,6 +1431,16 @@ createUserDocSpan.status = const SpanStatus.ok();
 
       transaction.status = const SpanStatus.ok();
 
+      // ── Forensic bookend: registration complete (Google) ────────────────
+      if (isNewUser) {
+        Sentry.addBreadcrumb(Breadcrumb(
+          category: 'registration',
+          message: 'REGISTER_COMPLETE',
+          data: {'uid': user.uid, 'orgId': organizationId, 'method': 'google', 'role': role},
+        ));
+        await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_COMPLETE_google');
+      }
+
       return {
         'id': user.uid,
         'organizationId': organizationId,
@@ -1330,6 +1453,9 @@ createUserDocSpan.status = const SpanStatus.ok();
       };
     } catch (e) {
       transaction.status = const SpanStatus.internalError();
+      if (isNewUser) {
+        await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_FAILED_google');
+      }
       rethrow;
     } finally {
       await transaction.finish();

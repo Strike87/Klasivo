@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/auth_service.dart';
@@ -136,6 +137,15 @@ Future<void> saveTeacherAuthData({
     'userId': userId,
     'authProvider': authProvider,
   });
+
+  // Set Crashlytics custom keys for forensic crash analysis
+  await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'SAVE_AUTH_DATA_START');
+  await FirebaseCrashlytics.instance.setCustomKey('uid', userId);
+  await FirebaseCrashlytics.instance.setCustomKey('userRole', role);
+  await FirebaseCrashlytics.instance.setCustomKey('authProvider', authProvider);
+  if (organizationId != null) {
+    await FirebaseCrashlytics.instance.setCustomKey('orgId', organizationId);
+  }
 
   final box = Hive.box(AppConstants.authBox);
   await box.put('isLoggedIn', true);

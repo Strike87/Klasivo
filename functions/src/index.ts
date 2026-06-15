@@ -65,6 +65,9 @@ export { syncClaims } from './functions/syncClaims';
 export { changeUserPassword } from './functions/changeUserPassword';
 export { setPermissionOverrides } from './functions/setPermissionOverrides';
 
+// ─── Diagnostic Functions (v2) ──────────────────────────────────
+export { sentryTestEvent } from './functions/sentryTestEvent';
+
 // ─── Firestore Triggers (v2) ─────────────────────────────────
 export { emailWorker } from './workers/emailWorker';
 export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKitRoomEvents';

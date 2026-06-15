@@ -51,6 +51,7 @@ export { assignScope } from './functions/assignScope';
 export { syncClaims } from './functions/syncClaims';
 export { changeUserPassword } from './functions/changeUserPassword';
 export { setPermissionOverrides } from './functions/setPermissionOverrides';
+export { sentryTestEvent } from './functions/sentryTestEvent';
 export { emailWorker } from './workers/emailWorker';
 export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKitRoomEvents';
 export { scheduledClassReminder } from './functions/scheduledClassReminder';
