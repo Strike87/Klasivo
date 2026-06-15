@@ -1168,7 +1168,7 @@ export const api = onRequest(
     cors: true,
     memory: '512MiB',
     timeoutSeconds: 60,
-    minInstances: 1,      // Keep warm — API gateway is latency-critical
+    minInstances: 0,
     maxInstances: 100,    // Cap — 100 instances × 80 concurrency = 8,000 concurrent req
     concurrency: 80,      // Handle multiple requests per instance
     cpu: 1,               // Full CPU for Express middleware chain

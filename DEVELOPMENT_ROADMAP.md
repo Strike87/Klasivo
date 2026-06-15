@@ -2629,7 +2629,7 @@ Implementation options:
 
 ### Cost Optimization
 - [x] `maxInstances` caps on all v2 functions
-- [x] `minInstances: 1` only on latency-critical (api, generateLiveKitToken)
+- [x] `minInstances: 0` on all functions (cost savings pre-launch — warm-up latency acceptable)
 - [x] `concurrency: 80–100` on all callables
 - [x] Explicit `memory` + `timeoutSeconds` on all functions
 
