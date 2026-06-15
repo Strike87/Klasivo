@@ -7,7 +7,7 @@
  * attendance records.
  *
  * Security:
- *   - enforceAppCheck: true
+ *   - enforceAppCheck: true (DISABLED — no client AppCheck init)
  *   - Caller must be authenticated with teacher/owner/admin role
  *   - Caller must belong to the same organization as the room
  */
@@ -36,7 +36,7 @@ const db = admin.firestore();
 export const removeParticipant = onCall(
   {
     secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
-    enforceAppCheck: true,
+    // enforceAppCheck: true — DISABLED: client has no FirebaseAppCheck init
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 30,

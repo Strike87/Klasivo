@@ -5,7 +5,7 @@
  * for an authenticated user to join a specific room.
  *
  * Security chain:
- *   1. Auth required (enforceAppCheck)
+ *   1. Auth required (enforceAppCheck DISABLED — no client AppCheck init)
  *   2. Room document loaded by roomId (client cannot choose roomName)
  *   3. Org boundary: caller must belong to room's organization
  *   4. Scope authorization: caller must have access to room's scope
@@ -49,7 +49,7 @@ interface LiveKitTokenResponse {
 export const generateLiveKitToken = onCall(
   {
     secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, 'SENTRY_DSN'],
-    enforceAppCheck: true,
+    // enforceAppCheck: true — DISABLED: client has no FirebaseAppCheck init
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 30,

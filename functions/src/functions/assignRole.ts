@@ -33,7 +33,7 @@ interface AssignRoleData {
 export const assignRole = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    enforceAppCheck: true,
+    // enforceAppCheck: true — DISABLED: client has no FirebaseAppCheck init
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
