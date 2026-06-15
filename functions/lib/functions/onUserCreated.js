@@ -1,17 +1,4 @@
 "use strict";
-/**
- * Klasivo — onUserCreated Auth Trigger
- *
- * Automatically sends a welcome email when a new Firebase Auth
- * user is created. (Direct send — no queue)
- *
- * Flow:
- *   New account → emailService → Resend
- *
- * This is fire-and-forget — if Resend is not configured the
- * function logs a warning but does NOT throw (user creation
- * must never fail because of an email issue).
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -49,61 +36,73 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.onUserCreated = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
-const emailService_1 = require("../services/emailService");
-const emailLayout_1 = require("../templates/emailLayout");
+const Sentry = __importStar(require("@sentry/node"));
+const queueService_1 = require("../services/queueService");
+const sentry_1 = require("../config/sentry");
 const db = admin.firestore();
 exports.onUserCreated = functions
-    .runWith({ secrets: ['RESEND_API_KEY'] })
+    .runWith({ secrets: ['SENTRY_DSN'], memory: '256MB', timeoutSeconds: 60 })
     .auth.user()
     .onCreate(async (user) => {
-    const uid = user.uid;
-    const email = user.email ?? '';
-    const displayName = user.displayName || email.split('@')[0] || 'User';
-    console.log(`New user created: ${uid} (${email})`);
-    try {
-        // Look up the user's role from Firestore (may not exist yet if the
-        // Flutter app hasn't written the profile). Default to 'teacher'.
-        const userDoc = await db.collection('users').doc(uid).get();
-        const rawRole = userDoc.exists ? String(userDoc.data()?.role ?? 'teacher') : 'teacher';
-        const role = rawRole === 'student' || rawRole === 'parent' ? rawRole : 'teacher';
+    (0, sentry_1.initSentry)();
+    return (0, sentry_1.withIsolatedScope)(async (scope) => {
+        scope.setTag('service', 'email');
+        scope.setTag('function', 'onUserCreated');
+        const uid = user.uid;
+        const email = user.email;
+        scope.setUser({ id: uid });
         if (!email) {
-            console.warn('No email for new user, skipping welcome email');
-            return;
+            console.warn(`User ${uid} created without email — skipping welcome queue`);
+            return null;
         }
-        const result = await (0, emailService_1.sendWelcomeEmail)(email, displayName, role);
-        if (result.success && result.id) {
-            console.log(`Welcome email sent to ${email} (role: ${role})`);
-            // Log to emailLogs
-            await (0, emailService_1.logEmail)({
-                resendId: result.id,
-                type: 'welcome',
-                to: [email],
-                from: emailLayout_1.SENDER.noreply,
-                subject: 'Welcome to Klasivo — Your Smart School Platform',
-                templateVersion: emailLayout_1.EMAIL_TEMPLATE_VERSION,
-                status: 'sent',
-                sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        const displayName = user.displayName || email.split('@')[0];
+        console.log(`New user created: ${uid} (${email})`);
+        try {
+            const userDoc = await db.collection('users').doc(uid).get();
+            // Verification breadcrumb: log whether the user doc exists.
+            // If it doesn't exist, the Auth trigger fired before the client's
+            // Firestore .set() completed (or it was blocked by rules).
+            Sentry.addBreadcrumb({
+                category: 'firestore',
+                message: 'onUserCreated_user_doc_readback',
+                data: {
+                    uid,
+                    userDocExists: userDoc.exists,
+                    userDocRole: userDoc.exists ? (userDoc.data()?.['role'] ?? 'null') : 'N/A',
+                    userDocOrgId: userDoc.exists ? (userDoc.data()?.['organizationId'] ?? 'N/A') : 'N/A',
+                },
+                level: 'info',
             });
-        }
-        else {
-            console.warn(`Welcome email failed for ${email}: ${result.error}`);
-            // Log failure
-            await (0, emailService_1.logEmail)({
-                resendId: 'none',
+            if (!userDoc.exists) {
+                // Log at warning level — this may indicate a race condition
+                // where the auth trigger fires before the client writes the user doc,
+                // OR it may indicate the client's .set() was blocked by security rules.
+                Sentry.captureMessage(`onUserCreated: users/${uid} does NOT exist in Firestore — auth account may be orphaned`, { level: 'warning' });
+            }
+            const role = userDoc.exists
+                ? userDoc.data()?.['role'] ?? 'teacher'
+                : 'teacher';
+            const result = await (0, queueService_1.queueEmail)({
                 type: 'welcome',
-                to: [email],
-                from: emailLayout_1.SENDER.noreply,
-                subject: 'Welcome to Klasivo — Your Smart School Platform',
-                templateVersion: emailLayout_1.EMAIL_TEMPLATE_VERSION,
-                status: 'failed',
-                sentAt: admin.firestore.FieldValue.serverTimestamp(),
+                category: 'welcome',
+                to: email,
+                payload: { name: displayName, role },
+                idempotencyKey: `welcome_${uid}`,
             });
+            if (result.queued) {
+                console.log(`Welcome email queued for ${email} (role: ${role}, queueId: ${result.queueId})`);
+            }
+            else {
+                console.log(`Welcome email already queued for ${email} (reason: ${result.reason})`);
+            }
+            return null;
         }
-    }
-    catch (err) {
-        // Non-critical — do NOT re-throw; user creation must succeed
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`Welcome email error for ${email}: ${message}`);
-    }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`Welcome email queue error for ${email}: ${msg}`);
+            Sentry.captureException(err);
+            return null;
+        }
+    }); // withIsolatedScope
 });
 //# sourceMappingURL=onUserCreated.js.map

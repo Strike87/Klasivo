@@ -1,23 +1,4 @@
 "use strict";
-/**
- * Klasivo — sendContactForm Callable Function
- *
- * Forwards a contact-form submission to the Klasivo support team.
- *
- * Flow (DIRECT — no queue, users expect instant confirmation):
- *   Visitor → Callable → emailService → Resend
- *
- * No authentication required — this is a public contact form.
- * Rate limiting is handled by Firebase Functions quotas.
- *
- * Call from Flutter:
- *   FirebaseFunctions.instance.httpsCallable('sendContactForm').call({
- *     name: 'Ahmed',
- *     email: 'ahmed@example.com',
- *     subject: 'Question about pricing',
- *     message: 'Hello, ...',
- *   });
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -53,53 +34,44 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendContactForm = void 0;
-const functions = __importStar(require("firebase-functions/v1"));
-const admin = __importStar(require("firebase-admin"));
+const https_1 = require("firebase-functions/v2/https");
+const Sentry = __importStar(require("@sentry/node"));
 const emailService_1 = require("../services/emailService");
-const emailLayout_1 = require("../templates/emailLayout");
+const contactForm_1 = require("../templates/contactForm");
+const email_1 = require("../types/email");
 const validators_1 = require("../utils/validators");
 const sanitizer_1 = require("../utils/sanitizer");
-exports.sendContactForm = functions
-    .runWith({ secrets: ['RESEND_API_KEY'] })
-    .https.onCall(async (data) => {
-    // ── Input validation ────────────────────────────────────
-    const missing = (0, validators_1.missingField)(data ?? {}, ['name', 'email', 'subject', 'message']);
-    if (missing) {
-        throw new functions.https.HttpsError('invalid-argument', `Missing required field: ${missing}`);
-    }
-    const { name, email, subject, message } = data;
-    if (!(0, validators_1.isValidEmail)(email)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid email address.');
-    }
-    if (message.length > 5000) {
-        throw new functions.https.HttpsError('invalid-argument', 'Message must be under 5,000 characters.');
-    }
-    // ── Sanitise ────────────────────────────────────────────
-    const sanitised = {
-        name: (0, sanitizer_1.sanitizeText)(name, 100),
-        email: (0, sanitizer_1.sanitizeEmail)(email),
-        subject: (0, sanitizer_1.sanitizeText)(subject, 200),
-        message: (0, sanitizer_1.sanitizeText)(message, 5000),
-    };
-    // ── Send directly (no queue) ────────────────────────────
-    const result = await (0, emailService_1.sendContactFormNotification)(sanitised);
-    if (!result.success) {
-        throw new functions.https.HttpsError('internal', result.error ?? 'Unknown error');
-    }
-    // ── Log ─────────────────────────────────────────────────
-    if (result.id) {
-        await (0, emailService_1.logEmail)({
-            resendId: result.id,
-            type: 'contact_form',
-            to: ['support@klasivo.app'],
-            from: emailLayout_1.SENDER.support,
-            subject: `New Contact Form: ${sanitised.subject}`,
-            replyTo: sanitised.email,
-            templateVersion: emailLayout_1.EMAIL_TEMPLATE_VERSION,
-            status: 'sent',
-            sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-    }
-    return { success: true, id: result.id ?? undefined };
+const sentry_1 = require("../config/sentry");
+exports.sendContactForm = (0, https_1.onCall)({ secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 }, async (request) => {
+    (0, sentry_1.initSentry)();
+    return (0, sentry_1.withIsolatedScope)(async (scope) => {
+        scope.setTag('service', 'email');
+        scope.setTag('function', 'sendContactForm');
+        const data = request.data;
+        const missing = (0, validators_1.missingField)(data ?? {}, ['name', 'email', 'subject', 'message']);
+        if (missing)
+            throw new Error(`Missing required field: ${missing}`);
+        const record = data;
+        const name = record['name'] ?? '';
+        const email = record['email'] ?? '';
+        const subject = record['subject'] ?? '';
+        const message = record['message'] ?? '';
+        if (!(0, validators_1.isValidEmail)(email))
+            throw new Error('Invalid email address.');
+        if (message.length > 5000)
+            throw new Error('Message must be under 5,000 characters.');
+        const cleanName = (0, sanitizer_1.sanitizeText)(name, 100);
+        const cleanEmail = (0, sanitizer_1.sanitizeEmail)(email);
+        const cleanSubject = (0, sanitizer_1.sanitizeText)(subject, 200);
+        const cleanMessage = (0, sanitizer_1.sanitizeText)(message, 5000);
+        const html = (0, contactForm_1.buildContactFormHtml)({ name: cleanName, email: cleanEmail, subject: cleanSubject, message: cleanMessage });
+        const result = await (0, emailService_1.sendEmail)({ to: 'support@klasivo.app', subject: `New Contact Form: ${cleanSubject}`, html, from: email_1.SENDER.noreply, replyTo: cleanEmail, category: 'contact' });
+        if (!result.success) {
+            const error = new Error(result.error ?? 'Unknown error');
+            Sentry.captureException(error, { tags: { step: 'send_contact_email' } });
+            throw error;
+        }
+        return { success: true, id: result.id };
+    }); // withIsolatedScope
 });
 //# sourceMappingURL=sendContactForm.js.map

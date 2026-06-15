@@ -1,25 +1,4 @@
 "use strict";
-/**
- * Klasivo — sendTeacherInvitation Callable Function
- *
- * School owner invites a teacher to join their organisation.
- *
- * Flow:
- *   Flutter → Callable → emailQueue → emailWorker → emailService → Resend
- *
- * The function returns immediately with the queue ID.
- * The email will be sent asynchronously by the worker.
- *
- * Call from Flutter:
- *   FirebaseFunctions.instance.httpsCallable('sendTeacherInvitation').call({
- *     email: 'teacher@school.com',
- *     teacherName: 'Dr. Ahmed',
- *     schoolName: 'Al-Noor School',
- *     inviterName: 'Mohamed (Admin)',
- *     inviteCode: 'ABC-XYZ',
- *     orgId: 'org123',
- *   });
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -54,39 +33,59 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTeacherInvitationFn = void 0;
-const functions = __importStar(require("firebase-functions/v1"));
+exports.sendTeacherInvitation = void 0;
+const https_1 = require("firebase-functions/v2/https");
+const Sentry = __importStar(require("@sentry/node"));
 const queueService_1 = require("../services/queueService");
 const validators_1 = require("../utils/validators");
 const sanitizer_1 = require("../utils/sanitizer");
-exports.sendTeacherInvitationFn = functions
-    .https.onCall(async (data, context) => {
-    // ── Auth check ──────────────────────────────────────────
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
-    }
-    // ── Input validation ────────────────────────────────────
-    const required = ['email', 'teacherName', 'schoolName', 'inviterName', 'inviteCode', 'orgId'];
-    const missing = (0, validators_1.missingField)(data ?? {}, required);
-    if (missing) {
-        throw new functions.https.HttpsError('invalid-argument', `Missing required field: ${missing}`);
-    }
-    const { email, teacherName, schoolName, inviterName, inviteCode, orgId } = data;
-    if (!(0, validators_1.isValidEmail)(email)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid email address.');
-    }
-    // ── Sanitise & queue ────────────────────────────────────
-    const queueId = await (0, queueService_1.queueEmail)({
-        type: 'teacher_invitation',
-        to: (0, sanitizer_1.sanitizeEmail)(email),
-        payload: {
-            teacherName: (0, sanitizer_1.sanitizeText)(teacherName, 100),
-            schoolName: (0, sanitizer_1.sanitizeText)(schoolName, 150),
-            inviterName: (0, sanitizer_1.sanitizeText)(inviterName, 100),
-            inviteCode: (0, sanitizer_1.sanitizeText)(inviteCode, 20),
-            orgId: (0, sanitizer_1.sanitizeText)(orgId, 50),
-        },
-    });
-    return { queued: true, queueId };
+const sentry_1 = require("../config/sentry");
+const rbac_1 = require("../utils/rbac");
+exports.sendTeacherInvitation = (0, https_1.onCall)({ secrets: ['SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 }, async (request) => {
+    (0, sentry_1.initSentry)();
+    return (0, sentry_1.withIsolatedScope)(async (scope) => {
+        scope.setTag('service', 'email');
+        scope.setTag('function', 'sendTeacherInvitation');
+        if (!request.auth)
+            throw new Error('User must be authenticated.');
+        // ── Role check: owner/admin only ────────────────────────────
+        const callerRole = request.auth.token.role || '';
+        if (!rbac_1.INVITATION_ROLES.includes(callerRole)) {
+            throw new Error('Only owners and administrators can send teacher invitations.');
+        }
+        const data = request.data;
+        const required = ['email', 'teacherName', 'schoolName', 'inviterName', 'inviteCode', 'orgId'];
+        const missing = (0, validators_1.missingField)(data ?? {}, required);
+        if (missing)
+            throw new Error(`Missing required field: ${missing}`);
+        const fields = data;
+        if (!(0, validators_1.isValidEmail)(fields['email'] ?? ''))
+            throw new Error('Invalid email address.');
+        const cleanEmail = (0, sanitizer_1.sanitizeEmail)(fields['email'] ?? '');
+        const cleanTeacherName = (0, sanitizer_1.sanitizeText)(fields['teacherName'] ?? '', 100);
+        const cleanSchoolName = (0, sanitizer_1.sanitizeText)(fields['schoolName'] ?? '', 150);
+        const cleanInviterName = (0, sanitizer_1.sanitizeText)(fields['inviterName'] ?? '', 100);
+        const cleanInviteCode = (0, sanitizer_1.sanitizeText)(fields['inviteCode'] ?? '', 20);
+        const cleanOrgId = (0, sanitizer_1.sanitizeText)(fields['orgId'] ?? '', 50);
+        // ── Org boundary check ──────────────────────────────────────
+        const callerOrgId = request.auth.token.organizationId || '';
+        if (!(0, rbac_1.verifyOrgBoundary)(callerOrgId, cleanOrgId, callerRole)) {
+            throw new Error('You can only send invitations for your own organization.');
+        }
+        try {
+            const result = await (0, queueService_1.queueEmail)({
+                type: 'teacher_invitation', category: 'teacher_invitation', to: cleanEmail,
+                payload: { teacherName: cleanTeacherName, schoolName: cleanSchoolName, inviterName: cleanInviterName, inviteCode: cleanInviteCode, orgId: cleanOrgId },
+                idempotencyKey: `invite_${cleanOrgId}_${cleanEmail}`,
+            });
+            if (!result.queued && result.reason === 'duplicate')
+                return { success: true, id: result.queueId, message: 'Invitation already queued or sent' };
+            return { success: true, id: result.queueId };
+        }
+        catch (err) {
+            Sentry.captureException(err);
+            throw new Error('Failed to queue teacher invitation');
+        }
+    }); // withIsolatedScope
 });
 //# sourceMappingURL=sendTeacherInvitation.js.map

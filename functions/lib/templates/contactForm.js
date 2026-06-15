@@ -1,44 +1,27 @@
 "use strict";
-/**
- * Klasivo — Contact Form Notification Template
- *
- * Sent to the Klasivo support team when a visitor submits
- * the public contact form on the website.
- *
- * Recipient: support@klasivo.app
- * Reply-To:  the submitter's email
- */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildContactNotification = buildContactNotification;
+exports.buildContactFormHtml = buildContactFormHtml;
 const emailLayout_1 = require("./emailLayout");
-/**
- * Build the HTML for a contact-form notification email.
- *
- * @returns Complete HTML string ready for Resend
- */
-function buildContactNotification(payload) {
-    const { name, email, subject, message } = payload;
-    const bodyContent = `
-    <h2 style="margin:0 0 8px;font-size:20px;color:${emailLayout_1.BRAND.heading};">New Contact Form Submission</h2>
-    <p style="margin:0 0 20px;font-size:15px;color:${emailLayout_1.BRAND.secondary};">Someone reached out via the Klasivo website.</p>
-
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
-      ${(0, emailLayout_1.detailRow)('Name', name, { stripe: true })}
-      ${(0, emailLayout_1.detailRow)('Email', `<a href="mailto:${email}" style="color:${emailLayout_1.BRAND.primary};text-decoration:none;">${email}</a>`)}
-      ${(0, emailLayout_1.detailRow)('Subject', subject, { stripe: true })}
-    </table>
-
-    <h3 style="margin:0 0 8px;font-size:16px;color:${emailLayout_1.BRAND.body};">Message</h3>
-    <div style="padding:16px;background-color:${emailLayout_1.BRAND.surfaceLight};border-radius:6px;border:1px solid ${emailLayout_1.BRAND.border};">
-      <p style="margin:0;font-size:14px;color:${emailLayout_1.BRAND.body};line-height:1.7;white-space:pre-wrap;">${message}</p>
+function buildContactFormHtml(params) {
+    const { name, email, subject, message } = params;
+    const content = `
+    <h2 style="margin:0 0 8px;color:#1E293B;font-size:22px;">New Contact Form Submission</h2>
+    <p style="color:#64748B;font-size:16px;margin:0 0 24px;">${subject}</p>
+    <div class="note">
+      <div class="detail">
+        <div class="detail-label">From</div>
+        <div class="detail-value">${name} (${email})</div>
+      </div>
+      <div class="detail" style="margin-top:12px;">
+        <div class="detail-label">Subject</div>
+        <div class="detail-value">${subject}</div>
+      </div>
     </div>
-
-    ${(0, emailLayout_1.ctaButton)(`mailto:${email}`, `Reply to ${name}`)}`;
-    return (0, emailLayout_1.wrapInLayout)({
-        title: `Contact: ${subject}`,
-        bodyContent,
-        footerOverride: `Klasivo Support &mdash; Smart School Management Platform<br />
-                <a href="https://klasivo.app" style="color:${emailLayout_1.BRAND.primary};text-decoration:none;">klasivo.app</a>`,
-    });
+    <div style="font-size:16px;line-height:1.7;color:#1E293B;margin-top:16px;">${message.replace(/\n/g, '<br>')}</div>
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #E2E8F0;">
+      <a href="mailto:${email}" class="cta-button">Reply to ${name}</a>
+    </div>
+  `;
+    return (0, emailLayout_1.emailWrapper)(content, `Contact Form: ${subject}`);
 }
 //# sourceMappingURL=contactForm.js.map

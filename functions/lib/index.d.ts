@@ -1,49 +1,56 @@
 /**
- * Klasivo — Firebase Cloud Functions
+ * Klasivo — Firebase Cloud Functions (TypeScript)
  *
- * All functions are exported from this single entry point
- * so Firebase can discover and deploy them.
+ * Barrel export of all Cloud Functions.
+ * Firebase picks up named exports from the compiled `lib/index.js`.
  *
- * ─── Email Functions ──────────────────────────────────────────
- *   onUserCreated          — Auth trigger: send welcome email (direct)
- *   sendContactForm        — Public: forward contact form to support (direct)
- *   sendTeacherInvitation  — Auth: queue teacher invitation
- *   sendSchoolAnnouncement — Auth: queue announcement
+ * Functions:
+ *   API Gateway (v2 onRequest):
+ *     api — Express app serving api.klasivo.app/v1/* REST endpoints
+ *           (health, livekit/*, storage/upload-url, analytics/event,
+ *            admin/users, admin/schools, admin/reports/summary, docs)
  *
- * ─── Email Worker ─────────────────────────────────────────────
- *   emailWorker            — Processes emailQueue, retries on failure
+ *   Auth Triggers (v1 — no v2 equivalent for after-events):
+ *     onUserCreated  — Queue welcome email when a new user signs up
+ *     onUserDeleted  — Cascade-delete org data when an owner is removed
  *
- * ─── Auth Triggers ────────────────────────────────────────────
- *   onUserDelete           — Cascade-delete org data when owner removed
+ *   Callable Functions (v2):
+ *     sendContactForm        — Forward contact-form to support (direct send)
+ *     sendTeacherInvitation  — Queue teacher invitation email
+ *     sendSchoolAnnouncement — Queue school announcement email
+ *     generateLiveKitToken   — Mint LiveKit JWT for video/audio rooms
+ *     removeParticipant      — Kick disruptive student from a live class
+ *     assignRole             — Assign a role to a user (custom claims + Firestore)
+ *     assignScope            — Assign scope (campus/stage/class) to a user + refresh claims
+ *     syncClaims             — Re-sync custom claims from Firestore user doc
+ *     changeUserPassword     — Change/reset user password (email or student_code)
+ *     setPermissionOverrides — Set/clear permission overrides for a user
  *
- * ─── Firestore Triggers ──────────────────────────────────────
- *   onNewMessageNotification — Push notification on new notification doc
- *   onNewMessage             — Push notification on new message doc
+ *   Firestore Triggers (v2):
+ *     emailWorker            — Process emailQueue documents (send + retry)
+ *     onLiveKitRoomCreated   — Push notifications when a live class starts
+ *     onLiveKitRoomUpdated   — Recording/end notifications + session analytics
  *
- * ─── Firebase Auth ────────────────────────────────────────────
- *   Email Verification  → user.sendEmailVerification()  (native)
- *   Password Reset      → FirebaseAuth.instance.sendPasswordResetEmail()  (native)
- *   No custom Resend functions needed for these.
+ *   Scheduled (v2):
+ *     scheduledClassReminder — Send reminders for classes starting in 10 min
+ *
+ *   Note: Auth triggers use firebase-functions/v1 because v2 only
+ *   provides blocking functions (beforeUserCreated), not after-event
+ *   triggers. All callable functions have been migrated to v2.
  */
-import * as functions from 'firebase-functions/v1';
+export { api } from './api';
 export { onUserCreated } from './functions/onUserCreated';
+export { onUserDeleted } from './functions/onUserDeleted';
 export { sendContactForm } from './functions/sendContactForm';
-export { sendTeacherInvitationFn as sendTeacherInvitation } from './functions/sendTeacherInvitation';
-export { sendSchoolAnnouncementFn as sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
+export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
+export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
+export { generateLiveKitToken } from './functions/generateLiveKitToken';
+export { removeParticipant } from './functions/removeParticipant';
+export { assignRole } from './functions/assignRole';
+export { assignScope } from './functions/assignScope';
+export { syncClaims } from './functions/syncClaims';
+export { changeUserPassword } from './functions/changeUserPassword';
+export { setPermissionOverrides } from './functions/setPermissionOverrides';
 export { emailWorker } from './workers/emailWorker';
-/**
- * Cascade delete all organization data when a Firebase Auth user (owner) is deleted.
- * Also handles cleanup when any user is deleted.
- */
-export declare const onUserDelete: functions.CloudFunction<import("firebase-admin/auth").UserRecord>;
-/**
- * Firestore trigger: When a new notification document is created with
- * relatedType === 'conversation', send an FCM push notification.
- */
-export declare const onNewMessageNotification: functions.CloudFunction<functions.firestore.QueryDocumentSnapshot>;
-/**
- * Firestore trigger: When a new message is created directly, also send
- * push notifications to all conversation participants (except sender).
- */
-export declare const onNewMessage: functions.CloudFunction<functions.firestore.QueryDocumentSnapshot>;
-//# sourceMappingURL=index.d.ts.map
+export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKitRoomEvents';
+export { scheduledClassReminder } from './functions/scheduledClassReminder';

@@ -39,7 +39,7 @@ export function initSentry(): void {
       // Sanitize breadcrumbs
       if (event.breadcrumbs) {
         for (let i = 0; i < event.breadcrumbs.length; i++) {
-          const crumb = event.breadcrumbs[i];
+          const crumb = event.breadcrumbs[i]!;
           if (crumb.data) {
             crumb.data = sanitizeMap(crumb.data);
           }
@@ -93,24 +93,26 @@ export async function withIsolatedScope<T>(
 }
 
 /**
- * Run a function with a Sentry transaction for performance tracing.
+ * Run a function inside a Sentry span for performance tracing.
+ *
+ * Note: @sentry/node v8+ replaced startTransaction with Sentry.startSpan().
+ * The returned span is a Transaction-like object that supports setStatus/finish.
  */
 export async function withTransaction<T>(
   name: string,
   op: string,
-  fn: (transaction: Sentry.Transaction) => Promise<T>,
+  fn: (span: Sentry.Span) => Promise<T>,
 ): Promise<T> {
-  const transaction = Sentry.startTransaction({ name, op });
-  try {
-    const result = await fn(transaction);
-    transaction.setStatus('ok');
-    return result;
-  } catch (e) {
-    transaction.setStatus('internal_error');
-    throw e;
-  } finally {
-    transaction.finish();
-  }
+  return Sentry.startSpan({ name, op }, async (span) => {
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: 1 }); // OK
+      return result;
+    } catch (e) {
+      span.setStatus({ code: 2 }); // ERROR
+      throw e;
+    }
+  });
 }
 
 // ─── Sensitive Field Sanitization ─────────────────────────────────────────

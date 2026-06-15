@@ -1,24 +1,4 @@
 "use strict";
-/**
- * Klasivo — Email Worker
- *
- * Firestore trigger that processes emails from the emailQueue collection.
- *
- * Flow:
- *   emailQueue doc created (status: pending)
- *     ↓
- *   Worker picks it up → status: processing
- *     ↓
- *   Dispatches to the right emailService function
- *     ↓
- *   Success → status: sent, log to emailLogs
- *   Failure → retry (up to 5 attempts), then status: failed
- *
- * Retry strategy:
- *   - Simple in-function retry with backoff (1s, 2s, 3s, 4s)
- *   - Max 5 attempts per queue entry
- *   - After 5 failures, mark as 'failed' and stop
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -54,130 +34,136 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.emailWorker = void 0;
-const functions = __importStar(require("firebase-functions/v1"));
+const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = __importStar(require("firebase-admin"));
+const Sentry = __importStar(require("@sentry/node"));
+const email_1 = require("../types/email");
+const sentry_1 = require("../config/sentry");
 const emailService_1 = require("../services/emailService");
-const emailLayout_1 = require("../templates/emailLayout");
+const welcomeEmail_1 = require("../templates/welcomeEmail");
+const teacherInvitation_1 = require("../templates/teacherInvitation");
+const schoolAnnouncement_1 = require("../templates/schoolAnnouncement");
 const db = admin.firestore();
-const MAX_ATTEMPTS = 5;
-// ─── Worker ───────────────────────────────────────────────────
-exports.emailWorker = functions
-    .runWith({ secrets: ['RESEND_API_KEY'], timeoutSeconds: 120 })
-    .firestore.document('emailQueue/{id}')
-    .onCreate(async (snap, context) => {
-    const queueId = context.params.id;
-    const data = snap.data();
-    // Only process pending emails
-    if (data.status !== 'pending')
-        return null;
-    // Mark as processing
-    await snap.ref.update({ status: 'processing' });
-    let lastResult = { success: false, error: 'No attempts made' };
-    // ── Retry loop ──────────────────────────────────────────
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        await snap.ref.update({ attempts: attempt });
-        console.log(`Processing queue ${queueId} — attempt ${attempt}/${MAX_ATTEMPTS} (type: ${data.type})`);
-        lastResult = await dispatchEmail(data.type, data.to, data.payload);
-        if (lastResult.success)
-            break;
-        // Simple backoff before next retry (1s, 2s, 3s, 4s)
-        if (attempt < MAX_ATTEMPTS) {
-            const delayMs = attempt * 1000;
-            console.warn(`Attempt ${attempt} failed for queue ${queueId}: ${lastResult.error}. Retrying in ${delayMs}ms...`);
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
+async function processQueueItem(type, to, payload, queueId) {
+    switch (type) {
+        case 'welcome': {
+            const name = payload['name'];
+            const role = payload['role'];
+            if (typeof name !== 'string' || name === '')
+                return { success: false, error: 'Missing name in welcome payload' };
+            const html = (0, welcomeEmail_1.buildWelcomeHtml)(name, typeof role === 'string' ? role : 'teacher');
+            return (0, emailService_1.sendEmail)({ to: to, subject: 'Welcome to Klasivo — Your Smart School Platform', html, category: 'welcome', queueId });
         }
+        case 'teacher_invitation': {
+            const teacherName = payload['teacherName'];
+            const schoolName = payload['schoolName'];
+            const inviterName = payload['inviterName'];
+            const inviteCode = payload['inviteCode'];
+            const orgId = payload['orgId'];
+            if (typeof teacherName !== 'string' || teacherName === '' || typeof schoolName !== 'string' || schoolName === '' || typeof inviterName !== 'string' || inviterName === '' || typeof inviteCode !== 'string' || inviteCode === '' || typeof orgId !== 'string' || orgId === '')
+                return { success: false, error: 'Missing required fields in teacher_invitation payload' };
+            const html = (0, teacherInvitation_1.buildTeacherInvitationHtml)({ teacherName, schoolName, inviterName, inviteCode, orgId });
+            return (0, emailService_1.sendEmail)({ to: to, subject: `You're Invited to Join ${schoolName} on Klasivo`, html, category: 'teacher_invitation', queueId });
+        }
+        case 'school_announcement': {
+            const schoolName = payload['schoolName'];
+            const title = payload['title'];
+            const message = payload['message'];
+            const senderName = payload['senderName'];
+            const senderRole = payload['senderRole'];
+            const priority = payload['priority'];
+            if (typeof schoolName !== 'string' || schoolName === '' || typeof title !== 'string' || title === '' || typeof message !== 'string' || message === '' || typeof senderName !== 'string' || senderName === '' || typeof senderRole !== 'string' || senderRole === '')
+                return { success: false, error: 'Missing required fields in school_announcement payload' };
+            const html = (0, schoolAnnouncement_1.buildSchoolAnnouncementHtml)({ schoolName, title, message, senderName, senderRole, priority: typeof priority === 'string' ? priority : 'normal' });
+            const prefix = priority === 'urgent' ? '\uD83D\uDD34 ' : priority === 'important' ? '\uD83D\uDFE1 ' : '';
+            return (0, emailService_1.sendEmail)({ to, subject: `${prefix}${title} — ${schoolName}`, html, from: email_1.SENDER.noreply, category: 'school_announcement', queueId });
+        }
+        default: return { success: false, error: `Unknown queue type: ${type}` };
     }
-    // ── Handle result ───────────────────────────────────────
-    if (lastResult.success) {
-        await snap.ref.update({
-            status: 'sent',
-            sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        // Log to emailLogs
-        if (lastResult.id) {
-            await (0, emailService_1.logEmail)({
-                queueId,
-                resendId: lastResult.id,
-                type: data.type,
-                to: data.to,
-                from: getSenderForType(data.type),
-                subject: getSubjectForType(data.type, data.payload),
-                templateVersion: emailLayout_1.EMAIL_TEMPLATE_VERSION,
-                status: 'sent',
-                sentAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-        }
-        console.log(`Queue ${queueId} processed successfully — resendId: ${lastResult.id}`);
+}
+async function handleFailure(docRef, currentAttempts, maxAttempts, errorMessage) {
+    const newAttempts = currentAttempts + 1;
+    if (newAttempts < maxAttempts) {
+        await docRef.update({ status: 'retrying', attempts: newAttempts, lastError: errorMessage });
+        console.log(`Queue item ${docRef.id} retrying — attempt ${newAttempts}/${maxAttempts}: ${errorMessage}`);
+        Sentry.addBreadcrumb({ category: 'email', message: 'Retry scheduled', level: 'warning', data: { queueId: docRef.id, attempts: newAttempts, maxAttempts, error: errorMessage } });
     }
     else {
-        await snap.ref.update({
-            status: 'failed',
-            error: lastResult.error ?? 'Unknown error',
-        });
-        // Log failure
-        await (0, emailService_1.logEmail)({
-            queueId,
-            resendId: 'none',
-            type: data.type,
-            to: data.to,
-            from: getSenderForType(data.type),
-            subject: getSubjectForType(data.type, data.payload),
-            templateVersion: emailLayout_1.EMAIL_TEMPLATE_VERSION,
-            status: 'failed',
-            sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        console.error(`Queue ${queueId} failed after ${MAX_ATTEMPTS} attempts: ${lastResult.error}`);
-    }
-    return null;
-});
-// ─── Dispatcher ───────────────────────────────────────────────
-/**
- * Route a queue entry to the correct emailService function.
- */
-async function dispatchEmail(type, to, payload) {
-    switch (type) {
-        case 'teacher_invitation':
-            return (0, emailService_1.sendTeacherInvitation)({
-                email: to[0] ?? '',
-                teacherName: String(payload.teacherName ?? ''),
-                schoolName: String(payload.schoolName ?? ''),
-                inviterName: String(payload.inviterName ?? ''),
-                inviteCode: String(payload.inviteCode ?? ''),
-                orgId: String(payload.orgId ?? ''),
-            });
-        case 'school_announcement':
-            return (0, emailService_1.sendSchoolAnnouncement)({
-                to,
-                schoolName: String(payload.schoolName ?? ''),
-                title: String(payload.title ?? ''),
-                message: String(payload.message ?? ''),
-                senderName: String(payload.senderName ?? ''),
-                senderRole: String(payload.senderRole ?? ''),
-                priority: payload.priority ?? 'normal',
-            });
-        default:
-            return { success: false, error: `Unknown email type: ${type}` };
+        await docRef.update({ status: 'failed', attempts: newAttempts, lastError: errorMessage });
+        console.error(`Queue item ${docRef.id} FAILED permanently after ${newAttempts} attempts: ${errorMessage}`);
     }
 }
-// ─── Helpers ──────────────────────────────────────────────────
-function getSenderForType(type) {
-    // All queued emails use noreply — support@ is reserved for human conversations
-    return emailLayout_1.SENDER.noreply;
-}
-function getSubjectForType(type, payload) {
-    switch (type) {
-        case 'teacher_invitation':
-            return `You're Invited to Join ${payload.schoolName ?? 'a school'} on Klasivo`;
-        case 'school_announcement': {
-            const prefix = payload.priority === 'urgent'
-                ? '\uD83D\uDD34 '
-                : payload.priority === 'important'
-                    ? '\uD83D\uDFE1 '
-                    : '';
-            return `${prefix}${payload.title ?? 'Announcement'} — ${payload.schoolName ?? 'School'}`;
+exports.emailWorker = (0, firestore_1.onDocumentWritten)({ document: 'emailQueue/{queueId}', secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], region: 'us-central1', memory: '256MiB', timeoutSeconds: 60, minInstances: 0 }, async (event) => {
+    (0, sentry_1.initSentry)();
+    return (0, sentry_1.withIsolatedScope)(async (scope) => {
+        scope.setTag('service', 'email');
+        scope.setTag('function', 'emailWorker');
+        const change = event.data;
+        if (!change)
+            return;
+        if (!change.after.exists)
+            return;
+        const afterData = change.after.data();
+        if (!afterData)
+            return;
+        const status = afterData['status'];
+        if (status !== 'pending' && status !== 'retrying')
+            return;
+        const queueId = change.after.id;
+        const docRef = change.after.ref;
+        const type = afterData['type'];
+        const to = afterData['to'];
+        const attempts = afterData['attempts'];
+        const maxAttempts = afterData['maxAttempts'];
+        scope.setContext('emailQueue', { queueId, type: type ?? 'unknown', recipientCount: Array.isArray(to) ? to.length : to ? 1 : 0, attempts: attempts ?? 0, maxAttempts: maxAttempts ?? 5 });
+        let claimed = false;
+        try {
+            await db.runTransaction(async (transaction) => {
+                const freshDoc = await transaction.get(docRef);
+                if (!freshDoc.exists)
+                    return;
+                const freshData = freshDoc.data();
+                if (!freshData)
+                    return;
+                const freshStatus = freshData['status'];
+                if (freshStatus !== 'pending' && freshStatus !== 'retrying')
+                    return;
+                transaction.update(docRef, { status: 'processing', processedAt: admin.firestore.FieldValue.serverTimestamp() });
+                claimed = true;
+            });
         }
-        default:
-            return 'Klasivo Notification';
-    }
-}
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`Failed to claim queue document ${queueId}: ${msg}`);
+            Sentry.captureException(err);
+            return;
+        }
+        if (!claimed)
+            return;
+        const payload = afterData['payload'];
+        if (!type || !to || !payload) {
+            await docRef.update({ status: 'failed', lastError: 'Missing required fields: type, to, or payload' });
+            return;
+        }
+        try {
+            const result = await processQueueItem(type, to, payload, queueId);
+            if (result.success) {
+                const updateData = { status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp() };
+                if (result.id)
+                    updateData['resendId'] = result.id;
+                await docRef.update(updateData);
+                console.log(`Queue item ${queueId} sent successfully (resendId: ${result.id ?? 'unknown'})`);
+                Sentry.addBreadcrumb({ category: 'email', message: 'Email sent successfully', level: 'info', data: { queueId, resendId: result.id ?? 'unknown', type: type ?? 'unknown' } });
+            }
+            else {
+                await handleFailure(docRef, attempts ?? 0, maxAttempts ?? 5, result.error ?? 'Unknown error');
+            }
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            Sentry.captureException(err);
+            await handleFailure(docRef, attempts ?? 0, maxAttempts ?? 5, msg);
+        }
+    }); // withIsolatedScope
+});
 //# sourceMappingURL=emailWorker.js.map

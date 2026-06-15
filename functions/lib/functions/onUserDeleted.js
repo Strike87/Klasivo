@@ -1,0 +1,304 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.onUserDeleted = void 0;
+const functions = __importStar(require("firebase-functions/v1"));
+const admin = __importStar(require("firebase-admin"));
+const Sentry = __importStar(require("@sentry/node"));
+const sentry_1 = require("../config/sentry");
+const db = admin.firestore();
+exports.onUserDeleted = functions
+    .runWith({ secrets: ['SENTRY_DSN'], memory: '256MB', timeoutSeconds: 120 })
+    .auth.user().onDelete(async (user) => {
+    (0, sentry_1.initSentry)();
+    return (0, sentry_1.withIsolatedScope)(async (scope) => {
+        scope.setTag('service', 'auth');
+        scope.setTag('function', 'onUserDeleted');
+        const uid = user.uid;
+        console.log(`User deleted: ${uid}`);
+        try {
+            const orgSnapshot = await db
+                .collection('organizations')
+                .where('ownerId', '==', uid)
+                .limit(1)
+                .get();
+            if (!orgSnapshot.empty) {
+                const orgDoc = orgSnapshot.docs[0];
+                if (orgDoc) {
+                    const orgId = orgDoc.id;
+                    console.log(`Owner deleted — cascade deleting organization: ${orgId}`);
+                    await deleteOrganizationData(orgId);
+                }
+            }
+            else {
+                await cleanupUserReferences(uid);
+            }
+            const userDocRef = db.collection('users').doc(uid);
+            const userDocSnap = await userDocRef.get();
+            if (userDocSnap.exists) {
+                await userDocRef.delete();
+                console.log(`Deleted user document for ${uid}`);
+            }
+            console.log(`Cascade delete completed for user: ${uid}`);
+            return null;
+        }
+        catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error(`Cascade delete FAILED for user ${uid}: ${msg}`);
+            Sentry.captureException(error);
+            throw error;
+        }
+    }); // withIsolatedScope
+});
+async function deleteOrganizationData(orgId) {
+    const collectionsToClean = [
+        'users', 'stages', 'classes', 'subjects', 'groups', 'group_members',
+        'teacher_assignments', 'exams', 'question_banks', 'invite_codes',
+        'assignments', 'assignment_submissions', 'attendance', 'conversations',
+        'messages', 'analytics_cache', 'notifications',
+        // v1.7 Feature-Complete
+        'gradebook', 'gradebook_categories', 'gradebook_entries', 'parent_links',
+        'exam_templates', 'calendar_events', 'announcements', 'academic_years',
+        'audit_logs', 'resources', 'materials', 'lessons', 'lesson_plans',
+        'progress_tracking', 'moderation_queue', 'units', 'content_progress',
+        // v1.9 Enterprise
+        'feature_flags', 'permission_overrides', 'search_keywords', 'deep_links',
+        // v2.1 LiveKit
+        'livekit_rooms',
+        // v2.2 Production additions
+        'recordings', 'scheduled_classes', 'session_analytics',
+    ];
+    for (const collectionName of collectionsToClean) {
+        if (collectionName === 'group_members') {
+            const groupsSnapshot = await db.collection('groups').where('organizationId', '==', orgId).get();
+            const groupIds = groupsSnapshot.docs.map((doc) => doc.id);
+            let totalDeleted = 0;
+            for (let i = 0; i < groupIds.length; i += 30) {
+                const chunk = groupIds.slice(i, i + 30);
+                const snapshot = await db.collection('group_members').where('groupId', 'in', chunk).get();
+                totalDeleted += await deleteSnapshot(snapshot);
+            }
+            if (totalDeleted > 0)
+                console.log(`Deleted ${totalDeleted} from group_members for org ${orgId}`);
+            continue;
+        }
+        if (collectionName === 'assignment_submissions') {
+            const assignmentsSnapshot = await db.collection('assignments').where('organizationId', '==', orgId).get();
+            const assignmentIds = assignmentsSnapshot.docs.map((doc) => doc.id);
+            let totalDeleted = 0;
+            for (let i = 0; i < assignmentIds.length; i += 30) {
+                const chunk = assignmentIds.slice(i, i + 30);
+                const snapshot = await db.collection('assignment_submissions').where('assignmentId', 'in', chunk).get();
+                totalDeleted += await deleteSnapshot(snapshot);
+            }
+            if (totalDeleted > 0)
+                console.log(`Deleted ${totalDeleted} from assignment_submissions for org ${orgId}`);
+            continue;
+        }
+        if (collectionName === 'messages') {
+            const convsSnapshot = await db.collection('conversations').where('organizationId', '==', orgId).get();
+            const convIds = convsSnapshot.docs.map((doc) => doc.id);
+            let totalDeleted = 0;
+            for (let i = 0; i < convIds.length; i += 30) {
+                const chunk = convIds.slice(i, i + 30);
+                const snapshot = await db.collection('messages').where('conversationId', 'in', chunk).get();
+                totalDeleted += await deleteSnapshot(snapshot);
+            }
+            if (totalDeleted > 0)
+                console.log(`Deleted ${totalDeleted} from messages for org ${orgId}`);
+            continue;
+        }
+        const snapshot = await db.collection(collectionName).where('organizationId', '==', orgId).get();
+        if (!snapshot.empty) {
+            const count = await deleteSnapshot(snapshot);
+            console.log(`Deleted ${count} from ${collectionName} for org ${orgId}`);
+        }
+    }
+    // Delete exam-related collections
+    const examsSnapshot = await db.collection('exams').where('organizationId', '==', orgId).get();
+    const examIds = examsSnapshot.docs.map((doc) => doc.id);
+    if (examIds.length > 0) {
+        const examCollections = ['questions', 'submissions', 'violations', 'exam_attempts', 'exam_stats', 'exam_instances'];
+        for (const collectionName of examCollections) {
+            let totalDeleted = 0;
+            for (let i = 0; i < examIds.length; i += 30) {
+                const chunk = examIds.slice(i, i + 30);
+                const snapshot = await db.collection(collectionName).where('examId', 'in', chunk).get();
+                totalDeleted += await deleteSnapshot(snapshot);
+            }
+            if (totalDeleted > 0)
+                console.log(`Deleted ${totalDeleted} from ${collectionName} for org ${orgId}`);
+        }
+        const submissionIds = [];
+        for (let i = 0; i < examIds.length; i += 30) {
+            const chunk = examIds.slice(i, i + 30);
+            const subSnapshot = await db.collection('submissions').where('examId', 'in', chunk).get();
+            for (const doc of subSnapshot.docs)
+                submissionIds.push(doc.id);
+        }
+        if (submissionIds.length > 0) {
+            let answersDeleted = 0;
+            for (let i = 0; i < submissionIds.length; i += 30) {
+                const chunk = submissionIds.slice(i, i + 30);
+                const ansSnapshot = await db.collection('answers').where('submissionId', 'in', chunk).get();
+                answersDeleted += await deleteSnapshot(ansSnapshot);
+            }
+            if (answersDeleted > 0)
+                console.log(`Deleted ${answersDeleted} from answers for org ${orgId}`);
+        }
+    }
+    await db.collection('organizations').doc(orgId).delete();
+    console.log(`Deleted organization document: ${orgId}`);
+    // Clean up email queue/logs for this org (if they have orgId field)
+    const emailQueueSnapshot = await db.collection('emailQueue').where('orgId', '==', orgId).limit(500).get();
+    if (!emailQueueSnapshot.empty) {
+        await deleteSnapshot(emailQueueSnapshot);
+        console.log(`Deleted ${emailQueueSnapshot.size} emailQueue items for org ${orgId}`);
+    }
+}
+async function cleanupUserReferences(uid) {
+    const taSnapshot = await db.collection('teacher_assignments').where('teacherId', '==', uid).get();
+    if (!taSnapshot.empty) {
+        await deleteSnapshot(taSnapshot);
+        console.log(`Deleted ${taSnapshot.size} teacher_assignments for user ${uid}`);
+    }
+    const gmSnapshot = await db.collection('group_members').where('studentId', '==', uid).get();
+    if (!gmSnapshot.empty) {
+        await deleteSnapshot(gmSnapshot);
+        console.log(`Deleted ${gmSnapshot.size} group_members for user ${uid}`);
+    }
+    const notifSnapshot = await db.collection('notifications').where('userId', '==', uid).get();
+    if (!notifSnapshot.empty) {
+        await deleteSnapshot(notifSnapshot);
+        console.log(`Deleted ${notifSnapshot.size} notifications for user ${uid}`);
+    }
+    const codeSnapshot = await db.collection('invite_codes').where('createdBy', '==', uid).get();
+    if (!codeSnapshot.empty) {
+        await deleteSnapshot(codeSnapshot);
+        console.log(`Deleted ${codeSnapshot.size} invite_codes for user ${uid}`);
+    }
+    const attSnapshot = await db.collection('attendance').where('studentId', '==', uid).get();
+    if (!attSnapshot.empty) {
+        await deleteSnapshot(attSnapshot);
+        console.log(`Deleted ${attSnapshot.size} attendance records for user ${uid}`);
+    }
+    // v1.7: Clean up student's content progress, assignment submissions, and gradebook entries
+    const cpSnapshot = await db.collection('content_progress').where('studentId', '==', uid).get();
+    if (!cpSnapshot.empty) {
+        await deleteSnapshot(cpSnapshot);
+        console.log(`Deleted ${cpSnapshot.size} content_progress for user ${uid}`);
+    }
+    const asSnapshot = await db.collection('assignment_submissions').where('studentId', '==', uid).get();
+    if (!asSnapshot.empty) {
+        await deleteSnapshot(asSnapshot);
+        console.log(`Deleted ${asSnapshot.size} assignment_submissions for user ${uid}`);
+    }
+    const geSnapshot = await db.collection('gradebook_entries').where('studentId', '==', uid).get();
+    if (!geSnapshot.empty) {
+        await deleteSnapshot(geSnapshot);
+        console.log(`Deleted ${geSnapshot.size} gradebook_entries for user ${uid}`);
+    }
+    // v1.9: Clean up user's audit logs and moderation queue items
+    const alSnapshot = await db.collection('audit_logs').where('actorId', '==', uid).get();
+    if (!alSnapshot.empty) {
+        await deleteSnapshot(alSnapshot);
+        console.log(`Deleted ${alSnapshot.size} audit_logs for user ${uid}`);
+    }
+    const mqSnapshot = await db.collection('moderation_queue').where('reportedBy', '==', uid).get();
+    if (!mqSnapshot.empty) {
+        await deleteSnapshot(mqSnapshot);
+        console.log(`Deleted ${mqSnapshot.size} moderation_queue items for user ${uid}`);
+    }
+    // Clean up parent links for this user (parent or student side)
+    const plParentSnapshot = await db.collection('parent_links').where('parentId', '==', uid).get();
+    if (!plParentSnapshot.empty) {
+        await deleteSnapshot(plParentSnapshot);
+        console.log(`Deleted ${plParentSnapshot.size} parent_links (as parent) for user ${uid}`);
+    }
+    const plStudentSnapshot = await db.collection('parent_links').where('studentId', '==', uid).get();
+    if (!plStudentSnapshot.empty) {
+        await deleteSnapshot(plStudentSnapshot);
+        console.log(`Deleted ${plStudentSnapshot.size} parent_links (as student) for user ${uid}`);
+    }
+    const convSnapshot = await db.collection('conversations').where('participantIds', 'array-contains', uid).get();
+    if (!convSnapshot.empty) {
+        const batch = db.batch();
+        for (const doc of convSnapshot.docs) {
+            const participants = doc.data()['participantIds'];
+            if (!participants)
+                continue;
+            const updated = participants.filter((id) => id !== uid);
+            if (updated.length === 0) {
+                batch.delete(doc.ref);
+            }
+            else {
+                batch.update(doc.ref, { participantIds: updated, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+        }
+        await batch.commit();
+        console.log(`Updated/removed ${convSnapshot.size} conversations for user ${uid}`);
+    }
+    const studentCacheDoc = db.collection('analytics_cache').doc(`student_${uid}`);
+    const teacherCacheDoc = db.collection('analytics_cache').doc(`teacher_${uid}`);
+    const batch = db.batch();
+    const studentCache = await studentCacheDoc.get();
+    const teacherCache = await teacherCacheDoc.get();
+    if (studentCache.exists)
+        batch.delete(studentCacheDoc);
+    if (teacherCache.exists)
+        batch.delete(teacherCacheDoc);
+    await batch.commit();
+}
+async function deleteSnapshot(snapshot) {
+    if (snapshot.empty)
+        return 0;
+    const batchPromises = [];
+    let batch = db.batch();
+    let opCount = 0;
+    for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+        opCount++;
+        if (opCount === 500) {
+            batchPromises.push(batch.commit());
+            batch = db.batch();
+            opCount = 0;
+        }
+    }
+    if (opCount > 0)
+        batchPromises.push(batch.commit());
+    await Promise.all(batchPromises);
+    return snapshot.size;
+}
+//# sourceMappingURL=onUserDeleted.js.map

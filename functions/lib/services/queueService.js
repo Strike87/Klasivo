@@ -1,18 +1,4 @@
 "use strict";
-/**
- * Klasivo — Queue Service
- *
- * Writes email jobs to the emailQueue Firestore collection.
- * The emailWorker picks them up and sends them via Resend.
- *
- * Why a queue?
- *   - Retries automatically on Resend failures
- *   - Survives Resend outages
- *   - Handles bulk announcements safely
- *   - Callable functions return immediately
- *
- * Direct-send emails (welcome, contact form) do NOT go through the queue.
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -50,26 +36,33 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.queueEmail = queueEmail;
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
-// ─── Public API ───────────────────────────────────────────────
-/**
- * Queue an email for async delivery.
- *
- * Returns immediately with the queue document ID.
- * The emailWorker will process it and update the status.
- *
- * @returns The Firestore document ID of the queue entry
- */
 async function queueEmail(params) {
-    const entry = {
-        type: params.type,
-        to: Array.isArray(params.to) ? params.to : [params.to],
-        payload: params.payload,
+    const { type, category, to, payload, idempotencyKey } = params;
+    // Check for duplicate via idempotency key
+    const existing = await db
+        .collection('emailQueue')
+        .where('idempotencyKey', '==', idempotencyKey)
+        .limit(1)
+        .get();
+    if (!existing.empty) {
+        const existingDoc = existing.docs[0];
+        return {
+            queued: false,
+            queueId: existingDoc?.id ?? '',
+            reason: 'duplicate',
+        };
+    }
+    const docRef = await db.collection('emailQueue').add({
+        type,
+        category,
+        to,
+        payload,
         status: 'pending',
         attempts: 0,
+        maxAttempts: 5,
+        idempotencyKey,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    const docRef = await db.collection('emailQueue').add(entry);
-    console.log(`Email queued — id: ${docRef.id}, type: ${params.type}, to: ${entry.to}`);
-    return docRef.id;
+    });
+    return { queued: true, queueId: docRef.id };
 }
 //# sourceMappingURL=queueService.js.map
