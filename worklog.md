@@ -215,3 +215,24 @@ Stage Summary:
 - All stat card variants across the app fixed (_StatCard, _InfoCard, _DetailCard, _MetricCard, _IntegrityCard)
 - All chip/tag Rows converted to Wrap where appropriate
 - Visual design preserved — only overflow resilience added
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add auth diagnostics to createStudent (client + server) and investigate unauthenticated error
+
+Work Log:
+- Confirmed callable name is 'createStudent' (student_service.dart line 88)
+- Found TWO student_service.dart files: core/ (active, uses callable) and features/students/data/ (legacy, uses createUserWithEmailAndPassword)
+- Verified both form screens and both provider files import from core/services/student_service.dart — the correct one
+- Legacy file at features/students/data/student_service.dart has the auth-destroying pattern: createUserWithEmailAndPassword signs out owner, signOut doesn't restore
+- Added client-side auth state diagnostic breadcrumb before callable call in addStudent() and bulkAddStudents()
+- Added server-side structured logging in createStudent.ts: createStudent_auth_context (authExists, uid, callerRole, appExists, appTokenPresent) + createStudent_rejected_unauthenticated
+- TypeScript compiles clean
+- createStudent IS in compiled lib/index.js output but deployment status is unknown — user's first deploy failed
+
+Stage Summary:
+- Two diagnostic breadcrumbs added (client + server) to settle auth vs App Check debate
+- Legacy student_service.dart (features/students/data/) is dead code but has dangerous ensureFirebaseAuthAccount() that destroys owner auth state
+- Key finding: createStudent function may not be deployed to Firebase — user got "No function matches the filter" error and may not have retried after npm run build
+- Next: deploy createStudent, verify with firebase functions:list, test student creation
