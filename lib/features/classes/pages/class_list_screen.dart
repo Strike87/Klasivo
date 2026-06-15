@@ -181,9 +181,11 @@ class _ClassCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    if (stageName != null && stageName.isNotEmpty) ...[
+                    if (stageName != null && stageName.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -202,9 +204,7 @@ class _ClassCard extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (classData.code.isNotEmpty) ...[
+                    if (classData.code.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -223,33 +223,39 @@ class _ClassCard extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (classData.capacity > 0) ...[
-                      Icon(Icons.event_seat_outlined,
-                          size: 14, color: Colors.grey[500]),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${classData.capacity}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 13,
+                    if (classData.capacity > 0)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.event_seat_outlined,
+                              size: 14, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${classData.capacity}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.people_outline,
+                          size: 14,
+                          color: Colors.grey[500],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Icon(
-                      Icons.people_outline,
-                      size: 14,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${classData.studentCount} students',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 13,
-                      ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${classData.studentCount} students',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

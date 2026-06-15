@@ -108,202 +108,177 @@ import 'core/services/event_bus.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
-  // ── Zone diagnostic: capture zone identity BEFORE ensureInitialized ────
-  // We can't send breadcrumbs yet (Sentry not initialized), so store
-  // the zone hashCodes and log them after SentryFlutter.init completes.
-  final zoneBeforeEnsureInitialized = Zone.current.hashCode;
-  final isRootBeforeEnsureInit = Zone.current.parent == null;
+  // ── ZONE FIX: All initialization + runApp in the SAME zone ──────────
+  //
+  // Previous structure (BROKEN):
+  //   root zone:   WidgetsFlutterBinding.ensureInitialized()
+  //   root zone:   Firebase.initializeApp(), Hive, Sentry init
+  //   appRunner:   (root zone via SentryFlutter.init)
+  //   inner zone:  runZonedGuarded → runApp()  ← DIFFERENT ZONE!
+  //
+  //   Sentry evidence:
+  //     1_beforeEnsureInit: 427567881  (root)
+  //     4_runAppZone: 107203883        (inner) ← MISMATCH
+  //     zone_mismatch_detected: true
+  //     AssertionError: Zone mismatch
+  //
+  // Fix: Move everything inside runZonedGuarded so that
+  // ensureInitialized() and runApp() share the same zone.
+  // The outer runZonedGuarded is a safety net that catches errors
+  // during startup. SentryFlutter.init's appRunner runs inside
+  // this same zone, so runApp() is also in the same zone.
+  //
+  runZonedGuarded<Future<void>>(
+    () async {
+      // ── Everything runs in the SAME zone from here ─────────────────────
+      WidgetsFlutterBinding.ensureInitialized();
 
-  WidgetsFlutterBinding.ensureInitialized();
+      // ─── Resolve environment & package info early ──────────────────────
+      final envConfig = EnvironmentConfig.current;
+      late final PackageInfo packageInfo;
+      try {
+        packageInfo = await PackageInfo.fromPlatform();
+      } catch (_) {
+        // Fallback if package_info_plus is unavailable (e.g. desktop test)
+        packageInfo = PackageInfo(
+          appName: envConfig.appName,
+          packageName: 'com.klasivo.app',
+          version: '2.0.0',
+          buildNumber: '7',
+        );
+      }
 
-  final zoneAfterEnsureInitialized = Zone.current.hashCode;
+      final releaseTag = 'klasivo@${packageInfo.version}+${packageInfo.buildNumber}';
 
-  // ─── Resolve environment & package info early ──────────────────────────
-  final envConfig = EnvironmentConfig.current;
-  late final PackageInfo packageInfo;
-  try {
-    packageInfo = await PackageInfo.fromPlatform();
-  } catch (_) {
-    // Fallback if package_info_plus is unavailable (e.g. desktop test)
-    packageInfo = PackageInfo(
-      appName: envConfig.appName,
-      packageName: 'com.klasivo.app',
-      version: '2.0.0',
-      buildNumber: '7',
-    );
-  }
+      // ─── Sentry before-send callback: sanitize sensitive data ──────────
+      // Uses the centralized KlasivoSentrySanitizer from sentry_service.dart
+      // instead of a duplicate local class.
+      SentryEvent? beforeSendCallback(SentryEvent event) {
+        return KlasivoSentrySanitizer.sanitizeEvent(event);
+      }
 
-  final releaseTag = 'klasivo@${packageInfo.version}+${packageInfo.buildNumber}';
+      // ─── Initialize Firebase with error handling ────────────────────────
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
 
-  // ─── Sentry before-send callback: sanitize sensitive data ──────────────
-  // Uses the centralized KlasivoSentrySanitizer from sentry_service.dart
-  // instead of a duplicate local class.
-  SentryEvent? beforeSendCallback(SentryEvent event) {
-    return KlasivoSentrySanitizer.sanitizeEvent(event);
-  }
+        // ── Flutter Framework Errors → BOTH Crashlytics + Sentry ──────────
+        FlutterError.onError = (details) {
+          FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+          Sentry.captureException(
+            details.exception,
+            stackTrace: details.stack,
+          );
+        };
 
-  // ─── Initialize Firebase with error handling ────────────────────────
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+        // ── Platform/Async Errors → BOTH Crashlytics + Sentry ─────────────
+        PlatformDispatcher.instance.onError = (error, stack) {
+          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+          Sentry.captureException(error, stackTrace: stack);
+          return true;
+        };
 
-    // ── Flutter Framework Errors → BOTH Crashlytics + Sentry ──────────
-    FlutterError.onError = (details) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-      Sentry.captureException(
-        details.exception,
-        stackTrace: details.stack,
-      );
-    };
+        // Use EnvironmentConfig for Crashlytics (respects dev/staging/prod)
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+          envConfig.crashlyticsEnabled,
+        );
+      } catch (e) {
+        debugPrint('Firebase initialization failed: $e');
+      }
 
-    // ── Platform/Async Errors → BOTH Crashlytics + Sentry ─────────────
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      Sentry.captureException(error, stackTrace: stack);
-      return true;
-    };
+      await Hive.initFlutter();
+      await Hive.openBox(AppConstants.authBox);
+      await Hive.openBox(AppConstants.appSettingsBox);
 
-    // Use EnvironmentConfig for Crashlytics (respects dev/staging/prod)
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-      envConfig.crashlyticsEnabled,
-    );
-  } catch (e) {
-    debugPrint('Firebase initialization failed: $e');
-  }
+      // ─── Initialize Image Cache Service ───────────────────────────────
+      try {
+        await ImageCacheService.instance.init();
+      } catch (e) {
+        debugPrint('Image cache initialization failed: $e');
+      }
 
-  await Hive.initFlutter();
-  await Hive.openBox(AppConstants.authBox);
-  await Hive.openBox(AppConstants.appSettingsBox);
+      try {
+        await NotificationService.initialize();
+      } catch (e) {
+        debugPrint('Notification initialization failed: $e');
+      }
 
-  // ─── Initialize Image Cache Service ───────────────────────────────
-  try {
-    await ImageCacheService.instance.init();
-  } catch (e) {
-    debugPrint('Image cache initialization failed: $e');
-  }
+      // ─── Initialize Sentry (production-grade) ──────────────────────────
+      await SentryFlutter.init(
+        (options) {
+          // ── DSN from EnvironmentConfig (hardcoded with compile-time override) ──
+          options.dsn = envConfig.sentryDsn;
 
-  try {
-    await NotificationService.initialize();
-  } catch (e) {
-    debugPrint('Notification initialization failed: $e');
-  }
+          // ── Environment from EnvironmentConfig ──────────────────────────
+          options.environment = envConfig.environment.name;
 
-  // ─── Initialize Sentry (production-grade) ──────────────────────────
-  await SentryFlutter.init(
-    (options) {
-      // ── DSN from EnvironmentConfig (hardcoded with compile-time override) ──
-      options.dsn = envConfig.sentryDsn;
+          // ── Release tracking ────────────────────────────────────────────
+          options.release = releaseTag;
 
-      // ── Environment from EnvironmentConfig ──────────────────────────
-      options.environment = envConfig.environment.name;
+          // ── Sampling rates from EnvironmentConfig (centralised) ─────────
+          options.tracesSampleRate = envConfig.sentryTracesSampleRate;
+          options.profilesSampleRate = envConfig.sentryProfilesSampleRate;
 
-      // ── Release tracking ────────────────────────────────────────────
-      options.release = releaseTag;
+          // ── PII / Privacy ──────────────────────────────────────────────
+          options.sendDefaultPii = false; // Never send PII by default
 
-      // ── Sampling rates from EnvironmentConfig (centralised) ─────────
-      options.tracesSampleRate = envConfig.sentryTracesSampleRate;
-      options.profilesSampleRate = envConfig.sentryProfilesSampleRate;
+          // ── Before-send callback: sanitize all events ───────────────────
+          options.beforeSend = (SentryEvent event, Hint hint) async {
+            return beforeSendCallback(event);
+          };
 
-      // ── PII / Privacy ──────────────────────────────────────────────
-      options.sendDefaultPii = false; // Never send PII by default
+          // ── Auto breadcrumb tracking (handled automatically in SDK 9.x) ──
 
-      // ── Before-send callback: sanitize all events ───────────────────
-      options.beforeSend = (SentryEvent event, Hint hint) async {
-        return beforeSendCallback(event);
-      };
+          // ── Attach screenshots to error events ──────────────────────────
+          options.attachScreenshot = true;
+          options.screenshotQuality = SentryScreenshotQuality.low;
+          options.attachViewHierarchy = true;
 
-      // ── Auto breadcrumb tracking (handled automatically in SDK 9.x) ──
+          // ── Session Replay ──────────────────────────────────────────────
+          // Mask all text and images by default for privacy
+          // replay.maskAllText / maskAllImages removed in sentry_flutter 9.22.0
+          options.replay.sessionSampleRate = envConfig.sentryReplaySessionSampleRate;
+          options.replay.onErrorSampleRate = 1.0; // Always capture on error
 
-      // ── Attach screenshots to error events ──────────────────────────
-      options.attachScreenshot = true;
-      options.screenshotQuality = SentryScreenshotQuality.low;
-      options.attachViewHierarchy = true;
+          // ── Max breadcrumbs ─────────────────────────────────────────────
+          options.maxBreadcrumbs = 200;
 
-      // ── Session Replay ──────────────────────────────────────────────
-      // Mask all text and images by default for privacy
-      // replay.maskAllText / maskAllImages removed in sentry_flutter 9.22.0
-      options.replay.sessionSampleRate = envConfig.sentryReplaySessionSampleRate;
-      options.replay.onErrorSampleRate = 1.0; // Always capture on error
+          // ── Diagnostic level ────────────────────────────────────────────
+          options.diagnosticLevel = envConfig.isDev ? SentryLevel.debug : SentryLevel.error;
 
-      // ── Max breadcrumbs ─────────────────────────────────────────────
-      options.maxBreadcrumbs = 200;
+          // ── Swizzle (iOS) — handled automatically in SDK 9.x ────────────
 
-      // ── Diagnostic level ────────────────────────────────────────────
-      options.diagnosticLevel = envConfig.isDev ? SentryLevel.debug : SentryLevel.error;
+          // ── ANR (Application Not Responding) ────────────────────────────
+          options.anrEnabled = true;
+          // anrTimeoutIntervalInSeconds removed in sentry_flutter 9.22.0
 
-      // ── Swizzle (iOS) — handled automatically in SDK 9.x ────────────
+          // ── App lifecycle breadcrumbs ───────────────────────────────────
+          options.enableAppLifecycleBreadcrumbs = true;
 
-      // ── ANR (Application Not Responding) ────────────────────────────
-      options.anrEnabled = true;
-      // anrTimeoutIntervalInSeconds removed in sentry_flutter 9.22.0
-
-      // ── App lifecycle breadcrumbs ───────────────────────────────────
-      options.enableAppLifecycleBreadcrumbs = true;
-
-      // ── Navigation observer — handled automatically in SDK 9.x ──────
-    },
-    appRunner: () {
-      // ── Set app version tags on Sentry scope ────────────────────────
-      SentryUserContext.setAppVersion(
-        version: packageInfo.version,
-        buildNumber: packageInfo.buildNumber,
-      );
-
-      // ── Zone mismatch diagnostic (full trace) ──────────────────────
-      // Captures Zone.current.hashCode at every critical point in the
-      // startup sequence. Zones must match for Flutter's binding to
-      // work correctly. Mismatch = zone-mismatch errors in Sentry.
-      final appRunnerZone = Zone.current.hashCode;
-      Sentry.addBreadcrumb(Breadcrumb(
-        category: 'zone_diagnostic',
-        message: 'Zone trace: all startup checkpoints',
-        data: {
-          '1_beforeEnsureInit': zoneBeforeEnsureInitialized.toString(),
-          '1_isRoot': isRootBeforeEnsureInit,
-          '2_afterEnsureInit': zoneAfterEnsureInitialized.toString(),
-          '3_appRunner': appRunnerZone.toString(),
-          '3_appRunner_isRoot': Zone.current.parent == null,
-          'ensureInit_changed_zone': zoneBeforeEnsureInitialized != zoneAfterEnsureInitialized,
-          'sentry_sdk': '9.x',
-          'crashlytics_sdk': '4.x',
+          // ── Navigation observer — handled automatically in SDK 9.x ──────
         },
-      ));
+        appRunner: () {
+          // ── Set app version tags on Sentry scope ────────────────────────
+          SentryUserContext.setAppVersion(
+            version: packageInfo.version,
+            buildNumber: packageInfo.buildNumber,
+          );
 
-      // ── Wrap entire app in runZonedGuarded ──────────────────────────
-      // Catches async errors that PlatformDispatcher misses
-      runZonedGuarded<Future<void>>(
-        () async {
-          final runAppZone = Zone.current.hashCode;
-          // Report the inner zone for comparison
-          Sentry.addBreadcrumb(Breadcrumb(
-            category: 'zone_diagnostic',
-            message: 'Zone trace: runZonedGuarded inner zone',
-            data: {
-              '4_runAppZone': runAppZone.toString(),
-              '4_runAppZone_isRoot': Zone.current.parent == null,
-              'zone_mismatch_detected': runAppZone != zoneBeforeEnsureInitialized,
-              '1_beforeEnsureInit': zoneBeforeEnsureInitialized.toString(),
-              '2_afterEnsureInit': zoneAfterEnsureInitialized.toString(),
-              '3_appRunner': appRunnerZone.toString(),
-              '4_runAppZone': runAppZone.toString(),
-            },
-          ));
-
+          // ── runApp runs in the SAME zone as ensureInitialized ───────────
+          // No nested runZonedGuarded needed — we're already inside one.
           runApp(ProviderScope(
             observers: [SentryRiverpodObserver()],
             child: const MyApp(),
           ));
         },
-        (error, stack) {
-          FirebaseCrashlytics.instance.recordError(
-            error,
-            stack,
-            fatal: true,
-          );
-          Sentry.captureException(error, stackTrace: stack);
-        },
       );
+    },
+    (error, stack) {
+      // Last-resort error handler for the outer zone.
+      // Most errors are caught by Sentry/Crashlytics after init completes.
+      // This catches errors during the init sequence itself.
+      debugPrint('Uncaught async error during app startup: $error');
     },
   );
 }

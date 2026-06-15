@@ -38,6 +38,7 @@ class KlasivoAnalyticsCard extends StatelessWidget {
       variant: KlasivoCardVariant.interactive,
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Icon
@@ -51,18 +52,22 @@ class KlasivoAnalyticsCard extends StatelessWidget {
           ),
           const SizedBox(height: KlasivoSpacing.md),
 
-          // Large Number
-          Text(
-            value,
-            style: KlasivoTypography.displayMedium.copyWith(
-              color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+          // Large Number — FittedBox prevents overflow on narrow cards
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: KlasivoTypography.displayMedium.copyWith(
+                color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: KlasivoSpacing.xs),
 
-          // Label + Trend
+          // Label + Trend — Flexible trend prevents row overflow
           Row(
             children: [
               Expanded(
@@ -77,37 +82,40 @@ class KlasivoAnalyticsCard extends StatelessWidget {
               ),
               if (trend != null) ...[
                 const SizedBox(width: KlasivoSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: KlasivoSpacing.sm,
-                    vertical: KlasivoSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: trendPositive
-                        ? KlasivoColors.secondarySurface
-                        : KlasivoColors.errorSurface,
-                    borderRadius: BorderRadius.circular(KlasivoRadius.pill),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        trendPositive ? Icons.trending_up : Icons.trending_down,
-                        size: 12,
-                        color: trendPositive
-                            ? KlasivoColors.secondary
-                            : KlasivoColors.error,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        trend!,
-                        style: KlasivoTypography.labelSmall.copyWith(
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: KlasivoSpacing.sm,
+                      vertical: KlasivoSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: trendPositive
+                          ? KlasivoColors.secondarySurface
+                          : KlasivoColors.errorSurface,
+                      borderRadius: BorderRadius.circular(KlasivoRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          trendPositive ? Icons.trending_up : Icons.trending_down,
+                          size: 12,
                           color: trendPositive
                               ? KlasivoColors.secondary
                               : KlasivoColors.error,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 2),
+                        Text(
+                          trend!,
+                          style: KlasivoTypography.labelSmall.copyWith(
+                            color: trendPositive
+                                ? KlasivoColors.secondary
+                                : KlasivoColors.error,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
