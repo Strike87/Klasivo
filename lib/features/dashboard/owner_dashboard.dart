@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/feature_flag_service.dart';
@@ -19,6 +21,80 @@ import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_permission_gate.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_badge.dart';
+
+/// One-time diagnostic: reports owner linkage state to Sentry.
+/// Fires once per app session to avoid spam.
+bool _ownerLinkageDiagnosed = false;
+
+Future<void> _diagnoseOwnerLinkage() async {
+  if (_ownerLinkageDiagnosed) return;
+  _ownerLinkageDiagnosed = true;
+
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final userDoc = await FirebaseFirestore.instance
+        .collection(AppConstants.usersCollection)
+        .doc(user.uid)
+        .get();
+
+    if (!userDoc.exists) {
+      await Sentry.captureMessage(
+        'OWNER_LINKAGE: users/\${user.uid} does NOT exist',
+        level: SentryLevel.error,
+      );
+      return;
+    }
+
+    final userData = userDoc.data()!;
+    final role = userData['role'] as String? ?? '';
+    final orgId = userData['organizationId'] as String? ?? '';
+    final isActive = userData['isActive'] as bool? ?? false;
+
+    // Check org document exists and links back
+    String orgOwnerId = '';
+    bool orgExists = false;
+    if (orgId.isNotEmpty) {
+      final orgDoc = await FirebaseFirestore.instance
+          .collection(AppConstants.organizationsCollection)
+          .doc(orgId)
+          .get();
+      orgExists = orgDoc.exists;
+      if (orgDoc.exists) {
+        orgOwnerId = orgDoc.data()?['ownerId'] as String? ?? '';
+      }
+    }
+
+    final linkageOk = role == 'owner' && orgId.isNotEmpty && orgExists && orgOwnerId == user.uid;
+
+    await Sentry.addBreadcrumb(Breadcrumb(
+      category: 'owner_linkage_diagnostic',
+      message: linkageOk ? 'Owner linkage OK' : 'Owner linkage BROKEN',
+      data: {
+        'uid': user.uid,
+        'role': role,
+        'organizationId': orgId,
+        'organizationId_empty': orgId.isEmpty,
+        'orgExists': orgExists,
+        'orgOwnerId': orgOwnerId,
+        'ownerId_matches_uid': orgOwnerId == user.uid,
+        'isActive': isActive,
+        'linkageOk': linkageOk,
+      },
+    ));
+
+    if (!linkageOk) {
+      await Sentry.captureMessage(
+        'OWNER_LINKAGE_BROKEN: uid=\${user.uid} role=$role orgId=$orgId orgExists=$orgExists orgOwnerId=$orgOwnerId',
+        level: SentryLevel.error,
+      );
+    }
+  } catch (e) {
+    // Don't block dashboard load for diagnostic failure
+  }
+}
+
 class OwnerDashboard extends ConsumerWidget {
   const OwnerDashboard({Key? key}) : super(key: key);
 
@@ -29,6 +105,8 @@ class OwnerDashboard extends ConsumerWidget {
     _dashboardSpan.startChild('provider_initialization');
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _dashboardSpan.finish();
+      // One-time owner linkage diagnostic — reports to Sentry
+      await _diagnoseOwnerLinkage();
     });
 
     final userName = ref.watch(userNameProvider) ?? 'Owner';

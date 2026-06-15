@@ -124,9 +124,14 @@ class StudentService {
       }
 
       // ── Step 2: Create student document in Firestore ──────────────────────
+      final currentAuthUid = _auth.currentUser?.uid;
       KlasivoSentry.breadcrumb.registration('STEP_2_USER_DOC_CREATE_START', data: {
         'authUid': authUid ?? 'null',
         'docIdStrategy': authUid != null ? 'uid' : 'auto_id',
+        'writePath': 'users/${authUid ?? "auto_id"}',
+        'currentAuthUid': currentAuthUid ?? 'null',
+        'authUidMatchesDocId': authUid == currentAuthUid,
+        'organizationId': organizationId,
       });
 
       final docRef = authUid != null
@@ -150,13 +155,47 @@ class StudentService {
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      await SentryFirestoreHelper.docSet(
-        collection: AppConstants.usersCollection,
-        docId: docRef.id,
-        data: studentData,
-        flow: 'student_creation',
-        step: 'STEP_2_USER_DOC_CREATE',
-      );
+      // Pre-write breadcrumb: captures exact path for permission-denied diagnosis
+      await Sentry.addBreadcrumb(Breadcrumb(
+        category: 'student_creation',
+        message: 'Attempting Firestore write',
+        data: {
+          'collection': AppConstants.usersCollection,
+          'docPath': docRef.path,
+          'docId': docRef.id,
+          'currentAuthUid': currentAuthUid ?? 'null',
+          'docIdMatchesAuthUid': docRef.id == currentAuthUid,
+          'dataRole': studentData['role'],
+          'dataOrgId': studentData['organizationId'],
+        },
+      ));
+
+      try {
+        await SentryFirestoreHelper.docSet(
+          collection: AppConstants.usersCollection,
+          docId: docRef.id,
+          data: studentData,
+          flow: 'student_creation',
+          step: 'STEP_2_USER_DOC_CREATE',
+        );
+      } catch (writeError, writeStack) {
+        // Capture the exact write path + auth context for permission-denied diagnosis
+        await Sentry.captureException(
+          writeError,
+          stackTrace: writeStack,
+          withScope: (scope) {
+            scope.setTag('firestore_write', 'permission_denied');
+            scope.setTag('collection', AppConstants.usersCollection);
+            scope.setTag('doc_path', docRef.path);
+            scope.setExtra('doc_id', docRef.id);
+            scope.setExtra('current_auth_uid', currentAuthUid ?? 'null');
+            scope.setExtra('doc_id_matches_auth_uid', docRef.id == currentAuthUid);
+            scope.setExtra('data_org_id', studentData['organizationId']);
+            scope.setExtra('data_role', studentData['role']);
+          },
+        );
+        rethrow;
+      }
 
       // ── Read-back verification ──
       final verifyDoc = await _firestore
@@ -198,10 +237,26 @@ class StudentService {
           .count()
           .get();
 
-      await _firestore
-          .collection(AppConstants.classesCollection)
-          .doc(classId)
-          .update({'studentCount': countSnapshot.count ?? 0});
+      try {
+        await _firestore
+            .collection(AppConstants.classesCollection)
+            .doc(classId)
+            .update({'studentCount': countSnapshot.count ?? 0});
+      } catch (classUpdateError, classUpdateStack) {
+        await Sentry.captureException(
+          classUpdateError,
+          stackTrace: classUpdateStack,
+          withScope: (scope) {
+            scope.setTag('firestore_write', 'permission_denied');
+            scope.setTag('collection', 'classes');
+            scope.setTag('doc_path', 'classes/$classId');
+            scope.setExtra('operation', 'update');
+            scope.setExtra('field', 'studentCount');
+            scope.setExtra('current_auth_uid', _auth.currentUser?.uid ?? 'null');
+          },
+        );
+        rethrow;
+      }
 
       // ── Step 4: Notify teachers ──────────────────────────────────────────
       _notifyStudentJoined(

@@ -242,10 +242,39 @@ Future<void> main() async {
         buildNumber: packageInfo.buildNumber,
       );
 
+      // ── Zone mismatch diagnostic ─────────────────────────────────────
+      // Reports to Sentry whether runApp's zone matches the binding zone.
+      // If they differ, that's the root cause of the zone-mismatch errors.
+      final bindingZone = Zone.current;
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'zone_diagnostic',
+        message: 'SentryFlutter.init appRunner zone context',
+        data: {
+          'bindingZone_hashCode': bindingZone.hashCode.toString(),
+          'isRootZone': bindingZone.parent == null,
+          'runZonedGuarded_active': true,
+          'sentry_sdk': '9.x',
+          'crashlytics_sdk': '4.x',
+          'flutter_error_onError_set': true,
+          'platform_dispatcher_onError_set': true,
+        },
+      ));
+
       // ── Wrap entire app in runZonedGuarded ──────────────────────────
       // Catches async errors that PlatformDispatcher misses
       runZonedGuarded<Future<void>>(
         () async {
+          // Report the inner zone for comparison
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'zone_diagnostic',
+            message: 'runZonedGuarded inner zone context',
+            data: {
+              'innerZone_hashCode': Zone.current.hashCode.toString(),
+              'innerZone_isRoot': Zone.current.parent == null,
+              'zones_match': Zone.current.hashCode == bindingZone.hashCode,
+            },
+          ));
+
           runApp(ProviderScope(
             observers: [SentryRiverpodObserver()],
             child: const MyApp(),
