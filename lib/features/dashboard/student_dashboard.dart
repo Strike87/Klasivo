@@ -452,6 +452,8 @@ class _ActiveExamsList extends ConsumerWidget {
                                     ? KlasivoColors.darkTextSecondary
                                     : KlasivoColors.lightTextSecondary,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: KlasivoSpacing.xs),
                             Text(
@@ -465,6 +467,8 @@ class _ActiveExamsList extends ConsumerWidget {
                                         ? KlasivoColors.darkTextTertiary
                                         : KlasivoColors.lightTextTertiary),
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),

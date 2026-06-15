@@ -406,29 +406,27 @@ class _HeroSection extends StatelessWidget {
 
           // Stats row
           const SizedBox(height: KlasivoSpacing.lg),
-          Row(
+          Wrap(
+            spacing: KlasivoSpacing.sm,
+            runSpacing: KlasivoSpacing.sm,
             children: [
-              if (lesson.duration > 0) ...[
+              if (lesson.duration > 0)
                 KlasivoStatPill(
                   value: lesson.durationFormatted,
                   label: 'Duration',
                   color: KlasivoColors.primary,
                 ),
-                const SizedBox(width: KlasivoSpacing.sm),
-              ],
               KlasivoStatPill(
                 value: '${lesson.viewCount}',
                 label: lesson.viewCount == 1 ? 'View' : 'Views',
                 color: KlasivoColors.accent,
               ),
-              if (lesson.isExternal) ...[
-                const SizedBox(width: KlasivoSpacing.sm),
+              if (lesson.isExternal)
                 KlasivoStatPill(
                   value: 'External',
                   label: lesson.typeLabel,
                   color: typeConfig.color,
                 ),
-              ],
             ],
           ),
         ],

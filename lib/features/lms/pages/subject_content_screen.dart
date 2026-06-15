@@ -542,14 +542,15 @@ class _UnitCard extends ConsumerWidget {
                             ),
                           ],
                           const SizedBox(height: KlasivoSpacing.sm),
-                          Row(
+                          Wrap(
+                            spacing: KlasivoSpacing.sm,
+                            runSpacing: KlasivoSpacing.sm,
                             children: [
                               KlasivoStatPill(
                                 value: '${lessons.length}',
                                 label: 'Lessons',
                                 color: KlasivoColors.primary,
                               ),
-                              const SizedBox(width: KlasivoSpacing.sm),
                               KlasivoStatPill(
                                 value: '${materials.length}',
                                 label: 'Materials',

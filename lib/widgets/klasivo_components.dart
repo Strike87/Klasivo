@@ -57,16 +57,22 @@ class KlasivoAnalyticsCard extends StatelessWidget {
             style: KlasivoTypography.displayMedium.copyWith(
               color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: KlasivoSpacing.xs),
 
           // Label + Trend
           Row(
             children: [
-              Text(
-                label,
-                style: KlasivoTypography.bodySmall.copyWith(
-                  color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+              Expanded(
+                child: Text(
+                  label,
+                  style: KlasivoTypography.bodySmall.copyWith(
+                    color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (trend != null) ...[
@@ -613,20 +619,26 @@ class KlasivoSectionHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          title,
-          style: KlasivoTypography.titleLarge.copyWith(
-            color: isDark
-                ? KlasivoColors.darkTextPrimary
-                : KlasivoColors.lightTextPrimary,
+        Expanded(
+          child: Text(
+            title,
+            style: KlasivoTypography.titleLarge.copyWith(
+              color: isDark
+                  ? KlasivoColors.darkTextPrimary
+                  : KlasivoColors.lightTextPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        if (actionLabel != null && onAction != null)
+        if (actionLabel != null && onAction != null) ...[
+          const SizedBox(width: KlasivoSpacing.sm),
           KlasivoButton(
             label: actionLabel!,
             onPressed: onAction,
             variant: KlasivoButtonVariant.tertiary,
           ),
+        ],
       ],
     );
   }

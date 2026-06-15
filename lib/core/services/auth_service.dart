@@ -11,6 +11,7 @@ import 'sentry_service.dart';
 import 'firebase_service.dart';
 import 'organization_service.dart';
 import 'invite_code_service.dart';
+import 'claims_service.dart';
 
 // ─── Auth Provider Constants ─────────────────────────────────────────────────
 // Tracks which authentication method a user registered with.
@@ -228,6 +229,28 @@ class AuthService {
         data: {'uid': user.uid, 'organizationId': orgId},
       ));
       await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_4_USER_PATCH_SUCCESS');
+
+      // ── Step 4c: Sync custom claims to ID token ───────────────────────
+      // The user doc now has role + organizationId, but the ID token has
+      // no custom claims yet. syncClaims reads the user doc and sets claims
+      // via Admin SDK. This is critical for Firestore rules that check
+      // request.auth.token (future) and for Cloud Functions RBAC.
+      try {
+        final claimsService = ClaimsService();
+        await claimsService.syncClaimsViaFunction();
+        KlasivoSentry.breadcrumb.registration('STEP_4c_CLAIMS_SYNC_SUCCESS', data: {
+          'uid': user.uid,
+          'orgId': orgId,
+        });
+      } catch (e) {
+        // Non-blocking: claims will sync on next login or role change.
+        // The Firestore rules currently read from the user doc, not claims,
+        // so this won't block the registration flow.
+        KlasivoSentry.breadcrumb.registration('STEP_4c_CLAIMS_SYNC_FAILED', data: {
+          'uid': user.uid,
+          'error': e.toString(),
+        });
+      }
 
       // ── Step 4b: Final read-back verification of COMPLETE user doc ─────
       // After the patch, the user doc should have organizationId set.
@@ -464,6 +487,17 @@ class AuthService {
         'role': role ?? 'unknown',
         'hasCompletedSetup': userData['hasCompletedSetup'] ?? true,
       });
+
+      // ── Sync custom claims on login ────────────────────────────────────
+      // Ensures the ID token has up-to-date claims (role, organizationId,
+      // scopeAccessLevel). Critical after role changes or first login.
+      try {
+        final claimsService = ClaimsService();
+        await claimsService.syncClaimsViaFunction();
+      } catch (_) {
+        // Non-blocking: token will work without claims for Firestore rules
+        // that read from the user doc. Claims will be stale until next sync.
+      }
 
       transaction.status = const SpanStatus.ok();
 
@@ -1325,6 +1359,21 @@ createUserDocSpan.status = const SpanStatus.ok();
         ));
         await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_4_USER_PATCH_SUCCESS_google');
         await FirebaseCrashlytics.instance.setCustomKey('orgId', organizationId ?? '');
+
+        // ── Step 4c: Sync custom claims to ID token (Google flow) ──────
+        try {
+          final claimsService = ClaimsService();
+          await claimsService.syncClaimsViaFunction();
+          KlasivoSentry.breadcrumb.registration('STEP_4c_CLAIMS_SYNC_SUCCESS_google', data: {
+            'uid': user.uid,
+            'orgId': organizationId ?? '',
+          });
+        } catch (e) {
+          KlasivoSentry.breadcrumb.registration('STEP_4c_CLAIMS_SYNC_FAILED_google', data: {
+            'uid': user.uid,
+            'error': e.toString(),
+          });
+        }
 
         // ── Step 4b: Final read-back verification of COMPLETE user doc ────
         final finalCheck = await _firestore

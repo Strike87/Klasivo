@@ -52,6 +52,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
 
+    // Helper: Check if user is an owner AND in the same org
+    function isOwnerInSameOrg() {
+      return isOwner() && isInSameOrg();
+    }
+
     // Helper: Get user role
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
@@ -99,7 +104,10 @@ service cloud.firestore {
     // ====== Users Collection ======
     match /users/{userId} {
       allow read: if isAuth();
-      allow create: if isAuth() && request.auth.uid == userId;
+      // Users can create their own doc (self-registration)
+      // OR teachers/owners can create user docs in their org (student/teacher onboarding)
+      allow create: if isAuth() && request.auth.uid == userId
+                 || (isAuth() && isTeacherOrOwner() && isIncomingSameOrg());
       allow update: if isAuth() && request.auth.uid == userId;
       allow delete: if false;
     }

@@ -270,13 +270,15 @@ class _ExamIntegrityContent extends ConsumerWidget {
                         children: [
                           Icon(icon, color: color, size: 20),
                           const SizedBox(width: 8),
-                          SizedBox(
-                            width: 120,
+                          Flexible(
                             child: Text(typeLabel,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12)),
+                                    fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
                           ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(4),
@@ -481,7 +483,9 @@ class _IntegrityCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+                    fontWeight: FontWeight.bold, fontSize: 16, color: color),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
             Text(title,
                 style: TextStyle(color: Colors.grey[600], fontSize: 10),
                 textAlign: TextAlign.center,

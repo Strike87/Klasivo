@@ -157,8 +157,10 @@ class _StatCard extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: color),
               const SizedBox(height: 8),
-              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           ),
         ),
@@ -202,14 +204,13 @@ class _SessionCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 _MetricChip(icon: Icons.people, label: '${analytics.attendanceCount} attended'),
-                const SizedBox(width: 12),
                 _MetricChip(icon: Icons.timer, label: analytics.durationLabel),
-                const SizedBox(width: 12),
                 _MetricChip(icon: Icons.chat, label: '${analytics.messagesCount} msgs'),
-                const SizedBox(width: 12),
                 _MetricChip(icon: Icons.pan_tool, label: '${analytics.raisedHandsCount} hands'),
               ],
             ),

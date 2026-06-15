@@ -930,9 +930,13 @@ class _StatCard extends StatelessWidget {
                 style: Theme.of(context)
                     .textTheme
                     .headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.bold)),
+                    ?.copyWith(fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
-            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -971,10 +975,14 @@ class _MetricCard extends StatelessWidget {
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: color)),
+                          color: color),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   Text(label,
                       style: TextStyle(
-                          color: Colors.grey[600], fontSize: 11)),
+                          color: Colors.grey[600], fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),

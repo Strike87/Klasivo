@@ -115,8 +115,10 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
                         children: [
                           Icon(Icons.trending_up_rounded, color: KlasivoColors.primary, size: 28),
                           const SizedBox(height: 8),
-                          Text('${avgProgress.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                          Text('Average Progress', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          Text('${avgProgress.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text('Average Progress', style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
@@ -129,8 +131,10 @@ class _ProgressTrackingScreenState extends ConsumerState<ProgressTrackingScreen>
                         children: [
                           Icon(Icons.people_outline, color: KlasivoColors.secondary, size: 28),
                           const SizedBox(height: 8),
-                          Text('$totalStudents', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                          Text('Total Students', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          Text('$totalStudents', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text('Total Students', style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
@@ -338,12 +342,12 @@ class _StudentProgressCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _MetricChip(label: 'Exams ${examAverage.toStringAsFixed(0)}%', color: KlasivoColors.primary),
-                const SizedBox(width: 8),
                 _MetricChip(label: 'Attend ${attendanceRate.toStringAsFixed(0)}%', color: KlasivoColors.secondary),
-                const SizedBox(width: 8),
                 _MetricChip(label: 'Assign ${assignmentRate.toStringAsFixed(0)}%', color: KlasivoColors.accent),
               ],
             ),

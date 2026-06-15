@@ -186,7 +186,9 @@ class OwnerDashboard extends ConsumerWidget {
                     // ── Quick Actions ──
                     const KlasivoSectionHeader(title: 'Quick Actions'),
                     const SizedBox(height: KlasivoSpacing.md),
-                    Row(
+                    Wrap(
+                      spacing: KlasivoSpacing.md,
+                      runSpacing: KlasivoSpacing.md,
                       children: [
                         _QuickActionChip(
                           icon: Icons.add_circle_outline_rounded,
@@ -194,14 +196,12 @@ class OwnerDashboard extends ConsumerWidget {
                           color: KlasivoColors.primary,
                           onTap: () => context.go('/academic'),
                         ),
-                        const SizedBox(width: KlasivoSpacing.md),
                         _QuickActionChip(
                           icon: Icons.person_add_outlined,
                           label: 'Add Student',
                           color: KlasivoColors.secondary,
                           onTap: () => context.go('/people'),
                         ),
-                        const SizedBox(width: KlasivoSpacing.md),
                         _QuickActionChip(
                           icon: Icons.notifications_outlined,
                           label: 'Inbox',
@@ -221,7 +221,9 @@ class OwnerDashboard extends ConsumerWidget {
                         children: [
                           const KlasivoSectionHeader(title: 'Administration'),
                           const SizedBox(height: KlasivoSpacing.md),
-                          Row(
+                          Wrap(
+                            spacing: KlasivoSpacing.md,
+                            runSpacing: KlasivoSpacing.md,
                             children: [
                               _QuickActionChip(
                                 icon: Icons.shield_outlined,
@@ -229,14 +231,12 @@ class OwnerDashboard extends ConsumerWidget {
                                 color: KlasivoColors.error,
                                 onTap: () => context.go('/teacher/audit-log'),
                               ),
-                              const SizedBox(width: KlasivoSpacing.md),
                               _QuickActionChip(
                                 icon: Icons.tune_outlined,
                                 label: 'Feature Flags',
                                 color: const Color(0xFF845EF7),
                                 onTap: () => context.go('/settings/feature-flags'),
                               ),
-                              const SizedBox(width: KlasivoSpacing.md),
                               _QuickActionChip(
                                 icon: Icons.shield_outlined,
                                 label: 'Moderation',
@@ -360,7 +360,12 @@ class _QuickActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    final chipWidth = (MediaQuery.of(context).size.width -
+            KlasivoSpacing.lg * 2 -
+            KlasivoSpacing.md * 2) /
+        3;
+    return SizedBox(
+      width: chipWidth.clamp(80.0, 140.0),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(KlasivoRadius.md),
@@ -382,6 +387,8 @@ class _QuickActionChip extends StatelessWidget {
                 label,
                 style: KlasivoTypography.labelSmall.copyWith(color: color),
                 textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

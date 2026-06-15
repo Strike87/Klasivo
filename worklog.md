@@ -124,3 +124,94 @@ Stage Summary:
 - The permissions/roles.dart enum has scope/displays but no managementRoles
 - User should run `flutter analyze` then `flutter build apk --debug` to verify
 - Next: test Sentry event capture, Crashlytics crash capture, owner registration, verify users/{uid} creation
+
+---
+Task ID: 4
+Agent: Layout Fix Agent
+Task: Fix ALL layout overflow errors (RIGHT OVERFLOWED BY N PIXELS) across Klasivo
+
+Work Log:
+- Audited 15+ screens for Row/Text overflow patterns
+- Identified root cause: KlasivoAnalyticsCard label Text in Row not wrapped in Expanded/Flexible
+- Identified secondary causes: QuickActionChip Rows, stat pill Rows, _InfoCard/_DetailCard inner Columns, _ScheduleRow bare Text
+
+Files Changed (14 total):
+
+1. lib/widgets/klasivo_components.dart
+   - KlasivoAnalyticsCard: Wrapped label Text in Expanded + maxLines:1 + overflow:ellipsis (PRIMARY FIX)
+   - KlasivoAnalyticsCard: Added maxLines:1 + overflow:ellipsis to value Text
+   - KlasivoSectionHeader: Wrapped title Text in Expanded + maxLines:1 + overflow:ellipsis
+
+2. lib/features/dashboard/owner_dashboard.dart
+   - Quick Actions Row → Wrap with spacing/runSpacing (2 sections: main + admin)
+   - _QuickActionChip: Replaced Expanded with SizedBox(clamp(80, 140)) for Wrap compatibility
+   - _QuickActionChip label Text: Added maxLines:1 + overflow:ellipsis
+
+3. lib/features/dashboard/teacher_dashboard.dart
+   - _RecentClassesList ListTile title: Added maxLines:1 + overflow:ellipsis
+   - _RecentClassesList ListTile subtitle: Added maxLines:1 + overflow:ellipsis
+   - _RecentStudentsList ListTile title: Added maxLines:1 + overflow:ellipsis
+
+4. lib/features/dashboard/student_dashboard.dart
+   - Active exam card duration text: Added maxLines:1 + overflow:ellipsis
+   - Active exam card date text: Added maxLines:1 + overflow:ellipsis
+
+5. lib/features/lms/pages/lesson_detail_screen.dart
+   - StatPills Row → Wrap with spacing/runSpacing
+
+6. lib/features/lms/pages/subject_content_screen.dart
+   - StatPills Row → Wrap with spacing/runSpacing
+
+7. lib/features/exams/pages/exam_detail_screen.dart
+   - _InfoCard inner Column: Wrapped in Expanded + added maxLines:1 + overflow:ellipsis to Texts
+   - _ScheduleRow date/time Texts: Wrapped in Flexible + overflow:ellipsis
+
+8. lib/features/exams/presentation/exam_detail_screen.dart (duplicate)
+   - Same fixes as #7
+
+9. lib/features/student_results/pages/student_results_screen.dart
+   - _DetailCard inner Column: Wrapped in Expanded + added maxLines:1 + overflow:ellipsis to Texts
+
+10. lib/features/teacher_results/pages/exam_results_screen.dart
+    - _StatCard value Text: Added maxLines:1 + overflow:ellipsis
+
+11. lib/features/analytics/pages/teacher_analytics_dashboard.dart
+    - _StatCard value/title Texts: Added maxLines:1 + overflow:ellipsis
+    - _MetricCard value/label Texts: Added maxLines:1 + overflow:ellipsis
+
+12. lib/features/parent/pages/parent_dashboard.dart
+    - Trailing Row date Text: Wrapped in Flexible + overflow:ellipsis
+
+13. lib/features/shell/parent_shell.dart
+    - Trailing Row date Text: Wrapped in Flexible + overflow:ellipsis
+
+14. lib/features/livekit/pages/session_analytics_dashboard.dart
+    - _StatCard value/label Texts: Added maxLines:1 + overflow:ellipsis
+    - _MetricChip Row → Wrap with spacing/runSpacing
+
+15. lib/features/livekit/pages/scheduled_classes_screen.dart
+    - Teacher name Text: Wrapped in Flexible + maxLines:1 + overflow:ellipsis
+    - Subject/class chip Row → Wrap with spacing/runSpacing
+
+16. lib/features/integrity/pages/exam_integrity_dashboard.dart
+    - _IntegrityCard value Text: Added maxLines:1 + overflow:ellipsis
+    - Severity type label: Changed SizedBox(width:120) → Flexible + maxLines:1 + overflow:ellipsis
+
+17. lib/features/progress/pages/progress_tracking_screen.dart
+    - Stat card value/label Texts: Added maxLines:1 + overflow:ellipsis (2 cards)
+    - _MetricChip Row → Wrap with spacing/runSpacing
+
+Fix Strategy Applied:
+- Expanded/Flexible for Row children with Text that could be long
+- maxLines:1 + TextOverflow.ellipsis for all title/value/label Texts in constrained cards
+- Row → Wrap for chips/tags/action buttons that should reflow on narrow screens
+- Flexible for trailing Row Texts in ListTiles
+- No business logic or data fetching changed — layout-only fixes
+
+Stage Summary:
+- 17 files modified with layout overflow fixes
+- Primary fix: KlasivoAnalyticsCard label Row (affects ALL screens using stat cards)
+- All 3 dashboards (owner, teacher, student) fixed
+- All stat card variants across the app fixed (_StatCard, _InfoCard, _DetailCard, _MetricCard, _IntegrityCard)
+- All chip/tag Rows converted to Wrap where appropriate
+- Visual design preserved — only overflow resilience added

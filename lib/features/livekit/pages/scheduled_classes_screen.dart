@@ -326,7 +326,10 @@ class _ScheduledClassCard extends StatelessWidget {
               children: [
                 Icon(Icons.person, size: 14, color: Colors.grey.shade600),
                 const SizedBox(width: 4),
-                Text(scheduledClass.teacherName, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                Flexible(
+                  child: Text(scheduledClass.teacherName, style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
                 const SizedBox(width: 12),
                 Icon(Icons.access_time, size: 14, color: Colors.grey.shade600),
                 const SizedBox(width: 4),
@@ -342,7 +345,9 @@ class _ScheduledClassCard extends StatelessWidget {
             ),
             if (scheduledClass.subjectName != null || scheduledClass.className != null) ...[
               const SizedBox(height: 6),
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
                 children: [
                   if (scheduledClass.subjectName != null)
                     Container(
@@ -350,14 +355,12 @@ class _ScheduledClassCard extends StatelessWidget {
                       decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
                       child: Text(scheduledClass.subjectName!, style: TextStyle(fontSize: 10, color: Colors.blue.shade700)),
                     ),
-                  if (scheduledClass.className != null) ...[
-                    const SizedBox(width: 6),
+                  if (scheduledClass.className != null)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
                       child: Text(scheduledClass.className!, style: TextStyle(fontSize: 10, color: Colors.purple.shade700)),
                     ),
-                  ],
                 ],
               ),
             ],

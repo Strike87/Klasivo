@@ -343,6 +343,8 @@ class _RecentClassesList extends ConsumerWidget {
                     ? KlasivoColors.darkTextPrimary
                     : KlasivoColors.lightTextPrimary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
               '${classData.studentCount} students${classData.academicYear != null ? ' · ${classData.academicYear}' : ''}',
@@ -351,6 +353,8 @@ class _RecentClassesList extends ConsumerWidget {
                     ? KlasivoColors.darkTextTertiary
                     : KlasivoColors.lightTextTertiary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             trailing: Icon(
               Icons.chevron_right,
@@ -412,6 +416,8 @@ class _RecentStudentsList extends ConsumerWidget {
                     ? KlasivoColors.darkTextPrimary
                     : KlasivoColors.lightTextPrimary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
               '${student.studentCode}',

@@ -461,12 +461,15 @@ class _ParentResultsList extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (submittedAt != null)
-                      Text(
-                        dateFormat.format(submittedAt.toDate()),
-                        style: KlasivoTypography.caption.copyWith(
-                          color: isDark
-                              ? KlasivoColors.darkTextTertiary
-                              : KlasivoColors.lightTextTertiary,
+                      Flexible(
+                        child: Text(
+                          dateFormat.format(submittedAt.toDate()),
+                          style: KlasivoTypography.caption.copyWith(
+                            color: isDark
+                                ? KlasivoColors.darkTextTertiary
+                                : KlasivoColors.lightTextTertiary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     const SizedBox(width: KlasivoSpacing.sm),
