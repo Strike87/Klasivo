@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/sentry_service.dart';
 import '../domain/livekit_room_model.dart';
 import '../providers/livekit_providers.dart';
 import 'live_class_screen.dart';
@@ -118,13 +120,21 @@ class LiveClassLobbyScreen extends ConsumerWidget {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, st) {
       if (context.mounted) {
         Navigator.pop(context); // dismiss loading
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to join: $e')),
         );
       }
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_join_room');
+          scope.setTag('roomId', room.id);
+        },
+      );
     }
   }
 

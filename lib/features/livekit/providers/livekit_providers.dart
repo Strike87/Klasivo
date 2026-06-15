@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../../../core/services/sentry_service.dart';
 import '../../../core/services/service_providers.dart';
 import '../data/livekit_repository.dart';
 import '../domain/livekit_room_model.dart';
@@ -45,6 +47,13 @@ class LiveKitTokenNotifier extends StateNotifier<AsyncValue<String>> {
       return token;
     } catch (e, st) {
       state = AsyncError(e, st);
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_token_notifier');
+        },
+      );
       return null;
     }
   }

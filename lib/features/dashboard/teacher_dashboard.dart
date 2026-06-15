@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config/theme.dart';
+import '../../core/services/sentry_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/class_provider.dart';
 import '../../providers/student_provider.dart';
@@ -20,6 +21,13 @@ class TeacherDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Dashboard load performance tracing
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('teacher');
+    _dashboardSpan.startChild('provider_initialization');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _dashboardSpan.finish();
+    });
+
     final userName = ref.watch(userNameProvider);
     final totalClasses = ref.watch(totalClassesProvider);
     final totalStudents = ref.watch(totalStudentsProvider);

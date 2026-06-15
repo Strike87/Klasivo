@@ -105,6 +105,13 @@ export const scheduledClassReminder = onSchedule(
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`Failed to send reminder for class ${classId}: ${msg}`);
+            Sentry.captureException(err, {
+              tags: {
+                function: 'scheduledClassReminder',
+                step: 'send_reminder',
+                classId,
+              },
+            });
           }
         }
 

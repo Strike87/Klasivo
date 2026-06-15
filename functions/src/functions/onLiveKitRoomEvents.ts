@@ -311,6 +311,13 @@ export const onLiveKitRoomUpdated = onDocumentUpdated(
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`Failed to finalize attendance/analytics for room ${roomId}: ${msg}`);
+        Sentry.captureException(error, {
+          tags: {
+            function: 'onLiveKitRoomUpdated',
+            step: 'finalize_analytics',
+            roomId,
+          },
+        });
       }
     }
     }); // withIsolatedScope
@@ -368,5 +375,12 @@ async function _notifyRoomParticipants(
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`Failed to notify room participants: ${msg}`);
+    Sentry.captureException(error, {
+      tags: {
+        function: 'onLiveKitRoomUpdated',
+        step: 'notify_participants',
+        roomId,
+      },
+    });
   }
 }

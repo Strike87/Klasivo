@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../config/app_environment.dart';
 
 // ─── Sensitive Field Sanitization ─────────────────────────────────────────────
@@ -614,12 +615,14 @@ class KlasivoSentryGuard {
 ///   - build number (tag — set once at init)
 class SentryUserContext {
   /// Set user context after authentication.
+  /// Updates BOTH Sentry and Crashlytics for unified observability.
   static Future<void> setUser({
     required String uid,
     required String email,
     String? role,
     String? organizationId,
   }) async {
+    // ── Sentry ──
     await Sentry.configureScope((scope) {
       scope.setUser(SentryUser(
         id: uid,
@@ -632,6 +635,21 @@ class SentryUserContext {
         scope.setTag('organizationId', organizationId);
       }
     });
+
+    // ── Crashlytics ──
+    try {
+      final crashlytics = FirebaseCrashlytics.instance;
+      crashlytics.setUserIdentifier(uid);
+      if (role != null) {
+        crashlytics.setCustomKey('role', role);
+      }
+      if (organizationId != null && organizationId.isNotEmpty) {
+        crashlytics.setCustomKey('organizationId', organizationId);
+      }
+      crashlytics.setCustomKey('email', email);
+    } catch (_) {
+      // Crashlytics may not be initialized in dev — safe to ignore
+    }
   }
 
   /// Update role tag (e.g. after role assignment).
@@ -639,6 +657,9 @@ class SentryUserContext {
     await Sentry.configureScope((scope) {
       scope.setTag('role', role);
     });
+    try {
+      FirebaseCrashlytics.instance.setCustomKey('role', role);
+    } catch (_) {}
   }
 
   /// Update organization ID tag (e.g. after joining org or linking child).
@@ -646,6 +667,9 @@ class SentryUserContext {
     await Sentry.configureScope((scope) {
       scope.setTag('organizationId', orgId);
     });
+    try {
+      FirebaseCrashlytics.instance.setCustomKey('organizationId', orgId);
+    } catch (_) {}
   }
 
   /// Set app version and build number tags (called once at init).
@@ -657,15 +681,28 @@ class SentryUserContext {
       scope.setTag('app_version', version);
       scope.setTag('build_number', buildNumber);
     });
+    try {
+      final crashlytics = FirebaseCrashlytics.instance;
+      crashlytics.setCustomKey('app_version', version);
+      crashlytics.setCustomKey('build_number', buildNumber);
+    } catch (_) {}
   }
 
   /// Clear user context on logout.
+  /// Clears BOTH Sentry and Crashlytics to prevent stale attribution.
   static Future<void> clearUser() async {
     await Sentry.configureScope((scope) {
       scope.setUser(null);
       scope.removeTag('role');
       scope.removeTag('organizationId');
     });
+    try {
+      final crashlytics = FirebaseCrashlytics.instance;
+      crashlytics.setUserIdentifier('');
+      crashlytics.setCustomKey('role', '');
+      crashlytics.setCustomKey('organizationId', '');
+      crashlytics.setCustomKey('email', '');
+    } catch (_) {}
   }
 }
 

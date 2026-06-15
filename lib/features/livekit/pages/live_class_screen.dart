@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
+import '../../../core/services/sentry_service.dart';
 import '../domain/livekit_room_model.dart';
 import '../providers/livekit_providers.dart';
 
@@ -46,6 +48,7 @@ class _LiveClassScreenState extends ConsumerState<LiveClassScreen> {
   }
 
   Future<void> _connect() async {
+    final transaction = KlasivoSentry.transactions.liveKitRoomJoin();
     try {
       await _room.connect(widget.url, widget.token);
 
@@ -68,12 +71,34 @@ class _LiveClassScreenState extends ConsumerState<LiveClassScreen> {
       _room.addListener(_onRoomChanged);
 
       setState(() => _isConnected = true);
-    } catch (e) {
+
+      KlasivoSentry.breadcrumb.livekit('room_connected', data: {
+        'roomId': widget.room.id,
+        'isTeacher': widget.isTeacher,
+      });
+
+      transaction.status = const SpanStatus.ok();
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      KlasivoSentry.breadcrumb.livekit('room_connect_failed', data: {
+        'roomId': widget.room.id,
+      });
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_room_connect');
+          scope.setTag('roomId', widget.room.id);
+          scope.setTag('isTeacher', widget.isTeacher.toString());
+        },
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to connect: $e')),
         );
       }
+    } finally {
+      await transaction.finish();
     }
   }
 
@@ -82,6 +107,10 @@ class _LiveClassScreenState extends ConsumerState<LiveClassScreen> {
   }
 
   Future<void> _disconnect() async {
+    KlasivoSentry.breadcrumb.livekit('room_disconnect_started', data: {
+      'roomId': widget.room.id,
+    });
+
     // Mark attendance on leave
     final uid = _room.localParticipant?.identity ?? '';
     await ref.read(liveKitRepositoryProvider).markLeft(
@@ -90,6 +119,11 @@ class _LiveClassScreenState extends ConsumerState<LiveClassScreen> {
         );
 
     await _room.disconnect();
+
+    KlasivoSentry.breadcrumb.livekit('room_disconnect_success', data: {
+      'roomId': widget.room.id,
+    });
+
     if (mounted) Navigator.pop(context);
   }
 

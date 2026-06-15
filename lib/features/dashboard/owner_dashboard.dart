@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/feature_flag_service.dart';
+import '../../../core/services/sentry_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/organization_provider.dart';
 import '../../../providers/notification_provider.dart';
@@ -22,6 +24,13 @@ class OwnerDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Dashboard load performance tracing
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('owner');
+    _dashboardSpan.startChild('provider_initialization');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _dashboardSpan.finish();
+    });
+
     final userName = ref.watch(userNameProvider) ?? 'Owner';
     final orgAsync = ref.watch(currentOrganizationProvider);
     final unreadNotifs = ref.watch(unreadNotificationsProvider);

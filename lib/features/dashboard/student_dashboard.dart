@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/services/sentry_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/exam_provider.dart';
 import '../../providers/submission_provider.dart';
@@ -21,6 +22,13 @@ class StudentDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Dashboard load performance tracing
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('student');
+    _dashboardSpan.startChild('provider_initialization');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _dashboardSpan.finish();
+    });
+
     final userName = ref.watch(userNameProvider);
     final classId = ref.watch(studentClassIdProvider);
     final stats = ref.watch(studentExamStatsProvider);

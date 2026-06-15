@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../../../core/config/app_constants.dart';
+import '../../../core/services/sentry_service.dart';
 import 'domain/livekit_room_model.dart';
 import 'domain/livekit_chat_message.dart';
 import 'domain/livekit_raised_hand.dart';
@@ -18,6 +21,9 @@ import 'domain/session_analytics_model.dart';
 ///   - Raise-hand system (livekit_room_raised_hands sub-collection)
 ///   - Attendance tracking (livekit_room_attendance sub-collection)
 ///   - Session recording metadata
+///
+/// All operations are instrumented with Sentry breadcrumbs, transactions,
+/// and error capture for full observability.
 class LiveKitRepository {
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
@@ -38,27 +44,90 @@ class LiveKitRepository {
     required String roomId,
     String? displayName,
   }) async {
-    final callable = _functions.httpsCallable('generateLiveKitToken');
-    final result = await callable.call<Map<String, dynamic>>({
-      'roomId': roomId,
-      'displayName': displayName,
-    });
-    return result.data['token'] as String;
+    final transaction = KlasivoSentry.transactions.liveKitTokenGeneration();
+
+    try {
+      KlasivoSentry.breadcrumb.livekit('token_generation_started', data: {
+        'roomId': roomId,
+      });
+
+      final callable = _functions.httpsCallable('generateLiveKitToken');
+      final result = await callable.call<Map<String, dynamic>>({
+        'roomId': roomId,
+        'displayName': displayName,
+      });
+
+      KlasivoSentry.breadcrumb.livekit('token_generation_success', data: {
+        'roomId': roomId,
+      });
+
+      transaction.status = const SpanStatus.ok();
+      return result.data['token'] as String;
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      KlasivoSentry.breadcrumb.livekit('token_generation_failed', data: {
+        'roomId': roomId,
+        'error': e.toString().substring(0, (e.toString().length).clamp(0, 100)),
+      });
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_token_generation');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    } finally {
+      await transaction.finish();
+    }
   }
 
   // ─── Room CRUD ───────────────────────────────────────────────
 
   /// Create a new room document in Firestore.
   Future<String> createRoom(LiveKitRoom room) async {
-    final docRef = await _firestore.collection('livekit_rooms').add(room.toFirestore());
-    return docRef.id;
+    KlasivoSentry.breadcrumb.livekit('room_create_start', data: {
+      'roomName': room.name,
+    });
+    try {
+      final docRef = await _firestore.collection('livekit_rooms').add(room.toFirestore());
+      KlasivoSentry.breadcrumb.livekit('room_create_success', data: {
+        'roomId': docRef.id,
+      });
+      return docRef.id;
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'livekit_rooms');
+          scope.setTag('operation', 'create');
+          scope.setTag('flow', 'livekit');
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Get a room by ID.
   Future<LiveKitRoom?> getRoom(String roomId) async {
-    final doc = await _firestore.collection('livekit_rooms').doc(roomId).get();
-    if (!doc.exists) return null;
-    return LiveKitRoom.fromFirestore(doc.data()!, doc.id);
+    try {
+      final doc = await _firestore.collection('livekit_rooms').doc(roomId).get();
+      if (!doc.exists) return null;
+      return LiveKitRoom.fromFirestore(doc.data()!, doc.id);
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'livekit_rooms');
+          scope.setTag('operation', 'get');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Watch a room in real-time.
@@ -85,12 +154,50 @@ class LiveKitRepository {
   /// Update room status (e.g., mark as ended, start recording).
   Future<void> updateRoom(String roomId, Map<String, dynamic> updates) async {
     updates['updatedAt'] = DateTime.now().toIso8601String();
-    await _firestore.collection('livekit_rooms').doc(roomId).update(updates);
+    KlasivoSentry.breadcrumb.livekit('room_update_start', data: {
+      'roomId': roomId,
+    });
+    try {
+      await _firestore.collection('livekit_rooms').doc(roomId).update(updates);
+      KlasivoSentry.breadcrumb.livekit('room_update_success', data: {
+        'roomId': roomId,
+      });
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'livekit_rooms');
+          scope.setTag('operation', 'update');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Delete a room (owner only).
   Future<void> deleteRoom(String roomId) async {
-    await _firestore.collection('livekit_rooms').doc(roomId).delete();
+    KlasivoSentry.breadcrumb.livekit('room_delete_start', data: {
+      'roomId': roomId,
+    });
+    try {
+      await _firestore.collection('livekit_rooms').doc(roomId).delete();
+      KlasivoSentry.breadcrumb.livekit('room_delete_success', data: {
+        'roomId': roomId,
+      });
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'livekit_rooms');
+          scope.setTag('operation', 'delete');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   // ─── Attendance ──────────────────────────────────────────────
@@ -100,12 +207,30 @@ class LiveKitRepository {
     required String roomId,
     required LiveKitAttendance attendance,
   }) async {
-    await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('attendance')
-        .doc(attendance.uid)
-        .set(attendance.toFirestore(), SetOptions(merge: true));
+    KlasivoSentry.breadcrumb.livekit('attendance_mark_joined', data: {
+      'roomId': roomId,
+      'uid': attendance.uid,
+      'role': attendance.role,
+    });
+    try {
+      await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('attendance')
+          .doc(attendance.uid)
+          .set(attendance.toFirestore(), SetOptions(merge: true));
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_attendance');
+          scope.setTag('operation', 'mark_joined');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Mark a participant as left.
@@ -113,15 +238,32 @@ class LiveKitRepository {
     required String roomId,
     required String uid,
   }) async {
-    await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('attendance')
-        .doc(uid)
-        .update({
-      'leftAt': DateTime.now().toIso8601String(),
-      'updatedAt': DateTime.now().toIso8601String(),
+    KlasivoSentry.breadcrumb.livekit('attendance_mark_left', data: {
+      'roomId': roomId,
+      'uid': uid,
     });
+    try {
+      await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('attendance')
+          .doc(uid)
+          .update({
+        'leftAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_attendance');
+          scope.setTag('operation', 'mark_left');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Stream attendance for a room.
@@ -144,11 +286,23 @@ class LiveKitRepository {
     required String roomId,
     required LiveKitChatMessage message,
   }) async {
-    await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('messages')
-        .add(message.toFirestore());
+    try {
+      await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('messages')
+          .add(message.toFirestore());
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_chat');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Stream chat messages for a room (last 200).
@@ -172,12 +326,24 @@ class LiveKitRepository {
     required String roomId,
     required LiveKitRaisedHand hand,
   }) async {
-    await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('raised_hands')
-        .doc(hand.uid)
-        .set(hand.toFirestore(), SetOptions(merge: true));
+    try {
+      await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('raised_hands')
+          .doc(hand.uid)
+          .set(hand.toFirestore(), SetOptions(merge: true));
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_raise_hand');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Lower a specific raised hand (teacher action).
@@ -185,34 +351,58 @@ class LiveKitRepository {
     required String roomId,
     required String uid,
   }) async {
-    await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('raised_hands')
-        .doc(uid)
-        .update({
-      'isRaised': false,
-      'loweredAt': DateTime.now().toIso8601String(),
-    });
+    try {
+      await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('raised_hands')
+          .doc(uid)
+          .update({
+        'isRaised': false,
+        'loweredAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_lower_hand');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Lower all raised hands (teacher action).
   Future<void> lowerAllHands(String roomId) async {
-    final snapshot = await _firestore
-        .collection('livekit_rooms')
-        .doc(roomId)
-        .collection('raised_hands')
-        .where('isRaised', isEqualTo: true)
-        .get();
+    try {
+      final snapshot = await _firestore
+          .collection('livekit_rooms')
+          .doc(roomId)
+          .collection('raised_hands')
+          .where('isRaised', isEqualTo: true)
+          .get();
 
-    final batch = _firestore.batch();
-    for (final doc in snapshot.docs) {
-      batch.update(doc.reference, {
-        'isRaised': false,
-        'loweredAt': DateTime.now().toIso8601String(),
-      });
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {
+          'isRaised': false,
+          'loweredAt': DateTime.now().toIso8601String(),
+        });
+      }
+      await batch.commit();
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_lower_all_hands');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
     }
-    await batch.commit();
   }
 
   /// Stream raised hands for a room.
@@ -237,13 +427,35 @@ class LiveKitRepository {
     required String participantIdentity,
     required String roomId,
   }) async {
-    final callable = _functions.httpsCallable('removeParticipant');
-    final result = await callable.call<Map<String, dynamic>>({
+    KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_invoked', data: {
       'roomName': roomName,
-      'participantIdentity': participantIdentity,
       'roomId': roomId,
     });
-    return result.data['success'] as bool? ?? false;
+    try {
+      final callable = _functions.httpsCallable('removeParticipant');
+      final result = await callable.call<Map<String, dynamic>>({
+        'roomName': roomName,
+        'participantIdentity': participantIdentity,
+        'roomId': roomId,
+      });
+      KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_success', data: {
+        'roomId': roomId,
+      });
+      return result.data['success'] as bool? ?? false;
+    } catch (e, st) {
+      KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_failed', data: {
+        'roomId': roomId,
+      });
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('flow', 'livekit_remove_participant');
+          scope.setTag('roomId', roomId);
+        },
+      );
+      rethrow;
+    }
   }
 
   // ─── Recordings ─────────────────────────────────────────────
@@ -277,19 +489,55 @@ class LiveKitRepository {
 
   /// Create a scheduled class.
   Future<String> createScheduledClass(ScheduledClass scheduledClass) async {
-    final docRef = await _firestore.collection('scheduled_classes').add(scheduledClass.toFirestore());
-    return docRef.id;
+    try {
+      final docRef = await _firestore.collection('scheduled_classes').add(scheduledClass.toFirestore());
+      return docRef.id;
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'scheduled_classes');
+          scope.setTag('operation', 'create');
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Update a scheduled class.
   Future<void> updateScheduledClass(String classId, Map<String, dynamic> updates) async {
     updates['updatedAt'] = DateTime.now().toIso8601String();
-    await _firestore.collection('scheduled_classes').doc(classId).update(updates);
+    try {
+      await _firestore.collection('scheduled_classes').doc(classId).update(updates);
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'scheduled_classes');
+          scope.setTag('operation', 'update');
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Delete a scheduled class.
   Future<void> deleteScheduledClass(String classId) async {
-    await _firestore.collection('scheduled_classes').doc(classId).delete();
+    try {
+      await _firestore.collection('scheduled_classes').doc(classId).delete();
+    } catch (e, st) {
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('collection', 'scheduled_classes');
+          scope.setTag('operation', 'delete');
+        },
+      );
+      rethrow;
+    }
   }
 
   /// Watch upcoming classes for an organization.

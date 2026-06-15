@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
 import 'sentry_service.dart';
@@ -1317,17 +1318,21 @@ class AuthService {
   // ─── Logout ────────────────────────────────────────────────────────────────
 
   Future<void> logout() async {
+    final role = await _getCurrentRole();
+    final transaction = KlasivoSentry.transactions.logoutFlow(role);
     try {
       KlasivoSentry.breadcrumb.auth('logout_started');
 
       await GoogleSignIn().signOut();
       await FirebaseService.logout();
 
-      // Clear Sentry user context
+      // Clear Sentry + Crashlytics user context
       await KlasivoSentry.userContext.clearUser();
 
       KlasivoSentry.breadcrumb.auth('logout_success');
+      transaction.status = const SpanStatus.ok();
     } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
       await Sentry.captureException(
         e,
         stackTrace: st,
@@ -1336,6 +1341,18 @@ class AuthService {
         },
       );
       rethrow;
+    } finally {
+      await transaction.finish();
+    }
+  }
+
+  /// Get the current user's role from Firestore or Hive cache.
+  String _getCurrentRole() {
+    try {
+      final box = Hive.box(AppConstants.authBox);
+      return box.get('userRole', defaultValue: 'unknown') as String;
+    } catch (_) {
+      return 'unknown';
     }
   }
 
