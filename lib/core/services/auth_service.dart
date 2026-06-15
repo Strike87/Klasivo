@@ -79,7 +79,7 @@ class AuthService {
       final isEmailVerified = user.emailVerified;
 
       // ── Step 2: Create user document in Firestore ──────────────────────
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_2_USER_DOC_CREATE_START',
       ));
@@ -154,7 +154,7 @@ class AuthService {
       await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_2_USER_DOC_CREATE_SUCCESS');
 
       // ── Step 3: Create organization ────────────────────────────────────
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_3_ORG_CREATE_START',
       ));
@@ -196,7 +196,7 @@ class AuthService {
       await FirebaseCrashlytics.instance.setCustomKey('orgId', orgId);
 
       // ── Step 4: Patch user doc with real organizationId ────────────────
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_4_USER_PATCH_START',
       ));
@@ -350,7 +350,7 @@ class AuthService {
         step: 'STEP_WORKSPACE_SETUP_USER',
       );
 
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_WORKSPACE_SETUP_SUCCESS',
       ));
@@ -685,7 +685,7 @@ class AuthService {
       final isEmailVerified = user.emailVerified;
 
       // Create user document with teacher role
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_2_USER_DOC_CREATE_START',
       ));
@@ -871,7 +871,7 @@ class AuthService {
       final email = user.email ?? '';
       final isEmailVerified = user.emailVerified; // Google emails are pre-verified
 
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_2_USER_DOC_CREATE_START',
       ));
@@ -974,7 +974,7 @@ class AuthService {
       // Parents need to link a child after registration
       final isEmailVerified = user.emailVerified;
 
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_2_USER_DOC_CREATE_START',
       ));
@@ -1190,7 +1190,7 @@ createUserDocSpan.status = const SpanStatus.ok();
 
       if (role == AppConstants.roleOwner) {
         // Create user doc FIRST with placeholder orgId so isTeacherOrOwner() resolves
-        Sentry.addBreadcrumb(const Breadcrumb(
+        Sentry.addBreadcrumb(Breadcrumb(
           category: 'registration',
           message: 'STEP_2_USER_DOC_CREATE_START',
         ));
@@ -1254,7 +1254,7 @@ createUserDocSpan.status = const SpanStatus.ok();
         ));
 
         // Now create the organization — rules can verify user is an owner
-        Sentry.addBreadcrumb(const Breadcrumb(
+        Sentry.addBreadcrumb(Breadcrumb(
           category: 'registration',
           message: 'STEP_3_ORG_CREATE_START',
         ));
@@ -1293,7 +1293,7 @@ createUserDocSpan.status = const SpanStatus.ok();
         ));
 
         // Patch the user doc with the real organizationId
-        Sentry.addBreadcrumb(const Breadcrumb(
+        Sentry.addBreadcrumb(Breadcrumb(
           category: 'registration',
           message: 'STEP_4_USER_PATCH_START',
         ));

@@ -97,6 +97,7 @@ pubspec.lock
 
 # Cloud Functions
 functions/node_modules/
+functions/lib/
 functions/.runtimeconfig.json
 
 # ============================================================
@@ -111,3 +112,8 @@ Klasivo/
 klasivo/
 functions-js-backup/
 *.pyc
+tool-results/
+node_modules/
+bun.lock
+upload/
+package.json

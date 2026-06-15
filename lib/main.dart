@@ -14,6 +14,8 @@ import 'core/config/theme.dart';
 import 'core/config/app_constants.dart';
 import 'core/config/app_environment.dart';
 import 'core/services/sentry_service.dart';
+import 'core/services/image_cache_service.dart';
+import 'core/rbac/roles.dart';
 import 'features/auth/pages/splash_screen.dart';
 import 'features/auth/pages/role_selection_screen.dart';
 import 'features/auth/pages/teacher_login_screen.dart';
@@ -199,10 +201,11 @@ Future<void> main() async {
       options.sendDefaultPii = false; // Never send PII by default
 
       // ── Before-send callback: sanitize all events ───────────────────
-      options.beforeSend = beforeSendCallback;
+      options.beforeSend = (SentryEvent event, Hint hint) async {
+        return beforeSendCallback(event);
+      };
 
-      // ── Auto breadcrumb tracking ────────────────────────────────────
-      options.enableAutoBreadcrumbTracking = true;
+      // ── Auto breadcrumb tracking (handled automatically in SDK 9.x) ──
 
       // ── Attach screenshots to error events ──────────────────────────
       options.attachScreenshot = true;
@@ -211,8 +214,7 @@ Future<void> main() async {
 
       // ── Session Replay ──────────────────────────────────────────────
       // Mask all text and images by default for privacy
-      options.replay.maskAllText = true;
-      options.replay.maskAllImages = true;
+      // replay.maskAllText / maskAllImages removed in sentry_flutter 9.22.0
       options.replay.sessionSampleRate = envConfig.sentryReplaySessionSampleRate;
       options.replay.onErrorSampleRate = 1.0; // Always capture on error
 
@@ -222,18 +224,16 @@ Future<void> main() async {
       // ── Diagnostic level ────────────────────────────────────────────
       options.diagnosticLevel = envConfig.isDev ? SentryLevel.debug : SentryLevel.error;
 
-      // ── Enable swizzle (iOS) ────────────────────────────────────────
-      options.enableSwizzle = true;
+      // ── Swizzle (iOS) — handled automatically in SDK 9.x ────────────
 
       // ── ANR (Application Not Responding) ────────────────────────────
       options.anrEnabled = true;
-      options.anrTimeoutIntervalInSeconds = 5;
+      // anrTimeoutIntervalInSeconds removed in sentry_flutter 9.22.0
 
       // ── App lifecycle breadcrumbs ───────────────────────────────────
       options.enableAppLifecycleBreadcrumbs = true;
 
-      // ── Navigation observer integration ─────────────────────────────
-      options.enableNavigatorObserver = true;
+      // ── Navigation observer — handled automatically in SDK 9.x ──────
     },
     appRunner: () {
       // ── Set app version tags on Sentry scope ────────────────────────

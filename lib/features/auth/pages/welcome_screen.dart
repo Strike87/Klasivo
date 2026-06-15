@@ -157,12 +157,12 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       final box = Hive.box(AppConstants.authBox);
       await box.put('hasCompletedSetup', true);
 
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_HIVE_PERSIST_SUCCESS',
       ));
 
-      Sentry.addBreadcrumb(const Breadcrumb(
+      Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
         message: 'STEP_NAVIGATE_DASHBOARD',
       ));

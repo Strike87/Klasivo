@@ -637,9 +637,31 @@ class KlasivoSentryGuard {
 ///   - app version (tag — set once at init)
 ///   - build number (tag — set once at init)
 class SentryUserContext {
+  // ─── Instance methods (delegate to static) ────────────────────────────
+  // These allow callers to use: KlasivoSentry.userContext.setUser(...)
+  // The KlasivoSentry facade exposes these classes as singletons.
+
+  Future<void> setUser({
+    required String uid,
+    required String email,
+    String? role,
+    String? organizationId,
+  }) => SentryUserContext._setUser(
+    uid: uid, email: email, role: role, organizationId: organizationId,
+  );
+
+  Future<void> setRole(String role) => SentryUserContext._setRole(role);
+
+  Future<void> setOrganizationId(String orgId) =>
+      SentryUserContext._setOrganizationId(orgId);
+
+  Future<void> clearUser() => SentryUserContext._clearUser();
+
+  // ─── Static implementation ────────────────────────────────────────────
+
   /// Set user context after authentication.
   /// Updates BOTH Sentry and Crashlytics for unified observability.
-  static Future<void> setUser({
+  static Future<void> _setUser({
     required String uid,
     required String email,
     String? role,
@@ -676,7 +698,7 @@ class SentryUserContext {
   }
 
   /// Update role tag (e.g. after role assignment).
-  static Future<void> setRole(String role) async {
+  static Future<void> _setRole(String role) async {
     await Sentry.configureScope((scope) {
       scope.setTag('role', role);
     });
@@ -686,7 +708,7 @@ class SentryUserContext {
   }
 
   /// Update organization ID tag (e.g. after joining org or linking child).
-  static Future<void> setOrganizationId(String orgId) async {
+  static Future<void> _setOrganizationId(String orgId) async {
     await Sentry.configureScope((scope) {
       scope.setTag('organizationId', orgId);
     });
@@ -713,7 +735,7 @@ class SentryUserContext {
 
   /// Clear user context on logout.
   /// Clears BOTH Sentry and Crashlytics to prevent stale attribution.
-  static Future<void> clearUser() async {
+  static Future<void> _clearUser() async {
     await Sentry.configureScope((scope) {
       scope.setUser(null);
       scope.removeTag('role');
@@ -733,6 +755,28 @@ class SentryUserContext {
 
 /// Factory methods for common Sentry transactions.
 class SentryTransactions {
+  // ─── Instance methods (delegate to static) ────────────────────────────
+  // These allow callers to use: KlasivoSentry.transactions.loginFlow(...)
+
+  ISentrySpan dashboardLoad(String role) =>
+      SentryTransactions._dashboardLoad(role);
+  ISentrySpan loginFlow(String role) =>
+      SentryTransactions._loginFlow(role);
+  ISentrySpan logoutFlow(String role) =>
+      SentryTransactions._logoutFlow(role);
+  ISentrySpan passwordReset() =>
+      SentryTransactions._passwordReset();
+  ISentrySpan studentEnrollment() =>
+      SentryTransactions._studentEnrollment();
+  ISentrySpan googleSignIn(String role, {bool isNewUser = false}) =>
+      SentryTransactions._googleSignIn(role, isNewUser: isNewUser);
+  ISentrySpan liveKitTokenGeneration() =>
+      SentryTransactions._liveKitTokenGeneration();
+  ISentrySpan liveKitRoomJoin() =>
+      SentryTransactions._liveKitRoomJoin();
+
+  // ─── Static implementation ────────────────────────────────────────────
+
   // Registration flows
   static ISentrySpan ownerRegistration() =>
       Sentry.startTransaction('owner_registration', 'registration');
@@ -740,32 +784,32 @@ class SentryTransactions {
       Sentry.startTransaction('teacher_registration', 'registration');
   static ISentrySpan parentRegistration() =>
       Sentry.startTransaction('parent_registration', 'registration');
-  static ISentrySpan studentEnrollment() =>
+  static ISentrySpan _studentEnrollment() =>
       Sentry.startTransaction('student_enrollment', 'registration');
 
   // Auth flows
-  static ISentrySpan loginFlow(String role) =>
+  static ISentrySpan _loginFlow(String role) =>
       Sentry.startTransaction('${role}_login', 'auth');
-  static ISentrySpan logoutFlow(String role) =>
+  static ISentrySpan _logoutFlow(String role) =>
       Sentry.startTransaction('${role}_logout', 'auth');
-  static ISentrySpan passwordReset() =>
+  static ISentrySpan _passwordReset() =>
       Sentry.startTransaction('password_reset', 'auth');
 
   // Google Sign-In
-  static ISentrySpan googleSignIn(String role, {bool isNewUser = false}) =>
+  static ISentrySpan _googleSignIn(String role, {bool isNewUser = false}) =>
       Sentry.startTransaction(
         '${role}_google_${isNewUser ? 'registration' : 'login'}',
         'auth',
       );
 
   // LiveKit
-  static ISentrySpan liveKitTokenGeneration() =>
+  static ISentrySpan _liveKitTokenGeneration() =>
       Sentry.startTransaction('livekit_token_generation', 'livekit');
-  static ISentrySpan liveKitRoomJoin() =>
+  static ISentrySpan _liveKitRoomJoin() =>
       Sentry.startTransaction('livekit_room_join', 'livekit');
 
   // Dashboard
-  static ISentrySpan dashboardLoad(String role) =>
+  static ISentrySpan _dashboardLoad(String role) =>
       Sentry.startTransaction('${role}_dashboard_load', 'ui');
 }
 
@@ -792,8 +836,28 @@ class SentryTransactions {
 ///   2. Security rule `request.auth.uid == userId` ALWAYS FAILS
 ///   3. QR enrollment is 100% broken in production
 class SentryDocIdAudit {
+  // ─── Instance methods (delegate to static) ────────────────────────────
+  // These allow callers to use: KlasivoSentry.docIdAudit.logUserCreation(...)
+
+  void logUserCreation({
+    required String flow,
+    required String collection,
+    required String docIdStrategy,
+    required String actualDocId,
+    String? authUid,
+  }) =>
+      SentryDocIdAudit._logUserCreation(
+        flow: flow,
+        collection: collection,
+        docIdStrategy: docIdStrategy,
+        actualDocId: actualDocId,
+        authUid: authUid,
+      );
+
+  // ─── Static implementation ────────────────────────────────────────────
+
   /// Log a doc ID audit breadcrumb for any user creation path.
-  static void logUserCreation({
+  static void _logUserCreation({
     required String flow,
     required String collection,
     required String docIdStrategy, // 'uid' or 'auto_id'
