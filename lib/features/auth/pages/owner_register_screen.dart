@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sentry_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
@@ -63,6 +65,16 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner registration (email) failed');
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('screen', 'owner_register');
+          scope.setTag('flow', 'owner_registration');
+          scope.setTag('method', 'email');
+          scope.setTag('step', 'UI_REGISTER_CATCH');
+        },
+      );
       ref.read(authErrorProvider.notifier).state =
           e.toString().replaceAll('Exception: ', '');
     } finally {
@@ -99,6 +111,16 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner registration (Google) failed');
+      await Sentry.captureException(
+        e,
+        stackTrace: st,
+        withScope: (scope) {
+          scope.setTag('screen', 'owner_register');
+          scope.setTag('flow', 'owner_registration');
+          scope.setTag('method', 'google');
+          scope.setTag('step', 'UI_REGISTER_GOOGLE_CATCH');
+        },
+      );
       ref.read(authErrorProvider.notifier).state =
           e.toString().replaceAll('Exception: ', '');
     } finally {

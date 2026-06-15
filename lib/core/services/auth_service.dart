@@ -95,6 +95,27 @@ class AuthService {
           step: 'STEP_2_USER_DOC_CREATE',
         );
 
+        // Read-back verification: confirm the document actually exists in Firestore.
+        // This detects silent write failures caused by network partitions,
+        // Firestore eventual consistency issues, or security rule misconfigurations
+        // that allow the SDK to resolve the Future without error but never persist.
+        final verifyDoc = await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .get();
+        if (!verifyDoc.exists) {
+          await Sentry.captureMessage(
+            'STEP_2 USER DOC SET SUCCEEDED BUT READ-BACK FAILED — doc users/${user.uid} does not exist after .set()',
+            level: SentryLevel.error,
+          );
+        } else {
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'registration',
+            message: 'STEP_2_USER_DOC_READBACK_VERIFIED',
+            data: {'uid': user.uid, 'docExists': true},
+          ));
+        }
+
         // Doc ID audit trail
         KlasivoSentry.docIdAudit.logUserCreation(
           flow: 'owner_registration',
@@ -771,35 +792,36 @@ class AuthService {
       ));
 
       try {
-        await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .set({
-          'organizationId': organizationId,
-          'role': AppConstants.roleTeacher,
-          'authProvider': AuthProviders.google,
-          'fullName': fullName,
-          'email': email,
-          'photoUrl': user.photoURL,
-          'phoneNumber': null,
-          'isActive': true,
-          'isEmailVerified': isEmailVerified,
-          'hasCompletedSetup': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      } catch (e, st) {
-        await Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('collection', 'users');
-            scope.setTag('operation', 'set');
-            scope.setTag('documentId', user.uid);
-            scope.setTag('flow', 'teacher_google_registration');
-            scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
+        await SentryFirestoreHelper.docSet(
+          collection: AppConstants.usersCollection,
+          docId: user.uid,
+          data: {
+            'organizationId': organizationId,
+            'role': AppConstants.roleTeacher,
+            'authProvider': AuthProviders.google,
+            'fullName': fullName,
+            'email': email,
+            'photoUrl': user.photoURL,
+            'phoneNumber': null,
+            'isActive': true,
+            'isEmailVerified': isEmailVerified,
+            'hasCompletedSetup': true,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
           },
+          flow: 'teacher_google_registration',
+          step: 'STEP_2_USER_DOC_CREATE',
         );
+
+        KlasivoSentry.docIdAudit.logUserCreation(
+          flow: 'teacher_google_registration',
+          collection: AppConstants.usersCollection,
+          docIdStrategy: 'uid',
+          actualDocId: user.uid,
+          authUid: user.uid,
+        );
+      } catch (e, st) {
+        // SentryFirestoreHelper already captured — just rethrow
         rethrow;
       }
 
@@ -1059,37 +1081,50 @@ class AuthService {
         final createUserDocSpan = transaction.startChild('create_user_doc');
 
         try {
-          await _firestore
+          await SentryFirestoreHelper.docSet(
+            collection: AppConstants.usersCollection,
+            docId: user.uid,
+            data: {
+              'organizationId': '', // Placeholder — updated below
+              'role': AppConstants.roleOwner,
+              'authProvider': AuthProviders.google,
+              'fullName': fullName,
+              'email': email,
+              'photoUrl': user.photoURL,
+              'phoneNumber': null,
+              'isActive': true,
+              'isEmailVerified': isEmailVerified,
+              'hasCompletedSetup': false,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            flow: flowName,
+            step: 'STEP_2_USER_DOC_CREATE',
+          );
+
+          // Read-back verification: confirm the document actually exists
+          final verifyDoc = await _firestore
               .collection(AppConstants.usersCollection)
               .doc(user.uid)
-              .set({
-            'organizationId': '', // Placeholder — updated below
-            'role': AppConstants.roleOwner,
-            'authProvider': AuthProviders.google,
-            'fullName': fullName,
-            'email': email,
-            'photoUrl': user.photoURL,
-            'phoneNumber': null,
-            'isActive': true,
-            'isEmailVerified': isEmailVerified,
-            'hasCompletedSetup': false,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+              .get();
+          if (!verifyDoc.exists) {
+            await Sentry.captureMessage(
+              'STEP_2 USER DOC SET SUCCEEDED BUT READ-BACK FAILED — doc users/${user.uid} does not exist',
+              level: SentryLevel.error,
+            );
+          }
+
+          KlasivoSentry.docIdAudit.logUserCreation(
+            flow: flowName,
+            collection: AppConstants.usersCollection,
+            docIdStrategy: 'uid',
+            actualDocId: user.uid,
+            authUid: user.uid,
+          );
+
           createUserDocSpan.status = const SpanStatus.ok();
         } catch (e, st) {
           createUserDocSpan.status = const SpanStatus.internalError();
-          await Sentry.captureException(
-            e,
-            stackTrace: st,
-            withScope: (scope) {
-              scope.setTag('collection', 'users');
-              scope.setTag('operation', 'set');
-              scope.setTag('documentId', user.uid);
-              scope.setTag('flow', flowName);
-              scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
-            },
-          );
           rethrow;
         } finally {
           await createUserDocSpan.finish();
@@ -1148,27 +1183,19 @@ class AuthService {
 
         final patchSpan = transaction.startChild('update_user_doc');
         try {
-          await _firestore
-              .collection(AppConstants.usersCollection)
-              .doc(user.uid)
-              .update({
-            'organizationId': organizationId,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+          await SentryFirestoreHelper.docUpdate(
+            collection: AppConstants.usersCollection,
+            docId: user.uid,
+            data: {
+              'organizationId': organizationId,
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            flow: flowName,
+            step: 'STEP_4_USER_PATCH',
+          );
           patchSpan.status = const SpanStatus.ok();
         } catch (e, st) {
           patchSpan.status = const SpanStatus.internalError();
-          await Sentry.captureException(
-            e,
-            stackTrace: st,
-            withScope: (scope) {
-              scope.setTag('collection', 'users');
-              scope.setTag('operation', 'update');
-              scope.setTag('documentId', user.uid);
-              scope.setTag('flow', flowName);
-              scope.setTag('step', 'STEP_4_USER_PATCH');
-            },
-          );
           rethrow;
         } finally {
           await patchSpan.finish();
@@ -1195,35 +1222,47 @@ class AuthService {
         ));
 
         try {
-          await _firestore
+          await SentryFirestoreHelper.docSet(
+            collection: AppConstants.usersCollection,
+            docId: user.uid,
+            data: {
+              'organizationId': organizationId,
+              'role': role,
+              'authProvider': AuthProviders.google,
+              'fullName': fullName,
+              'email': email,
+              'photoUrl': user.photoURL,
+              'phoneNumber': null,
+              'isActive': true,
+              'isEmailVerified': isEmailVerified,
+              'hasCompletedSetup': hasCompletedSetup,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            flow: flowName,
+            step: 'STEP_2_USER_DOC_CREATE',
+          );
+
+          // Read-back verification: confirm the document actually exists
+          final verifyDoc = await _firestore
               .collection(AppConstants.usersCollection)
               .doc(user.uid)
-              .set({
-            'organizationId': organizationId,
-            'role': role,
-            'authProvider': AuthProviders.google,
-            'fullName': fullName,
-            'email': email,
-            'photoUrl': user.photoURL,
-            'phoneNumber': null,
-            'isActive': true,
-            'isEmailVerified': isEmailVerified,
-            'hasCompletedSetup': hasCompletedSetup,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        } catch (e, st) {
-          await Sentry.captureException(
-            e,
-            stackTrace: st,
-            withScope: (scope) {
-              scope.setTag('collection', 'users');
-              scope.setTag('operation', 'set');
-              scope.setTag('documentId', user.uid);
-              scope.setTag('flow', flowName);
-              scope.setTag('step', 'STEP_2_USER_DOC_CREATE');
-            },
+              .get();
+          if (!verifyDoc.exists) {
+            await Sentry.captureMessage(
+              'STEP_2 USER DOC SET SUCCEEDED BUT READ-BACK FAILED — doc users/${user.uid} does not exist (role=$role)',
+              level: SentryLevel.error,
+            );
+          }
+
+          KlasivoSentry.docIdAudit.logUserCreation(
+            flow: flowName,
+            collection: AppConstants.usersCollection,
+            docIdStrategy: 'uid',
+            actualDocId: user.uid,
+            authUid: user.uid,
           );
+        } catch (e, st) {
           rethrow;
         }
       }

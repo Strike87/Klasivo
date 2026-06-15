@@ -31,6 +31,32 @@ export const onUserCreated = functions
 
     try {
       const userDoc = await db.collection('users').doc(uid).get();
+
+      // Verification breadcrumb: log whether the user doc exists.
+      // If it doesn't exist, the Auth trigger fired before the client's
+      // Firestore .set() completed (or it was blocked by rules).
+      Sentry.addBreadcrumb({
+        category: 'firestore',
+        message: 'onUserCreated_user_doc_readback',
+        data: {
+          uid,
+          userDocExists: userDoc.exists,
+          userDocRole: userDoc.exists ? (userDoc.data()?.['role'] ?? 'null') : 'N/A',
+          userDocOrgId: userDoc.exists ? (userDoc.data()?.['organizationId'] ?? 'N/A') : 'N/A',
+        },
+        level: 'info',
+      });
+
+      if (!userDoc.exists) {
+        // Log at warning level — this may indicate a race condition
+        // where the auth trigger fires before the client writes the user doc,
+        // OR it may indicate the client's .set() was blocked by security rules.
+        Sentry.captureMessage(
+          `onUserCreated: users/${uid} does NOT exist in Firestore — auth account may be orphaned`,
+          { level: 'warning' },
+        );
+      }
+
       const role = userDoc.exists
         ? (userDoc.data()?.['role'] as string | undefined) ?? 'teacher'
         : 'teacher';

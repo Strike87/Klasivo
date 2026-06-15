@@ -53,16 +53,19 @@ class QREnrollmentService {
 
   /// Enroll a student into a class via QR code data
   /// Creates a new student record with auto-generated code and default password
-  /// Returns the new student document ID
   ///
-  /// WARNING: This method uses `.doc()` (auto-generated ID) instead of
-  /// `.doc(user.uid)`. The Firestore security rule requires
-  /// `request.auth.uid == userId`, which means auto-ID docs will ALWAYS
-  /// be blocked. QR enrollment is currently broken in production.
+  /// IMPORTANT: This method now requires [authUid] — the Firebase Auth UID
+  /// of the newly-created student account. The Firestore document uses
+  /// `.doc(authUid)` so that security rules (`request.auth.uid == userId`)
+  /// can verify the write. Previously used `.doc()` (auto-ID) which was
+  /// always blocked by security rules.
+  ///
+  /// Returns the new student document ID (same as authUid).
   Future<String> enrollViaQR({
     required Map<String, dynamic> qrData,
     required String fullName,
     required String password,
+    required String authUid,
     String Function(String)? hashPassword,
   }) async {
     final transaction = KlasivoSentry.transactions.studentEnrollment();
@@ -72,6 +75,7 @@ class QREnrollmentService {
         'classId': qrData['classId'],
         'teacherId': qrData['teacherId'],
         'fullName': fullName,
+        'authUid': authUid,
       });
 
       final classId = qrData['classId'] as String;
@@ -93,44 +97,50 @@ class QREnrollmentService {
       final studentCode = await _generateStudentCode(teacherId);
 
       // Create student document (students ARE users — stored in usersCollection)
-      // BUG: Uses auto-ID instead of user.uid — blocked by security rules
-      final docRef = _firestore.collection(AppConstants.usersCollection).doc();
+      // FIXED: Uses authUid instead of auto-ID so security rules pass
+      final docId = authUid;
 
       KlasivoSentry.breadcrumb.firestore(
         'create',
         collection: AppConstants.usersCollection,
-        docId: docRef.id,
+        docId: docId,
         data: {
           'flow': 'qr_enrollment',
-          'docIdStrategy': 'auto_id',
-          'WARNING': 'auto_id will be blocked by security rules',
+          'docIdStrategy': 'uid',
         },
       );
 
-      // Log the doc ID audit trail — this is a known broken path
+      // Log the doc ID audit trail
       KlasivoSentry.docIdAudit.logUserCreation(
         flow: 'qr_enrollment',
         collection: AppConstants.usersCollection,
-        docIdStrategy: 'auto_id',
-        actualDocId: docRef.id,
+        docIdStrategy: 'uid',
+        actualDocId: docId,
+        authUid: authUid,
       );
 
-      await docRef.set({
-        'organizationId': organizationId,
-        'role': AppConstants.roleStudent,
-        'id': docRef.id,
-        'teacherId': teacherId,
-        'classId': classId,
-        'className': className,
-        'fullName': fullName,
-        'studentCode': studentCode,
-        'passwordHash': hashPassword != null ? hashPassword(password) : password,
-        'grade': grade,
-        'enrolledVia': 'qr',
-        'isActive': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await SentryFirestoreHelper.docSet(
+        collection: AppConstants.usersCollection,
+        docId: docId,
+        data: {
+          'organizationId': organizationId,
+          'role': AppConstants.roleStudent,
+          'id': docId,
+          'teacherId': teacherId,
+          'classId': classId,
+          'className': className,
+          'fullName': fullName,
+          'studentCode': studentCode,
+          'passwordHash': hashPassword != null ? hashPassword(password) : password,
+          'grade': grade,
+          'enrolledVia': 'qr',
+          'isActive': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        flow: 'qr_enrollment',
+        step: 'USER_DOC_CREATE',
+      );
 
       // Update class student count
       final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
@@ -139,14 +149,14 @@ class QREnrollmentService {
       });
 
       KlasivoSentry.breadcrumb.registration('qr_enrollment_success', data: {
-        'docId': docRef.id,
+        'docId': docId,
         'studentCode': studentCode,
         'classId': classId,
       });
 
       transaction.status = const SpanStatus.ok();
 
-      return docRef.id;
+      return docId;
     } catch (e, st) {
       transaction.status = const SpanStatus.internalError();
       await Sentry.captureException(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/config/theme.dart';
@@ -73,6 +75,46 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
           'Welcome screen: providers returned null/empty ($detail)',
           level: SentryLevel.warning,
         );
+
+        // Firestore read-back: check if the user document actually exists.
+        // This distinguishes "doc was never created" from "doc exists but provider
+        // doesn't have it" — critical for diagnosing the registration incident.
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          try {
+            final userDoc = await FirebaseFirestore.instance
+                .collection(AppConstants.usersCollection)
+                .doc(currentUser.uid)
+                .get();
+            Sentry.addBreadcrumb(Breadcrumb(
+              category: 'registration',
+              message: 'STEP_WELCOME_FIRESTORE_READBACK',
+              data: {
+                'authUid': currentUser.uid,
+                'userDocExists': userDoc.exists,
+                'userDocOrgId': userDoc.exists ? (userDoc.data()?['organizationId'] ?? 'null') : 'N/A',
+                'userDocRole': userDoc.exists ? (userDoc.data()?['role'] ?? 'null') : 'N/A',
+                'userDocHasCompletedSetup': userDoc.exists ? (userDoc.data()?['hasCompletedSetup']?.toString() ?? 'null') : 'N/A',
+              },
+            ));
+            if (!userDoc.exists) {
+              await Sentry.captureMessage(
+                'REGISTRATION INCIDENT: users/${currentUser.uid} does NOT exist in Firestore — auth account is orphaned',
+                level: SentryLevel.error,
+              );
+            }
+          } catch (e, st) {
+            await Sentry.captureException(
+              e,
+              stackTrace: st,
+              withScope: (scope) {
+                scope.setTag('screen', 'welcome');
+                scope.setTag('step', 'FIRESTORE_READBACK');
+                scope.setTag('authUid', currentUser.uid);
+              },
+            );
+          }
+        }
 
         // Providers may be stale — read directly from Hive as fallback
         final box = Hive.box(AppConstants.authBox);

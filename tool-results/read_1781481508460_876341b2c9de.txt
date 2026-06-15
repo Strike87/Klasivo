@@ -1,0 +1,252 @@
+     1→/home/z/my-project/worklog.md:4:Task: Complete 14-phase production Sentry integration for Klasivo
+     2→/home/z/my-project/worklog.md:7:- Phase 1: Audited existing Sentry integration across 12+ files
+     3→/home/z/my-project/worklog.md:8:- Phase 2: Added SentryRiverpodObserver and SentryNavigationObserver to main.dart
+     4→/home/z/my-project/worklog.md:9:- Phase 3: Refactored auth_service.dart (registerOwner, registerTeacherWithInvite, registerParent, completeOwnerSetup) to use SentryFirestoreHelper + doc ID audit
+     5→/home/z/my-project/worklog.md:10:- Phase 4: Consolidated sanitization by adding KlasivoSentrySanitizer to sentry_service.dart, removed duplicate _SentrySanitizer from main.dart
+     6→/home/z/my-project/worklog.md:12:- Phase 6: Added sentryDsn, sentryTracesSampleRate, sentryProfilesSampleRate, sentryReplaySessionSampleRate to EnvironmentConfig
+     7→/home/z/my-project/worklog.md:13:- Phase 7: Added Sentry.captureException to 8 Cloud Functions, added scope.setUser to 8 Cloud Functions
+     8→/home/z/my-project/worklog.md:14:- Phase 8: Added SentryNavigationObserver to GoRouter with push/pop/replace breadcrumbs
+     9→/home/z/my-project/worklog.md:15:- Phase 9: Generated audit report PDF (klasivo_sentry_audit_report.pdf) and architecture diagram (klasivo_sentry_architecture.png)
+    10→/home/z/my-project/worklog.md:21:- All 14 Cloud Functions now have initSentry + withIsolatedScope + captureException + setUser
+    11→/home/z/my-project/worklog.md:22:- All auth flows use SentryFirestoreHelper for consistent Firestore observability
+    12→/home/z/my-project/worklog.md:24:- Deliverables: klasivo_sentry_audit_report.pdf, klasivo_sentry_architecture.png
+    13→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:2:     2→// KLASIVO — Centralized Sentry Observability Service
+    14→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:15:    15→//   import 'package:klasivo/core/services/sentry_service.dart';
+    15→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:16:    16→//   await KlasivoSentry.breadcrumb.auth('login_started');
+    16→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:17:    17→//   await KlasivoSentry.runGuarded('create_exam', () => examService.create(...));
+    17→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:21:    21→import 'package:sentry_flutter/sentry_flutter.dart';
+    18→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:27:    27→/// Keys that must NEVER be sent to Sentry in any breadcrumb, tag, or extra.
+    19→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:88:    88→/// Standardized breadcrumb categories for consistent filtering in Sentry.
+    20→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:89:    89→class SentryCategories {
+    21→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:104:   104→/// Fluent API for creating standardized Sentry breadcrumbs.
+    22→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:107:   107→///   KlasivoSentry.breadcrumb.auth('login_started', data: {'email': email});
+    23→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:108:   108→///   KlasivoSentry.breadcrumb.firestore('create', collection: 'users', docId: uid);
+    24→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:109:   109→class SentryBreadcrumbBuilder {
+    25→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:112:   112→    Sentry.addBreadcrumb(Breadcrumb(
+    26→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:113:   113→      category: SentryCategories.auth,
+    27→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:116:   116→      level: SentryLevel.info,
+    28→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:122:   122→    Sentry.addBreadcrumb(Breadcrumb(
+    29→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:123:   123→      category: SentryCategories.registration,
+    30→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:126:   126→      level: SentryLevel.info,
+    31→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:137:   137→    Sentry.addBreadcrumb(Breadcrumb(
+    32→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:138:   138→      category: SentryCategories.firestore,
+    33→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:146:   146→      level: SentryLevel.info,
+    34→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:156:   156→    Sentry.addBreadcrumb(Breadcrumb(
+    35→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:157:   157→      category: SentryCategories.cloudFunction,
+    36→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:164:   164→      level: status == 'failed' ? SentryLevel.error : SentryLevel.info,
+    37→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:174:   174→    Sentry.addBreadcrumb(Breadcrumb(
+    38→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:175:   175→      category: SentryCategories.navigation,
+    39→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:182:   182→      level: SentryLevel.info,
+    40→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:191:   191→    Sentry.addBreadcrumb(Breadcrumb(
+    41→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:192:   192→      category: SentryCategories.livekit,
+    42→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:195:   195→      level: SentryLevel.info,
+    43→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:204:   204→    Sentry.addBreadcrumb(Breadcrumb(
+    44→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:205:   205→      category: SentryCategories.hive,
+    45→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:208:   208→      level: SentryLevel.info,
+    46→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:217:   217→    Sentry.addBreadcrumb(Breadcrumb(
+    47→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:218:   218→      category: SentryCategories.riverpod,
+    48→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:221:   221→      level: SentryLevel.info,
+    49→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:230:   230→    Sentry.addBreadcrumb(Breadcrumb(
+    50→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:231:   231→      category: SentryCategories.sync,
+    51→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:234:   234→      level: SentryLevel.info,
+    52→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:243:   243→    Sentry.addBreadcrumb(Breadcrumb(
+    53→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:244:   244→      category: SentryCategories.notification,
+    54→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:247:   247→      level: SentryLevel.info,
+    55→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:254:   254→/// Wraps Firestore operations with automatic Sentry breadcrumbs, exception
+    56→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:258:   258→///   1. Reach Sentry
+    57→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:263:   263→class SentryFirestoreHelper {
+    58→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:276:   276→    KlasivoSentry.breadcrumb.firestore(
+    59→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:285:   285→      KlasivoSentry.breadcrumb.firestore(
+    60→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:314:   314→    KlasivoSentry.breadcrumb.firestore(
+    61→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:323:   323→      KlasivoSentry.breadcrumb.firestore(
+    62→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:350:   350→    KlasivoSentry.breadcrumb.firestore(
+    63→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:359:   359→      KlasivoSentry.breadcrumb.firestore(
+    64→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:386:   386→    KlasivoSentry.breadcrumb.firestore(
+    65→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:394:   394→      KlasivoSentry.breadcrumb.firestore(
+    66→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:421:   421→    KlasivoSentry.breadcrumb.firestore(
+    67→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:432:   432→      KlasivoSentry.breadcrumb.firestore(
+    68→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:467:   467→    await Sentry.captureException(
+    69→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:478:   478→        // Attach user role and org from current Sentry context
+    70→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:494:   494→/// Runs an async operation with automatic Sentry breadcrumb, exception capture,
+    71→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:499:   499→///   final result = await KlasivoSentry.runGuarded(
+    72→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:504:   504→class KlasivoSentryGuard {
+    73→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:505:   505→  /// Execute [operation] inside a Sentry-guarded wrapper.
+    74→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:522:   522→    Sentry.addBreadcrumb(Breadcrumb(
+    75→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:526:   526→      level: SentryLevel.info,
+    76→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:532:   532→      Sentry.addBreadcrumb(Breadcrumb(
+    77→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:536:   536→        level: SentryLevel.info,
+    78→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:541:   541→      Sentry.addBreadcrumb(Breadcrumb(
+    79→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:548:   548→        level: SentryLevel.error,
+    80→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:551:   551→      await Sentry.captureException(
+    81→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:567:   567→  /// Execute [operation] with a Sentry transaction span.
+    82→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:572:   572→    ISentrySpan transaction,
+    83→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:586:   586→      await Sentry.captureException(
+    84→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:604:   604→/// Manages Sentry user context — attached on sign-in, updated on role/org
+    85→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:614:   614→class SentryUserContext {
+    86→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:622:   622→    await Sentry.configureScope((scope) {
+    87→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:623:   623→      scope.setUser(SentryUser(
+    88→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:638:   638→    await Sentry.configureScope((scope) {
+    89→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:645:   645→    await Sentry.configureScope((scope) {
+    90→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:655:   655→    await Sentry.configureScope((scope) {
+    91→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:663:   663→    await Sentry.configureScope((scope) {
+    92→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:673:   673→/// Factory methods for common Sentry transactions.
+    93→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:674:   674→class SentryTransactions {
+    94→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:676:   676→  static ISentrySpan ownerRegistration() =>
+    95→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:677:   677→      Sentry.startTransaction('owner_registration', 'registration');
+    96→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:678:   678→  static ISentrySpan teacherRegistration() =>
+    97→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:679:   679→      Sentry.startTransaction('teacher_registration', 'registration');
+    98→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:680:   680→  static ISentrySpan parentRegistration() =>
+    99→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:681:   681→      Sentry.startTransaction('parent_registration', 'registration');
+   100→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:682:   682→  static ISentrySpan studentEnrollment() =>
+   101→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:683:   683→      Sentry.startTransaction('student_enrollment', 'registration');
+   102→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:686:   686→  static ISentrySpan loginFlow(String role) =>
+   103→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:687:   687→      Sentry.startTransaction('${role}_login', 'auth');
+   104→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:688:   688→  static ISentrySpan logoutFlow(String role) =>
+   105→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:689:   689→      Sentry.startTransaction('${role}_logout', 'auth');
+   106→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:690:   690→  static ISentrySpan passwordReset() =>
+   107→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:691:   691→      Sentry.startTransaction('password_reset', 'auth');
+   108→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:694:   694→  static ISentrySpan googleSignIn(String role, {bool isNewUser = false}) =>
+   109→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:695:   695→      Sentry.startTransaction(
+   110→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:701:   701→  static ISentrySpan liveKitTokenGeneration() =>
+   111→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:702:   702→      Sentry.startTransaction('livekit_token_generation', 'livekit');
+   112→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:703:   703→  static ISentrySpan liveKitRoomJoin() =>
+   113→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:704:   704→      Sentry.startTransaction('livekit_room_join', 'livekit');
+   114→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:707:   707→  static ISentrySpan dashboardLoad(String role) =>
+   115→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:708:   708→      Sentry.startTransaction('${role}_dashboard_load', 'ui');
+   116→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:733:   733→class SentryDocIdAudit {
+   117→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:745:   745→    Sentry.addBreadcrumb(Breadcrumb(
+   118→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:758:   758→      level: (isMismatch || isAutoId) ? SentryLevel.warning : SentryLevel.info,
+   119→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:762:   762→      Sentry.captureMessage(
+   120→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:766:   766→        level: SentryLevel.warning,
+   121→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:774:   774→/// Top-level entry point for all Sentry observability in Klasivo.
+   122→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:777:   777→///   KlasivoSentry.breadcrumb.auth('login_started');
+   123→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:778:   778→///   KlasivoSentry.firestore.docSet(collection: 'users', docId: uid, data: {...});
+   124→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:779:   779→///   KlasivoSentry.runGuarded('create_exam', () => ...);
+   125→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:780:   780→///   KlasivoSentry.userContext.setUser(uid: uid, email: email, role: 'owner');
+   126→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:781:   781→class KlasivoSentry {
+   127→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:782:   782→  KlasivoSentry._();
+   128→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:785:   785→  static final breadcrumb = SentryBreadcrumbBuilder();
+   129→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:788:   788→  static final firestore = SentryFirestoreHelper();
+   130→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:791:   791→  static final guard = KlasivoSentryGuard();
+   131→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:794:   794→  static final userContext = SentryUserContext();
+   132→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:797:   797→  static final transactions = SentryTransactions();
+   133→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:800:   800→  static final docIdAudit = SentryDocIdAudit();
+   134→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:810:   810→    return KlasivoSentryGuard.runGuarded(
+   135→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:820:   820→  static Future<SentryId> captureException(
+   136→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:826:   826→    return Sentry.captureException(
+   137→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:839:   839→  static Future<SentryId> captureMessage(
+   138→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:841:   841→    SentryLevel level = SentryLevel.info,
+   139→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:844:   844→    return Sentry.captureMessage(
+   140→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:850:   850→  /// Check if Sentry is currently enabled (DSN was provided).
+   141→/home/z/my-project/tool-results/read_1781480570201_b87b62bf84fe.txt:852:   852→    final dsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+   142→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:7:     7→import 'package:sentry_flutter/sentry_flutter.dart';
+   143→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:116:   116→      // Also report to Sentry for cross-platform visibility
+   144→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:117:   117→      Sentry.captureException(details.exception, stackTrace: details.stack);
+   145→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:122:   122→      // Also report to Sentry for cross-platform visibility
+   146→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:123:   123→      Sentry.captureException(error, stackTrace: stack);
+   147→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:151:   151→  // ─── Initialize Sentry ──────────────────────────────────────────────
+   148→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:152:   152→  // DSN is read from --dart-define=SENTRY_DSN=... at build time.
+   149→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:153:   153→  // If not provided, Sentry is disabled (safe no-op).
+   150→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:154:   154→  final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+   151→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:156:   156→  await SentryFlutter.init(
+   152→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:158:   158→      options.dsn = sentryDsn;
+   153→/home/z/my-project/tool-results/read_1781478414221_0018ebddf5f0.txt:162:   162→      // Attach Crashlytics breadcrumbs to Sentry for cross-referencing
+   154→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:7:     7→     7→import 'package:sentry_flutter/sentry_flutter.dart';
+   155→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:116:   116→   116→      // Also report to Sentry for cross-platform visibility
+   156→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:117:   117→   117→      Sentry.captureException(details.exception, stackTrace: details.stack);
+   157→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:122:   122→   122→      // Also report to Sentry for cross-platform visibility
+   158→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:123:   123→   123→      Sentry.captureException(error, stackTrace: stack);
+   159→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:151:   151→   151→  // ─── Initialize Sentry ──────────────────────────────────────────────
+   160→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:152:   152→   152→  // DSN is read from --dart-define=SENTRY_DSN=... at build time.
+   161→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:153:   153→   153→  // If not provided, Sentry is disabled (safe no-op).
+   162→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:154:   154→   154→  final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+   163→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:156:   156→   156→  await SentryFlutter.init(
+   164→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:158:   158→   158→      options.dsn = sentryDsn;
+   165→/home/z/my-project/tool-results/read_1781478697394_3c7cb57e746e.txt:162:   162→   162→      // Attach Crashlytics breadcrumbs to Sentry for cross-referencing
+   166→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:7:     7→import 'package:sentry_flutter/sentry_flutter.dart';
+   167→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:116:   116→      // Also report to Sentry for cross-platform visibility
+   168→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:117:   117→      Sentry.captureException(details.exception, stackTrace: details.stack);
+   169→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:122:   122→      // Also report to Sentry for cross-platform visibility
+   170→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:123:   123→      Sentry.captureException(error, stackTrace: stack);
+   171→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:151:   151→  // ─── Initialize Sentry ──────────────────────────────────────────────
+   172→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:152:   152→  // DSN is read from --dart-define=SENTRY_DSN=... at build time.
+   173→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:153:   153→  // If not provided, Sentry is disabled (safe no-op).
+   174→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:154:   154→  final sentryDsn = const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+   175→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:156:   156→  await SentryFlutter.init(
+   176→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:158:   158→      options.dsn = sentryDsn;
+   177→/home/z/my-project/tool-results/read_1781478695534_0018ebddf5f0.txt:162:   162→      // Attach Crashlytics breadcrumbs to Sentry for cross-referencing
+   178→/home/z/my-project/tool-results/bash_1781477120012_c774257e8b1f.txt:80: mode change 100755 => 100644 functions/src/config/sentry.ts
+   179→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:2:     2→     2→// KLASIVO — Centralized Sentry Observability Service
+   180→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:15:    15→    15→//   import 'package:klasivo/core/services/sentry_service.dart';
+   181→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:16:    16→    16→//   await KlasivoSentry.breadcrumb.auth('login_started');
+   182→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:17:    17→    17→//   await KlasivoSentry.runGuarded('create_exam', () => examService.create(...));
+   183→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:21:    21→    21→import 'package:sentry_flutter/sentry_flutter.dart';
+   184→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:27:    27→    27→/// Keys that must NEVER be sent to Sentry in any breadcrumb, tag, or extra.
+   185→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:88:    88→    88→/// Standardized breadcrumb categories for consistent filtering in Sentry.
+   186→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:89:    89→    89→class SentryCategories {
+   187→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:104:   104→   104→/// Fluent API for creating standardized Sentry breadcrumbs.
+   188→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:107:   107→   107→///   KlasivoSentry.breadcrumb.auth('login_started', data: {'email': email});
+   189→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:108:   108→   108→///   KlasivoSentry.breadcrumb.firestore('create', collection: 'users', docId: uid);
+   190→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:109:   109→   109→class SentryBreadcrumbBuilder {
+   191→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:112:   112→   112→    Sentry.addBreadcrumb(Breadcrumb(
+   192→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:113:   113→   113→      category: SentryCategories.auth,
+   193→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:116:   116→   116→      level: SentryLevel.info,
+   194→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:122:   122→   122→    Sentry.addBreadcrumb(Breadcrumb(
+   195→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:123:   123→   123→      category: SentryCategories.registration,
+   196→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:126:   126→   126→      level: SentryLevel.info,
+   197→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:137:   137→   137→    Sentry.addBreadcrumb(Breadcrumb(
+   198→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:138:   138→   138→      category: SentryCategories.firestore,
+   199→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:146:   146→   146→      level: SentryLevel.info,
+   200→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:156:   156→   156→    Sentry.addBreadcrumb(Breadcrumb(
+   201→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:157:   157→   157→      category: SentryCategories.cloudFunction,
+   202→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:164:   164→   164→      level: status == 'failed' ? SentryLevel.error : SentryLevel.info,
+   203→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:174:   174→   174→    Sentry.addBreadcrumb(Breadcrumb(
+   204→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:175:   175→   175→      category: SentryCategories.navigation,
+   205→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:182:   182→   182→      level: SentryLevel.info,
+   206→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:191:   191→   191→    Sentry.addBreadcrumb(Breadcrumb(
+   207→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:192:   192→   192→      category: SentryCategories.livekit,
+   208→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:195:   195→   195→      level: SentryLevel.info,
+   209→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:204:   204→   204→    Sentry.addBreadcrumb(Breadcrumb(
+   210→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:205:   205→   205→      category: SentryCategories.hive,
+   211→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:208:   208→   208→      level: SentryLevel.info,
+   212→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:217:   217→   217→    Sentry.addBreadcrumb(Breadcrumb(
+   213→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:218:   218→   218→      category: SentryCategories.riverpod,
+   214→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:221:   221→   221→      level: SentryLevel.info,
+   215→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:230:   230→   230→    Sentry.addBreadcrumb(Breadcrumb(
+   216→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:231:   231→   231→      category: SentryCategories.sync,
+   217→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:234:   234→   234→      level: SentryLevel.info,
+   218→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:243:   243→   243→    Sentry.addBreadcrumb(Breadcrumb(
+   219→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:244:   244→   244→      category: SentryCategories.notification,
+   220→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:247:   247→   247→      level: SentryLevel.info,
+   221→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:254:   254→   254→/// Wraps Firestore operations with automatic Sentry breadcrumbs, exception
+   222→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:258:   258→   258→///   1. Reach Sentry
+   223→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:263:   263→   263→class SentryFirestoreHelper {
+   224→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:276:   276→   276→    KlasivoSentry.breadcrumb.firestore(
+   225→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:285:   285→   285→      KlasivoSentry.breadcrumb.firestore(
+   226→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:314:   314→   314→    KlasivoSentry.breadcrumb.firestore(
+   227→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:323:   323→   323→      KlasivoSentry.breadcrumb.firestore(
+   228→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:350:   350→   350→    KlasivoSentry.breadcrumb.firestore(
+   229→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:359:   359→   359→      KlasivoSentry.breadcrumb.firestore(
+   230→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:386:   386→   386→    KlasivoSentry.breadcrumb.firestore(
+   231→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:394:   394→   394→      KlasivoSentry.breadcrumb.firestore(
+   232→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:421:   421→   421→    KlasivoSentry.breadcrumb.firestore(
+   233→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:432:   432→   432→      KlasivoSentry.breadcrumb.firestore(
+   234→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:467:   467→   467→    await Sentry.captureException(
+   235→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:478:   478→   478→        // Attach user role and org from current Sentry context
+   236→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:494:   494→   494→/// Runs an async operation with automatic Sentry breadcrumb, exception capture,
+   237→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:499:   499→   499→///   final result = await KlasivoSentry.runGuarded(
+   238→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:504:   504→   504→class KlasivoSentryGuard {
+   239→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:505:   505→   505→  /// Execute [operation] inside a Sentry-guarded wrapper.
+   240→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:522:   522→   522→    Sentry.addBreadcrumb(Breadcrumb(
+   241→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:526:   526→   526→      level: SentryLevel.info,
+   242→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:532:   532→   532→      Sentry.addBreadcrumb(Breadcrumb(
+   243→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:536:   536→   536→        level: SentryLevel.info,
+   244→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:541:   541→   541→      Sentry.addBreadcrumb(Breadcrumb(
+   245→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:548:   548→   548→        level: SentryLevel.error,
+   246→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:551:   551→   551→      await Sentry.captureException(
+   247→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:567:   567→   567→  /// Execute [operation] with a Sentry transaction span.
+   248→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:572:   572→   572→    ISentrySpan transaction,
+   249→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:586:   586→   586→      await Sentry.captureException(
+   250→/home/z/my-project/tool-results/read_1781480574601_0368cd3d44db.txt:604:   604→   604→/// Manages Sentry user context — attached on sign-in, updated on role/org
+   251→
+   252→[Showing results with pagination = limit: 250]
