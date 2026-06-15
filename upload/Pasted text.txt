@@ -1,0 +1,247 @@
+lib/main.dart:533:13: Error: Undefined name 'KlasivoRole'.
+        if (KlasivoRole.managementRoles.contains(userRole)) return '/dashboard';
+            ^^^^^^^^^^^
+lib/main.dart:534:25: Error: Undefined name 'KlasivoRole'.
+        if (userRole == KlasivoRole.student) return '/student';
+                        ^^^^^^^^^^^
+lib/main.dart:535:25: Error: Undefined name 'KlasivoRole'.
+        if (userRole == KlasivoRole.parent) return '/parent';
+                        ^^^^^^^^^^^
+lib/main.dart:167:35: Error: Member not found: 'appSettingsBox'.
+  await Hive.openBox(AppConstants.appSettingsBox);
+                                  ^^^^^^^^^^^^^^
+lib/main.dart:171:11: Error: Undefined name 'ImageCacheService'.
+    await ImageCacheService.instance.init();
+          ^^^^^^^^^^^^^^^^^
+lib/main.dart:202:28: Error: A value of type 'SentryEvent? Function(SentryEvent)' can't be assigned to a variable of type 'FutureOr<SentryEvent?> Function(SentryEvent, Hint)?'.
+ - 'SentryEvent' is from 'package:sentry/src/protocol/sentry_event.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry-9.22.0/lib/src/protocol/sentry_event.dart').
+ - 'Hint' is from 'package:sentry/src/hint.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry-9.22.0/lib/src/hint.dart').
+      options.beforeSend = beforeSendCallback;
+                           ^
+lib/main.dart:205:15: Error: The setter 'enableAutoBreadcrumbTracking' isn't defined for the type 'SentryFlutterOptions'.
+ - 'SentryFlutterOptions' is from 'package:sentry_flutter/src/sentry_flutter_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_flutter_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'enableAutoBreadcrumbTracking'.
+      options.enableAutoBreadcrumbTracking = true;
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/main.dart:214:22: Error: The setter 'maskAllText' isn't defined for the type 'SentryReplayOptions'.
+ - 'SentryReplayOptions' is from 'package:sentry_flutter/src/sentry_replay_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_replay_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'maskAllText'.
+      options.replay.maskAllText = true;
+                     ^^^^^^^^^^^
+lib/main.dart:215:22: Error: The setter 'maskAllImages' isn't defined for the type 'SentryReplayOptions'.
+ - 'SentryReplayOptions' is from 'package:sentry_flutter/src/sentry_replay_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_replay_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'maskAllImages'.
+      options.replay.maskAllImages = true;
+                     ^^^^^^^^^^^^^
+lib/main.dart:226:15: Error: The setter 'enableSwizzle' isn't defined for the type 'SentryFlutterOptions'.
+ - 'SentryFlutterOptions' is from 'package:sentry_flutter/src/sentry_flutter_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_flutter_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'enableSwizzle'.
+      options.enableSwizzle = true;
+              ^^^^^^^^^^^^^
+lib/main.dart:230:15: Error: The setter 'anrTimeoutIntervalInSeconds' isn't defined for the type 'SentryFlutterOptions'.
+ - 'SentryFlutterOptions' is from 'package:sentry_flutter/src/sentry_flutter_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_flutter_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'anrTimeoutIntervalInSeconds'.
+      options.anrTimeoutIntervalInSeconds = 5;
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/main.dart:236:15: Error: The setter 'enableNavigatorObserver' isn't defined for the type 'SentryFlutterOptions'.
+ - 'SentryFlutterOptions' is from 'package:sentry_flutter/src/sentry_flutter_options.dart' ('../AppData/Local/Pub/Cache/hosted/pub.dev/sentry_flutter-9.22.0/lib/src/sentry_flutter_options.dart').
+Try correcting the name to the name of an existing setter, or defining a setter or field named 'enableNavigatorObserver'.
+      options.enableNavigatorObserver = true;
+              ^^^^^^^^^^^^^^^^^^^^^^^
+lib/features/auth/pages/welcome_screen.dart:160:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/features/auth/pages/welcome_screen.dart:165:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/features/dashboard/owner_dashboard.dart:28:55: Error: The method 'dashboardLoad' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'dashboardLoad'.
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('owner');
+                                                      ^^^^^^^^^^^^^
+lib/features/dashboard/teacher_dashboard.dart:25:55: Error: The method 'dashboardLoad' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'dashboardLoad'.
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('teacher');
+                                                      ^^^^^^^^^^^^^
+lib/features/dashboard/student_dashboard.dart:26:55: Error: The method 'dashboardLoad' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'dashboardLoad'.
+    final _dashboardSpan = KlasivoSentry.transactions.dashboardLoad('student');
+                                                      ^^^^^^^^^^^^^
+lib/providers/auth_provider.dart:339:35: Error: The method 'clearUser' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'clearUser'.
+  await KlasivoSentry.userContext.clearUser();
+                                  ^^^^^^^^^
+lib/core/services/auth_service.dart:82:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:157:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:199:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:133:34: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+        KlasivoSentry.docIdAudit.logUserCreation(
+                                 ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:353:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:392:52: Error: The method 'loginFlow' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'loginFlow'.
+    final transaction = KlasivoSentry.transactions.loginFlow('email');
+                                                   ^^^^^^^^^
+lib/core/services/auth_service.dart:410:39: Error: The method 'setUser' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'setUser'.
+      await KlasivoSentry.userContext.setUser(
+                                      ^^^^^^^
+lib/core/services/auth_service.dart:438:39: Error: The method 'setRole' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'setRole'.
+      await KlasivoSentry.userContext.setRole(role ?? 'unknown');
+                                      ^^^^^^^
+lib/core/services/auth_service.dart:441:41: Error: The method 'setOrganizationId' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'setOrganizationId'.
+        await KlasivoSentry.userContext.setOrganizationId(orgId);
+                                        ^^^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:505:52: Error: The method 'loginFlow' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'loginFlow'.
+    final transaction = KlasivoSentry.transactions.loginFlow('student');
+                                                   ^^^^^^^^^
+lib/core/services/auth_service.dart:589:39: Error: The method 'setUser' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'setUser'.
+      await KlasivoSentry.userContext.setUser(
+                                      ^^^^^^^
+lib/core/services/auth_service.dart:603:32: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+      KlasivoSentry.docIdAudit.logUserCreation(
+                               ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:688:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:717:34: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+        KlasivoSentry.docIdAudit.logUserCreation(
+                                 ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:874:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:901:34: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+        KlasivoSentry.docIdAudit.logUserCreation(
+                                 ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:977:34: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+      Sentry.addBreadcrumb(const Breadcrumb(
+                                 ^^^^^^^^^^
+lib/core/services/auth_service.dart:1006:34: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+        KlasivoSentry.docIdAudit.logUserCreation(
+                                 ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:1193:36: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+        Sentry.addBreadcrumb(const Breadcrumb(
+                                   ^^^^^^^^^^
+lib/core/services/auth_service.dart:1257:36: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+        Sentry.addBreadcrumb(const Breadcrumb(
+                                   ^^^^^^^^^^
+lib/core/services/auth_service.dart:1296:36: Error: Cannot invoke a non-'const' constructor where a const expression is expected.
+Try using a constructor or factory that is 'const'.
+        Sentry.addBreadcrumb(const Breadcrumb(
+                                   ^^^^^^^^^^
+lib/core/services/auth_service.dart:1234:36: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+          KlasivoSentry.docIdAudit.logUserCreation(
+                                   ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:1412:36: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+          KlasivoSentry.docIdAudit.logUserCreation(
+                                   ^^^^^^^^^^^^^^^
+lib/core/services/auth_service.dart:1488:52: Error: The method 'logoutFlow' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logoutFlow'.
+    final transaction = KlasivoSentry.transactions.logoutFlow(role);
+                                                   ^^^^^^^^^^
+lib/core/services/auth_service.dart:1496:39: Error: The method 'clearUser' isn't defined for the type 'SentryUserContext'.
+ - 'SentryUserContext' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'clearUser'.
+      await KlasivoSentry.userContext.clearUser();
+                                      ^^^^^^^^^
+lib/core/services/auth_service.dart:1536:52: Error: The method 'passwordReset' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'passwordReset'.
+    final transaction = KlasivoSentry.transactions.passwordReset();
+                                                   ^^^^^^^^^^^^^
+lib/core/services/student_service.dart:66:52: Error: The method 'studentEnrollment' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'studentEnrollment'.
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
+                                                   ^^^^^^^^^^^^^^^^^
+lib/core/services/student_service.dart:185:32: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+      KlasivoSentry.docIdAudit.logUserCreation(
+                               ^^^^^^^^^^^^^^^
+lib/core/services/student_service.dart:371:52: Error: The method 'studentEnrollment' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'studentEnrollment'.
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
+                                                   ^^^^^^^^^^^^^^^^^
+lib/core/services/student_service.dart:418:34: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+        KlasivoSentry.docIdAudit.logUserCreation(
+                                 ^^^^^^^^^^^^^^^
+lib/core/services/qr_enrollment_service.dart:71:52: Error: The method 'studentEnrollment' isn't defined for the type 'SentryTransactions'.
+ - 'SentryTransactions' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'studentEnrollment'.
+    final transaction = KlasivoSentry.transactions.studentEnrollment();
+                                                   ^^^^^^^^^^^^^^^^^
+lib/core/services/qr_enrollment_service.dart:114:32: Error: The method 'logUserCreation' isn't defined for the type 'SentryDocIdAudit'.
+ - 'SentryDocIdAudit' is from 'package:klasivo/core/services/sentry_service.dart' ('lib/core/services/sentry_service.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'logUserCreation'.
+      KlasivoSentry.docIdAudit.logUserCreation(
+                               ^^^^^^^^^^^^^^^
+Target kernel_snapshot_program failed: Exception
+
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileFlutterBuildDebug'.
+> Process 'command 'C:\Users\Strik\Downloads\flutter\bin\flutter.bat'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3m 36s
+Running Gradle task 'assembleDebug'...                            217.3s
+Gradle task assembleDebug failed with exit code 1
+PS C:\Users\Strik\Klasivo>
