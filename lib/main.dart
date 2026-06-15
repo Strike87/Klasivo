@@ -110,28 +110,36 @@ import 'firebase_options.dart';
 Future<void> main() async {
   // ── ZONE FIX: All initialization + runApp in the SAME zone ──────────
   //
-  // Previous structure (BROKEN):
-  //   root zone:   WidgetsFlutterBinding.ensureInitialized()
-  //   root zone:   Firebase.initializeApp(), Hive, Sentry init
-  //   appRunner:   (root zone via SentryFlutter.init)
-  //   inner zone:  runZonedGuarded → runApp()  ← DIFFERENT ZONE!
+  // Root cause: SentryFlutter.init(appRunner:) wraps the callback in its
+  // OWN runZonedGuarded, creating a NESTED zone. This caused:
+  //
+  //   Our runZonedGuarded     → Zone A (427567881)
+  //     ensureInitialized()   → Zone A
+  //     SentryFlutter.init
+  //       appRunner()         → Zone B (107203883) ← Sentry's zone wrapper
+  //         runApp()          → Zone B ← MISMATCH
   //
   //   Sentry evidence:
-  //     1_beforeEnsureInit: 427567881  (root)
-  //     4_runAppZone: 107203883        (inner) ← MISMATCH
+  //     1_beforeEnsureInit: 427567881  (our zone)
+  //     4_runAppZone: 107203883        (Sentry's nested zone) ← MISMATCH
   //     zone_mismatch_detected: true
   //     AssertionError: Zone mismatch
   //
-  // Fix: Move everything inside runZonedGuarded so that
-  // ensureInitialized() and runApp() share the same zone.
-  // The outer runZonedGuarded is a safety net that catches errors
-  // during startup. SentryFlutter.init's appRunner runs inside
-  // this same zone, so runApp() is also in the same zone.
+  // Fix: Do NOT use appRunner. Call SentryFlutter.init() WITHOUT appRunner,
+  // then call runApp() directly in our zone afterward. This guarantees
+  // ensureInitialized() and runApp() share the SAME zone.
+  //
+  // The outer runZonedGuarded catches uncaught errors during startup.
+  // After Sentry init, FlutterError.onError and PlatformDispatcher.onError
+  // handle runtime errors via Sentry + Crashlytics.
   //
   runZonedGuarded<Future<void>>(
     () async {
       // ── Everything runs in the SAME zone from here ─────────────────────
       WidgetsFlutterBinding.ensureInitialized();
+
+      // ── Capture zone hash early (before Sentry init) for diagnostic ────
+      final ensureInitZoneHash = Zone.current.hashCode.toString();
 
       // ─── Resolve environment & package info early ──────────────────────
       final envConfig = EnvironmentConfig.current;
@@ -205,6 +213,9 @@ Future<void> main() async {
       }
 
       // ─── Initialize Sentry (production-grade) ──────────────────────────
+      // Do NOT use appRunner — it wraps runApp in Sentry's own runZonedGuarded,
+      // creating a nested zone that causes the zone mismatch. Instead, call
+      // SentryFlutter.init() without appRunner, then runApp() directly.
       await SentryFlutter.init(
         (options) {
           // ── DSN from EnvironmentConfig (hardcoded with compile-time override) ──
@@ -258,21 +269,35 @@ Future<void> main() async {
 
           // ── Navigation observer — handled automatically in SDK 9.x ──────
         },
-        appRunner: () {
-          // ── Set app version tags on Sentry scope ────────────────────────
-          SentryUserContext.setAppVersion(
-            version: packageInfo.version,
-            buildNumber: packageInfo.buildNumber,
-          );
-
-          // ── runApp runs in the SAME zone as ensureInitialized ───────────
-          // No nested runZonedGuarded needed — we're already inside one.
-          runApp(ProviderScope(
-            observers: [SentryRiverpodObserver()],
-            child: const MyApp(),
-          ));
-        },
       );
+
+      // ── Set app version tags on Sentry scope ────────────────────────────
+      SentryUserContext.setAppVersion(
+        version: packageInfo.version,
+        buildNumber: packageInfo.buildNumber,
+      );
+
+      // ── Zone diagnostic breadcrumb: verify zones match ──────────────────
+      // After verification that 1_ensureInit_zone == 2_runApp_zone in Sentry,
+      // this breadcrumb block can be removed.
+      final runAppZoneHash = Zone.current.hashCode.toString();
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'zone',
+        message: 'zone_diagnostic',
+        data: {
+          '1_ensureInit_zone': ensureInitZoneHash,
+          '2_runApp_zone': runAppZoneHash,
+          '3_zone_match': ensureInitZoneHash == runAppZoneHash ? 'true' : 'MISMATCH',
+        },
+        level: SentryLevel.info,
+      ));
+
+      // ── runApp runs in the SAME zone as ensureInitialized ───────────────
+      // No appRunner → no Sentry zone wrapper → same zone as init.
+      runApp(ProviderScope(
+        observers: [SentryRiverpodObserver()],
+        child: const MyApp(),
+      ));
     },
     (error, stack) {
       // Last-resort error handler for the outer zone.

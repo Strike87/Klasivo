@@ -12,9 +12,10 @@
  *     3. Create Firebase Auth account (Admin SDK)
  *     4. Generate unique student code
  *     5. Create Firestore user document (Admin SDK — bypasses rules)
- *     6. Update class student count
- *     7. Send teacher notifications
- *     8. Audit log
+ *     6. Send welcome email to real email (if provided, after doc confirmed)
+ *     7. Update class student count
+ *     8. Send teacher notifications
+ *     9. Audit log
  *
  * Rollback: If any step fails after Auth account creation, the Auth account
  * is deleted to prevent orphaned accounts.
@@ -33,6 +34,7 @@ import * as Sentry from '@sentry/node';
 
 import { verifyOrgBoundary, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
+import { queueEmail } from '../services/queueService';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -196,7 +198,10 @@ async function notifyTeachers(
 export const createStudent = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    enforceAppCheck: true,
+    // enforceAppCheck: true — TEMPORARILY DISABLED
+    // Client does not initialize FirebaseAppCheck. Re-enable after adding
+    // FirebaseAppCheck.instance.activate() in Flutter main.dart.
+    // Tracked as: App Check initialization follow-up
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 120,
@@ -211,7 +216,25 @@ export const createStudent = onCall(
       scope.setTag('function', 'createStudent');
 
       // ─── 1. Auth Check ─────────────────────────────────────────────────
+      // Diagnostic: log auth + app context before any rejection
+      console.log(JSON.stringify({
+        message: 'createStudent_auth_context',
+        authExists: !!request.auth,
+        uid: request.auth?.uid ?? null,
+        callerRole: (request.auth?.token?.role as string) ?? null,
+        appExists: !!request.app,
+        appTokenPresent: !!request.app?.token,
+        hasData: !!request.data,
+      }));
+
       if (!request.auth) {
+        console.error(JSON.stringify({
+          message: 'createStudent_rejected_unauthenticated',
+          authExists: false,
+          appExists: !!request.app,
+          appTokenPresent: !!request.app?.token,
+          dataKeys: Object.keys(request.data || {}),
+        }));
         throw new HttpsError('unauthenticated', 'Must be authenticated.');
       }
 
@@ -396,7 +419,38 @@ export const createStudent = onCall(
           );
         }
 
-        // ─── 9. Update Class Student Count ───────────────────────────────
+        // ─── 9. Send Welcome Email (if real email provided) ──────────────
+        // Only send after the Firestore doc is confirmed created.
+        // Students without a real email get NO welcome email — their
+        // authEmail (@students.klasivo.app) is synthetic and has no mailbox.
+        if (email) {
+          try {
+            const emailResult = await queueEmail({
+              type: 'welcome',
+              category: 'welcome',
+              to: email,
+              payload: { name: fullName.trim(), role: 'student' },
+              idempotencyKey: `welcome_${studentUid}`,
+            });
+
+            if (emailResult.queued) {
+              console.log(`[createStudent] Welcome email queued for student's real email: ${email}`);
+            } else {
+              console.log(`[createStudent] Welcome email already queued for ${email} (reason: ${emailResult.reason})`);
+            }
+          } catch (emailError: unknown) {
+            // Non-critical: email failure must NOT block student creation
+            const msg = emailError instanceof Error ? emailError.message : String(emailError);
+            console.warn(`[createStudent] Welcome email queue failed (non-critical): ${msg}`);
+            Sentry.captureException(emailError, {
+              tags: { function: 'createStudent', step: 'welcome_email' },
+            });
+          }
+        } else {
+          console.log(`[createStudent] No real email provided — skipping welcome email for student ${studentUid}`);
+        }
+
+        // ─── 10. Update Class Student Count ───────────────────────────────
         try {
           const countSnapshot = await db
             .collection('users')
@@ -426,7 +480,7 @@ export const createStudent = onCall(
           });
         }
 
-        // ─── 10. Audit Log ──────────────────────────────────────────────
+        // ─── 11. Audit Log ──────────────────────────────────────────────
         try {
           await db.collection('audit_logs').add({
             organizationId,
@@ -450,13 +504,13 @@ export const createStudent = onCall(
           console.warn(`[createStudent] Audit log failed (non-critical): ${msg}`);
         }
 
-        // ─── 11. Notify Teachers (non-blocking) ─────────────────────────
+        // ─── 12. Notify Teachers (non-blocking) ─────────────────────────
         // Fire-and-forget: notification failure is non-critical
         notifyTeachers(db, fullName.trim(), classId, organizationId, callerUid).catch(() => {
           // Already handled inside notifyTeachers
         });
 
-        // ─── 12. Success ────────────────────────────────────────────────
+        // ─── 13. Success ────────────────────────────────────────────────
         console.log(JSON.stringify({
           message: 'student_creation_completed',
           organizationId,

@@ -82,6 +82,22 @@ class StudentService {
         'method': 'cloud_function',
       });
 
+      // ── Auth state diagnostic before callable ──────────────────────────
+      // Verify the teacher/owner is authenticated before calling the function.
+      // If uid is null, the callable will reject with 'unauthenticated'.
+      final currentUser = _auth.currentUser;
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'student_creation',
+        message: 'before_createStudent_callable',
+        data: {
+          'uid': currentUser?.uid ?? 'null',
+          'email': currentUser?.email ?? 'null',
+          'isAuthenticated': currentUser != null,
+          'createdBy_param': createdBy,
+        },
+        level: SentryLevel.info,
+      ));
+
       // ── Call createStudent Cloud Function ──────────────────────────────
       // All Auth + Firestore + class count + audit + notifications
       // are handled server-side via Admin SDK. No client-side writes.
@@ -294,6 +310,21 @@ class StudentService {
         'createdBy': createdBy,
         'method': 'cloud_function',
       });
+
+      // ── Auth state diagnostic before bulk callable ─────────────────────
+      final bulkUser = _auth.currentUser;
+      Sentry.addBreadcrumb(Breadcrumb(
+        category: 'student_creation',
+        message: 'before_bulk_createStudent_callable',
+        data: {
+          'uid': bulkUser?.uid ?? 'null',
+          'email': bulkUser?.email ?? 'null',
+          'isAuthenticated': bulkUser != null,
+          'createdBy_param': createdBy,
+          'studentCount': students.length,
+        },
+        level: SentryLevel.info,
+      ));
 
       final List<String> createdIds = [];
       final callable = _functions.httpsCallable('createStudent');

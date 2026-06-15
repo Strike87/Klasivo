@@ -26,6 +26,17 @@ export const onUserCreated = functions
       return null;
     }
 
+    // ─── Skip synthetic student emails ───────────────────────────────────
+    // Students get internal Auth emails (student_XXXXXX@students.klasivo.app)
+    // that have no real mailboxes. Welcome emails for students with real
+    // addresses are sent by the createStudent callable AFTER the Firestore
+    // doc is confirmed — not here.
+    const SYNTHETIC_EMAIL_SUFFIX = '@students.klasivo.app';
+    if (email.toLowerCase().endsWith(SYNTHETIC_EMAIL_SUFFIX)) {
+      console.log(`Skipping welcome email for synthetic student email: ${uid} (${email})`);
+      return null;
+    }
+
     const displayName = user.displayName || email.split('@')[0];
     console.log(`New user created: ${uid} (${email})`);
 
