@@ -108,7 +108,15 @@ import 'core/services/event_bus.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
+  // ── Zone diagnostic: capture zone identity BEFORE ensureInitialized ────
+  // We can't send breadcrumbs yet (Sentry not initialized), so store
+  // the zone hashCodes and log them after SentryFlutter.init completes.
+  final zoneBeforeEnsureInitialized = Zone.current.hashCode;
+  final isRootBeforeEnsureInit = Zone.current.parent == null;
+
   WidgetsFlutterBinding.ensureInitialized();
+
+  final zoneAfterEnsureInitialized = Zone.current.hashCode;
 
   // ─── Resolve environment & package info early ──────────────────────────
   final envConfig = EnvironmentConfig.current;
@@ -242,21 +250,23 @@ Future<void> main() async {
         buildNumber: packageInfo.buildNumber,
       );
 
-      // ── Zone mismatch diagnostic ─────────────────────────────────────
-      // Reports to Sentry whether runApp's zone matches the binding zone.
-      // If they differ, that's the root cause of the zone-mismatch errors.
-      final bindingZone = Zone.current;
+      // ── Zone mismatch diagnostic (full trace) ──────────────────────
+      // Captures Zone.current.hashCode at every critical point in the
+      // startup sequence. Zones must match for Flutter's binding to
+      // work correctly. Mismatch = zone-mismatch errors in Sentry.
+      final appRunnerZone = Zone.current.hashCode;
       Sentry.addBreadcrumb(Breadcrumb(
         category: 'zone_diagnostic',
-        message: 'SentryFlutter.init appRunner zone context',
+        message: 'Zone trace: all startup checkpoints',
         data: {
-          'bindingZone_hashCode': bindingZone.hashCode.toString(),
-          'isRootZone': bindingZone.parent == null,
-          'runZonedGuarded_active': true,
+          '1_beforeEnsureInit': zoneBeforeEnsureInitialized.toString(),
+          '1_isRoot': isRootBeforeEnsureInit,
+          '2_afterEnsureInit': zoneAfterEnsureInitialized.toString(),
+          '3_appRunner': appRunnerZone.toString(),
+          '3_appRunner_isRoot': Zone.current.parent == null,
+          'ensureInit_changed_zone': zoneBeforeEnsureInitialized != zoneAfterEnsureInitialized,
           'sentry_sdk': '9.x',
           'crashlytics_sdk': '4.x',
-          'flutter_error_onError_set': true,
-          'platform_dispatcher_onError_set': true,
         },
       ));
 
@@ -264,14 +274,19 @@ Future<void> main() async {
       // Catches async errors that PlatformDispatcher misses
       runZonedGuarded<Future<void>>(
         () async {
+          final runAppZone = Zone.current.hashCode;
           // Report the inner zone for comparison
           Sentry.addBreadcrumb(Breadcrumb(
             category: 'zone_diagnostic',
-            message: 'runZonedGuarded inner zone context',
+            message: 'Zone trace: runZonedGuarded inner zone',
             data: {
-              'innerZone_hashCode': Zone.current.hashCode.toString(),
-              'innerZone_isRoot': Zone.current.parent == null,
-              'zones_match': Zone.current.hashCode == bindingZone.hashCode,
+              '4_runAppZone': runAppZone.toString(),
+              '4_runAppZone_isRoot': Zone.current.parent == null,
+              'zone_mismatch_detected': runAppZone != zoneBeforeEnsureInitialized,
+              '1_beforeEnsureInit': zoneBeforeEnsureInitialized.toString(),
+              '2_afterEnsureInit': zoneAfterEnsureInitialized.toString(),
+              '3_appRunner': appRunnerZone.toString(),
+              '4_runAppZone': runAppZone.toString(),
             },
           ));
 
