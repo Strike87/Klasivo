@@ -261,3 +261,34 @@ Stage Summary:
 - Security posture: authorization decision still uses Firestore as fallback authority (no outage for owners with unsynced claims), but no security-state mutation happens inside a student-creation handler.
 - Phase 2 follow-up (tomorrow's sprint): ensure registerOwner / registerTeacher / acceptInvitation always call setCustomUserClaims so the Firestore fallback becomes belt-and-suspenders rather than the primary path.
 - Ready to deploy: `firebase deploy --only firestore:indexes,functions:createStudent` then `flutter build apk`
+
+---
+Task ID: 7
+Agent: Super Z (main)
+Task: Commit createStudent security fix + delete dead legacy student_service.dart
+
+Work Log:
+- Verified commit 7d488ef (auto-committed by editor tooling) contained the createStudent fix as expected — `buildCustomClaims` removed from import, step 12b deleted
+- Amended commit message from UUID placeholder to proper traceable message: `fix(security): remove unsafe auto-claim-sync from createStudent` — commit is now 9e207b3
+- Attempted `firebase deploy --only firestore:indexes,functions:createStudent` via npx firebase-tools — failed: `Error: Failed to authenticate, have you run firebase login?` — sandboxed environment has no Firebase credentials
+- Flagged deploy command to user for manual execution: `firebase deploy --only firestore:indexes,functions:createStudent`
+- Investigated dead file `lib/features/students/data/student_service.dart`:
+  - 422 lines, defines a `StudentService` class
+  - Calls `createUserWithEmailAndPassword` (line 78) AND `signInWithEmailAndPassword` (line 342) on the primary FirebaseAuth instance — both destroy the owner/teacher session mid student-creation flow
+  - File is exported via `lib/features/students/data/data.dart` barrel
+  - Barrel itself is imported by NOTHING in lib/ or test/
+  - The production `StudentService` lives at `lib/core/services/student_service.dart` (different file, same class name) — that one routes through the createStudent callable and is the one imported by both providers
+  - No test file references StudentService or student_service
+- Conclusion: file is 100% orphaned, safe to delete
+- Deleted both `lib/features/students/data/student_service.dart` AND `lib/features/students/data/data.dart`
+- Removed now-empty `lib/features/students/data/` directory
+- Committed as 7cca44f: `chore: delete dead legacy student_service.dart` with detailed rationale including the dormant-weapon risk warning about `ensureFirebaseAuthAccount()` still living in the production file at `lib/core/services/student_service.dart:381-421`
+
+Stage Summary:
+- Two commits ready for push:
+  - 9e207b3 — fix(security): remove unsafe auto-claim-sync from createStudent
+  - 7cca44f — chore: delete dead legacy student_service.dart
+- Branch is now ahead of origin/main by 4 commits total
+- Deploy is BLOCKED on user running firebase login + firebase deploy from a shell with Firebase credentials (sandbox cannot authenticate)
+- Discovered ADDITIONAL dormant-weapon risk in production file lib/core/services/student_service.dart:381-421 — `ensureFirebaseAuthAccount()` method also uses `signInWithEmailAndPassword` and `createUserWithEmailAndPassword` on the primary auth instance. Currently zero callers (verified via grep `\.ensureFirebaseAuthAccount\(` → no matches), so dormant. Added to Phase 2 follow-up: delete that method tomorrow.
+- User's post-deploy test checklist (5 tests) is queued: owner creates student, function logs show claims_fallback_used or callerRoleClaim=owner, Exams screen shows Upcoming/Completed/Drafts, Academic Structure no overflow, Feature Flags no overflow
