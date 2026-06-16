@@ -4502,3 +4502,65 @@ Files inspected (READ-ONLY — no modifications made):
 - ripgrep scans for `FirebaseFunctions.instance`, `FirebaseFunctions.instanceFor`, `smart-exam-pro`, `3d1cf`, `onCall(`, `region:` across functions/src and lib/
 
 ---
+
+---
+Task ID: FORENSIC-14 (Phase 1 BLOCKER P2-1 — appExists=false correlation)
+Agent: Main agent (direct code lookup, no subagent)
+Task: Resolve the only genuine unknown in the createStudent fix — identify which document/existence-check produces the `appExists=false` log evidence in production
+
+Work Log:
+- Grep for `appExists` across /home/z/my-project (full repo)
+- Found exactly 2 occurrences, both in functions/src/functions/createStudent.ts:
+  - Line 229: `appExists: !!request.app,` (inside `createStudent_auth_context` diagnostic log)
+  - Line 239: `appExists: !!request.app,` (inside `createStudent_rejected_unauthenticated` error log)
+- Read surrounding context (lines 195-299) to understand the diagnostic structure
+- Cross-referenced with `enforceAppCheck` setting at line 201
+- Verified client-side: grep for `FirebaseAppCheck|appCheck|AppCheck` in lib/ → NO MATCHES
+
+Stage Summary:
+
+WHAT `appExists` ACTUALLY MEASURES:
+- `appExists` is NOT a document-existence check.
+- `appExists` is NOT a query against an organization, academic year, or app-config collection.
+- `appExists: !!request.app` is a diagnostic field logging whether the Firebase CallableRequest
+  carries an App Check token holder (`request.app`).
+- Per Firebase v2 CallableRequest interface: `request.app` is `App | undefined`. It is populated
+  ONLY when the client sends a valid Firebase App Check token with the callable invocation.
+
+WHY IT IS `false` IN PRODUCTION:
+- Line 201: `enforceAppCheck: true — TEMPORARILY DISABLED`
+- Lines 202-204: Comment documents WHY — "Client does not initialize FirebaseAppCheck.
+  Re-enable after adding FirebaseAppCheck.instance.activate() in Flutter main.dart."
+- Client-side grep confirms: ZERO occurrences of `FirebaseAppCheck`, `appCheck`, or `AppCheck`
+  anywhere in lib/. The client never activates App Check, so no App Check token is ever sent.
+- Therefore `request.app` is always `undefined` → `!!request.app` is always `false` →
+  `appExists: false` is the EXPECTED, DOCUMENTED state in every createStudent invocation,
+  NOT an error indicator.
+
+IS `appExists=false` A ROOT CAUSE OF ANY PRODUCTION BUG?
+- NO. It is purely a diagnostic telemetry field.
+- App Check enforcement is intentionally disabled (line 201), so the function does NOT
+  reject requests based on App Check presence. The function correctly proceeds to the
+  `request.auth` check at line 235.
+- The original Phase 1 prompt listed `appExists = false` as one of four "known production
+  log evidence" items. This was a RED HERRING — it is expected behavior, not a bug signal.
+- The OTHER three log evidence items remain valid:
+  1. `callerRole = null` → CONFIRMED root cause: missing custom claims (FORENSIC-9 M4)
+     + operational project mismatch (FORENSIC-12 Part A)
+  2. `Build failed with status EXPIRED` → CONFIRMED root cause: SENTRY_DSN secret missing
+     (FORENSIC-2, FORENSIC-12 BLOCKER 1)
+  3. `Failed to validate secret versions: SENTRY_DSN` → same as #2 (FORENSIC-2)
+
+KEY FINDING:
+- BLOCKER P2-1 (`appExists=false` log correlation) is RESOLVED.
+- `appExists` is a Firebase App Check token-presence indicator, NOT a document existence check.
+- `appExists=false` is the expected state given App Check is intentionally disabled at line 201
+  and the Flutter client does not initialize Firebase App Check.
+- No further investigation needed. Phase 1 Section J checkbox #4 can be marked ✅ RESOLVED.
+
+FOLLOW-UP IMPLICATION (Phase 3, not Phase 2):
+- App Check is a defense-in-depth control against token-replay abuse. It is currently disabled.
+- Phase 3 should add `FirebaseAppCheck.instance.activate()` to lib/main.dart and re-enable
+  `enforceAppCheck: true` on createStudent (and ideally all 9 callables).
+- This is NOT a launch blocker — App Check is hardening, not correctness.
+- Tracked as: "App Check initialization follow-up" (comment at createStudent.ts:204).
