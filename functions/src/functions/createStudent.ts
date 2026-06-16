@@ -32,7 +32,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 
-import { verifyOrgBoundary, buildCustomClaims, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
+import { verifyOrgBoundary, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 import { queueEmail } from '../services/queueService';
 
@@ -246,11 +246,23 @@ export const createStudent = onCall(
 
       // ─── 2. Resolve caller role & org (claim → Firestore fallback) ──────
       // Custom claims may not be set yet for users who registered before
-      // syncClaims was called, or whose registration flow didn't set claims.
-      // The Firestore user doc is the authoritative source of truth.
+      // the claims-provisioning pipeline was wired into registerOwner /
+      // registerTeacher / acceptInvitation. When claims are missing, we fall
+      // back to the Firestore user doc as the authoritative source for THIS
+      // authorization decision.
+      //
+      // IMPORTANT: we do NOT mutate the caller's custom claims from inside
+      // createStudent. Claims provisioning is a separate security primitive
+      // owned by syncClaims(). Mixing the two would:
+      //   (a) silently rewrite auth state from a mutation handler,
+      //   (b) skip the sync_claims audit-log row,
+      //   (c) leave the client unaware its token was stale.
+      // Phase 2 (tomorrow) will ensure registerOwner / registerTeacher /
+      // acceptInvitation always call setCustomUserClaims, at which point the
+      // fallback below becomes a defensive belt-and-suspenders rather than
+      // the primary path.
       let callerRole = callerRoleClaim;
       let callerOrgId = callerOrgIdClaim;
-      let claimsSyncNeeded = false;
 
       if (!callerRole || !callerOrgId) {
         const db = admin.firestore();
@@ -272,11 +284,9 @@ export const createStudent = onCall(
         const callerData = callerDoc.data()!;
         if (!callerRole) {
           callerRole = (callerData['role'] as string) || '';
-          claimsSyncNeeded = true;  // Claims are stale — sync after this call
         }
         if (!callerOrgId) {
           callerOrgId = (callerData['organizationId'] as string) || '';
-          claimsSyncNeeded = true;
         }
 
         console.log(JSON.stringify({
@@ -286,7 +296,8 @@ export const createStudent = onCall(
           roleFromFirestore: callerRole,
           orgFromClaim: callerOrgIdClaim || null,
           orgFromFirestore: callerOrgId,
-          claimsSyncNeeded,
+          // Note: claims are NOT auto-synced here. See header comment above.
+          claimsSyncRecommended: true,
         }));
       }
 
@@ -559,29 +570,13 @@ export const createStudent = onCall(
           // Already handled inside notifyTeachers
         });
 
-        // ─── 12b. Sync caller's custom claims (if stale) ────────────────
-        // If we had to fall back to Firestore for role/org, the caller's
-        // custom claims are stale. Sync them now so future calls use the
-        // fast path. Fire-and-forget — failure is non-critical.
-        if (claimsSyncNeeded) {
-          try {
-            const customClaims = buildCustomClaims(callerRole, callerOrgId);
-            admin.auth().setCustomUserClaims(callerUid, customClaims).then(() => {
-              console.log(JSON.stringify({
-                message: 'createStudent_claims_synced',
-                uid: callerUid,
-                role: callerRole,
-                organizationId: callerOrgId,
-              }));
-            }).catch((syncErr: unknown) => {
-              const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-              console.warn(`[createStudent] Claims sync failed (non-critical): ${msg}`);
-            });
-          } catch (syncErr: unknown) {
-            const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-            console.warn(`[createStudent] Claims sync setup failed (non-critical): ${msg}`);
-          }
-        }
+        // ─── 12b. (Removed) Auto-sync of caller's custom claims ─────────
+        // Previously: if we fell back to Firestore for role/org, we would
+        // fire-and-forget a setCustomUserClaims() call here to repair the
+        // caller's stale token. That mixed a security-state mutation into
+        // a student-creation handler — see step 2 header comment for why it
+        // was removed. Claims provisioning is owned by syncClaims() and,
+        // in Phase 2, by registerOwner / registerTeacher / acceptInvitation.
 
         // ─── 13. Success ────────────────────────────────────────────────
         console.log(JSON.stringify({

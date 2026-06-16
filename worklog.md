@@ -236,3 +236,28 @@ Stage Summary:
 - Legacy student_service.dart (features/students/data/) is dead code but has dangerous ensureFirebaseAuthAccount() that destroys owner auth state
 - Key finding: createStudent function may not be deployed to Firebase — user got "No function matches the filter" error and may not have retried after npm run build
 - Next: deploy createStudent, verify with firebase functions:list, test student creation
+
+---
+Task ID: 6
+Agent: Super Z (main)
+Task: Remove unsafe auto-claim-sync from createStudent (keep Firestore fallback)
+
+Work Log:
+- Reviewed createStudent.ts against user's security concern: claims fallback + auto setCustomUserClaims inside a mutation handler is unsafe
+- Verified STAFF_ROLES in functions/src/utils/rbac.ts:38-41 correctly includes 'owner' — role check was not the blocker
+- Verified claims fallback path is sound: auth check → read Firestore user doc → verify role via STUDENT_CREATION_ROLES.includes → verifyOrgBoundary → class/org cross-check
+- Removed buildCustomClaims from import line (no longer used in this file)
+- Removed `let claimsSyncNeeded = false` declaration and both `claimsSyncNeeded = true` assignments
+- Deleted entire step 12b block (setCustomUserClaims fire-and-forget) — ~23 lines
+- Replaced step 2 header comment with explicit explanation of why claims are NOT auto-synced here, citing the three risks (silent auth mutation, missing audit row, client unaware of stale token) and pointing to Phase 2 work (registerOwner/registerTeacher/acceptInvitation provisioning)
+- Replaced `claimsSyncNeeded` field in diagnostic log with `claimsSyncRecommended: true` so logs still flag stale-claim callers for ops triage without implying we acted on it
+- Left a tombstone comment at the deleted step 12b location so future devs don't re-add it
+- `npm run build` passes cleanly (tsc with no errors)
+
+Stage Summary:
+- File modified: functions/src/functions/createStudent.ts
+- Net delta: ~-25 lines executable, +20 lines explanatory comments
+- Behavior change: when caller's custom claims are missing/stale, createStudent now authorizes via Firestore user doc (as before) but NO LONGER mutates the caller's auth state. The client remains responsible for triggering syncClaims to repair its own token.
+- Security posture: authorization decision still uses Firestore as fallback authority (no outage for owners with unsynced claims), but no security-state mutation happens inside a student-creation handler.
+- Phase 2 follow-up (tomorrow's sprint): ensure registerOwner / registerTeacher / acceptInvitation always call setCustomUserClaims so the Firestore fallback becomes belt-and-suspenders rather than the primary path.
+- Ready to deploy: `firebase deploy --only firestore:indexes,functions:createStudent` then `flutter build apk`
