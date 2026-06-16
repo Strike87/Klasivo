@@ -1359,3 +1359,932 @@ Stage Summary:
 - Second-highest priority follow-up: lib/features/question_bank/pages/question_bank_screen.dart:477 "Add Question to Bank" form — HIGH risk of same overflow, needs the Option A fix applied to klasivo_modal.dart to be safe.
 - Create Class and Add Student (the forms the user explicitly asked about) are NOT affected — they are full-page Scaffold forms with correct SingleChildScrollView bodies, not modal forms.
 - No code changes made; user should apply Option A (or B) before next build.
+
+---
+Task ID: FORENSIC-8
+Agent: Sub Agent (Explore)
+Task: Forensic audit — student login fails with cloud_firestore/permission-denied when student enters Student Code + Password
+
+Hypothesis Confirmed: YES. The client issues a Firestore query against /users BEFORE the user is authenticated via FirebaseAuth.signInWithEmailAndPassword. Firestore rules require `request.auth != null` for ALL reads on /users, so the query is correctly denied with `permission-denied`. This is a chicken-and-egg problem.
+
+══════════════════════════════════════════════════════════════════════════════
+1. EXACT loginStudent METHOD (the ACTIVE code path)
+══════════════════════════════════════════════════════════════════════════════
+
+File: /home/z/my-project/lib/core/services/auth_service.dart
+Lines: 501-612 (method body), critical lines 512-520 (the offending query)
+
+NOTE on duplicate copies: The codebase has TWO copies of `loginStudent`:
+  - ACTIVE:   lib/core/services/auth_service.dart:501  ← used by authServiceProvider (lib/providers/auth_provider.dart:16)
+  - STALE:    lib/features/auth/data/auth_service.dart:210  ← not wired into the screen; legacy/duplicate
+Both have the IDENTICAL broken pattern (query Firestore before auth). The screen imports the ACTIVE one.
+
+  496:  // ─── Student Login (Student Code + Password) ──────────────────────────────
+  ...
+  501:  Future<Map<String, dynamic>> loginStudent({
+  502:    required String studentCode,
+  503:    required String password,
+  504:  }) async {
+  505:    final transaction = KlasivoSentry.transactions.loginFlow('student');
+  506:    try {
+  507:      KlasivoSentry.breadcrumb.auth('login_started', data: {'method': 'student_code'});
+  508:
+  509:      // Step 1: Find user by studentCode   ← ❌ FAILS HERE — anonymous read on /users
+  510:      final findUserSpan = transaction.startChild('find_user_by_code');
+  511:      final snapshot = await _firestore
+  512:          .collection(AppConstants.usersCollection)
+  513:          .where('studentCode', isEqualTo: studentCode)
+  514:          .where('role', isEqualTo: AppConstants.roleStudent)
+  515:          .limit(1)
+  516:          .get();
+  517:      await findUserSpan.finish();
+  ...
+  518:      if (snapshot.docs.isEmpty) { throw Exception('Student not found...'); }
+  ...
+  532:      // Step 2: Verify password  (also reads/writes /users — same problem)
+  ...
+  568:      // Step 3: Sign in via Firebase Auth using the student's internal email
+  569:      final internalEmail = student['authEmail'] as String?;
+  570:      if (internalEmail != null && internalEmail.isNotEmpty) {
+  571:        try {
+  572:          await _auth.signInWithEmailAndPassword(
+  573:            email: internalEmail,
+  574:            password: password,
+  575:          );
+
+Caller chain (UI → service):
+  - lib/features/auth/pages/student_login_screen.dart:31  _login()
+  - lib/features/auth/pages/student_login_screen.dart:38  ref.read(authServiceProvider)
+  - lib/features/auth/pages/student_login_screen.dart:39  authService.loginStudent(studentCode: ..., password: ...)
+  - lib/providers/auth_provider.dart:16                   authServiceProvider = Provider<AuthService>((ref) => AuthService())
+  - lib/core/services/auth_service.dart:501               Future<Map<String, dynamic>> loginStudent({...})
+
+══════════════════════════════════════════════════════════════════════════════
+2. EXACT FIRESTORE QUERY MADE BEFORE AUTH
+══════════════════════════════════════════════════════════════════════════════
+
+  _firestore
+      .collection('users')                                    // AppConstants.usersCollection == 'users'
+      .where('studentCode', isEqualTo: studentCode)           // user-supplied code, e.g. "STU-A1B2C3"
+      .where('role', isEqualTo: 'student')                    // AppConstants.roleStudent == 'student'
+      .limit(1)
+      .get();                                                 // ← THROWS permission-denied
+
+Subsequent unauthenticated ops on /users in the SAME method (also blocked, but execution never reaches them because step 1 throws first):
+  - Read: snapshot.docs.first.data() (already in memory from the .get())
+  - Write: _firestore.collection('users').doc(userDoc.id).update({'passwordHash': inputHash}) at line 544 — only fires on plaintext-password migration path; also blocked by rules.
+
+A second, parallel broken implementation exists in:
+  - lib/infrastructure/repositories/auth_repository.dart:179-183 (signInWithStudentCode)
+    FirebaseFirestore.instance.collection('users').where('studentCode', isEqualTo: code).limit(1).get()
+  This is NOT called from the student login screen, but is the same defect class. Should be flagged for cleanup.
+
+══════════════════════════════════════════════════════════════════════════════
+3. EXACT FIRESTORE RULE THAT BLOCKS IT
+══════════════════════════════════════════════════════════════════════════════
+
+File: /home/z/my-project/firestore.rules   (confirmed in firebase.json: "rules": "firestore.rules")
+
+   9:    // Helper: Check if user is authenticated
+  10:    function isAuth() {
+  11:      return request.auth != null;
+  12:    }
+  ...
+ 104:    // ====== Users Collection ======
+ 105:    match /users/{userId} {
+ 106:      allow read: if isAuth();                        // ← BLOCKS the studentCode lookup
+ 107:      allow create: if isAuth() && request.auth.uid == userId;
+ 108:      allow update: if isAuth() && request.auth.uid == userId;
+ 109:      allow delete: if false;
+ 110:    }
+
+Consequences:
+  - `allow read: if isAuth();` denies ALL reads (including queries) when request.auth is null.
+  - The student login flow runs BEFORE any FirebaseAuth signIn call, so request.auth is null → query denied.
+  - There is NO special rule for `studentCode` lookup (no `allow list: if ...` carve-out, no public `get` on a `studentCodes/{code}` lookup collection, nothing).
+  - Note: even if the user WAS authenticated, this rule allows reading ALL user docs globally (no org boundary check) — a separate over-permissive issue (out of scope for this audit but worth flagging).
+
+══════════════════════════════════════════════════════════════════════════════
+4. THE CHICKEN-AND-EGG PROBLEM
+══════════════════════════════════════════════════════════════════════════════
+
+The student login flow NEEDS to read /users to find the synthetic `authEmail` (format: `student_{code}@students.klasivo.app`, generated by functions/src/functions/createStudent.ts:110-113) that maps a studentCode to a Firebase Auth account. But /users requires auth to read. So:
+
+  Student enters { studentCode, password }
+        │
+        ▼
+  Client queries /users.where('studentCode', ==, code)   ❌ DENIED — request.auth == null
+        │
+        ✗ — needs authEmail from this query to call signInWithEmailAndPassword
+        ▼
+  (never reached) _auth.signInWithEmailAndPassword(authEmail, password)
+
+The flow CANNOT succeed because the very first server-side step requires the very state the flow is trying to establish.
+
+Why this used to "work" (and now fails): Firestore rules were almost certainly tightened to `allow read: if isAuth();` (correctly) at some point — likely during the Phase-1 Sentry audit work — after the original student-login code was written under a more permissive rule set. The client code was never updated to match. The current rule is CORRECT (you do NOT want anonymous users enumerating student codes against /users); the client code is BROKEN.
+
+The fallback at line 579 (`catch (authError) { /* Graceful fallback — still allow login even if Firebase Auth fails */ }`) does NOT save the flow — the error is thrown at line 516 (.get()), before the auth attempt at line 572. The fallback only catches auth-side failures, not the Firestore permission-denied error.
+
+══════════════════════════════════════════════════════════════════════════════
+5. CLOUD FUNCTION GAP — NO studentLogin / lookupStudent EXISTS
+══════════════════════════════════════════════════════════════════════════════
+
+Searched functions/src/ for: studentLogin | lookupStudent | studentCode | student_login | loginStudent
+  - Only matches: createStudent.ts (which CREATES students, doesn't log them in) and config/sentry.ts (string match on "student" in error tag).
+  - functions/src/index.ts barrel export does NOT export any login-by-code function.
+  - functions/src/api/index.ts (the api.klasivo.app Express gateway) has no /v1/auth/student-login or similar endpoint.
+
+Existing related functions (for reference, NOT what we need):
+  - createStudent.ts          — creates student Auth + Firestore doc (Admin SDK); sets authEmail = student_{code}@students.klasivo.app, passwordHash = sha256(password). Called by teachers/owners.
+  - changeUserPassword.ts     — changes password; requires `request.auth != null` (i.e. caller already authenticated). Cannot be used for the initial student login.
+
+CONCLUSION: There is NO server-side function to bridge the chicken-and-egg gap. This is the architectural defect.
+
+══════════════════════════════════════════════════════════════════════════════
+6. RECOMMENDED PRODUCTION ARCHITECTURE
+══════════════════════════════════════════════════════════════════════════════
+
+PREFERRED (Option A) — Add a `studentLogin` Callable Cloud Function. This is the only architecturally correct fix because:
+  - Firestore rules must stay strict (no anonymous reads on /users — would allow studentCode enumeration).
+  - The server (Admin SDK) bypasses Firestore rules, so it can do the lookup safely.
+  - The server can verify the password against `passwordHash` (sha256) WITHOUT ever sending the hash to the client.
+  - The server can use `admin.auth().createCustomToken()` to mint a sign-in credential the client can use WITHOUT ever exposing the synthetic `authEmail` to the client.
+
+New function: functions/src/functions/studentLogin.ts
+
+  import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
+  import * as admin from 'firebase-admin';
+  import * as crypto from 'crypto';
+  import * as Sentry from '@sentry/node';
+  import { initSentry, withIsolatedScope } from '../config/sentry';
+
+  interface StudentLoginData { studentCode: string; password: string; }
+
+  export const studentLogin = onCall(
+    {
+      secrets: ['SENTRY_DSN'],
+      region: 'us-central1',
+      memory: '256MiB',
+      timeoutSeconds: 30,
+      maxInstances: 50,
+      concurrency: 80,
+    },
+    async (request: CallableRequest<StudentLoginData>) => {
+      initSentry();
+      return withIsolatedScope(async (scope) => {
+        scope.setTag('service', 'auth');
+        scope.setTag('function', 'studentLogin');
+
+        const { studentCode, password } = request.data || {};
+        if (!studentCode || !password) {
+          throw new HttpsError('invalid-argument', 'studentCode and password are required.');
+        }
+
+        // ── Rate-limit by IP/instanceId (anti-enumeration) ────────────
+        // TODO: enforce per-IP cap via Firestore counter or App Check enforceAppCheck: true
+
+        // ── Server-side query (Admin SDK bypasses rules) ───────────────
+        const db = admin.firestore();
+        const snap = await db.collection('users')
+          .where('studentCode', '==', studentCode)
+          .where('role', '==', 'student')
+          .limit(1)
+          .get();
+
+        if (snap.empty) {
+          // Same message as wrong-password to avoid user enumeration
+          throw new HttpsError('not-found', 'Invalid student code or password.');
+        }
+        const userDoc = snap.docs[0];
+        const data = userDoc.data();
+
+        // ── Verify password against stored hash (sha256 — matches client hashPassword) ──
+        const storedHash = data.passwordHash as string | undefined;
+        const storedPlaintext = data.password as string | undefined;
+        const inputHash = crypto.createHash('sha256').update(password).digest('hex');
+
+        let passwordMatches = false;
+        if (storedHash) {
+          passwordMatches = inputHash === storedHash;
+        } else if (storedPlaintext) {
+          passwordMatches = password === storedPlaintext;
+          // Migrate to hash server-side (no client write needed)
+          if (passwordMatches) {
+            await db.collection('users').doc(userDoc.id).update({ passwordHash: inputHash, password: admin.firestore.FieldValue.delete() });
+          }
+        }
+        if (!passwordMatches) {
+          throw new HttpsError('permission-denied', 'Invalid student code or password.');
+        }
+
+        if (data.isActive === false) {
+          throw new HttpsError('permission-denied', 'Your account has been deactivated.');
+        }
+
+        // ── Mint a custom token — client signs in WITHOUT knowing authEmail ──
+        const customToken = await admin.auth().createCustomToken(userDoc.id, {
+          role: 'student',
+          organizationId: data.organizationId || '',
+          authProvider: 'student_code',
+        });
+
+        scope.setUser({ id: userDoc.id });
+        return {
+          customToken,
+          user: {
+            id: userDoc.id,
+            organizationId: data.organizationId || '',
+            role: 'student',
+            authProvider: 'student_code',
+            fullName: data.fullName || 'Student',
+            studentCode: data.studentCode,
+            classId: data.classId || null,
+            hasCompletedSetup: true,
+          },
+        };
+      });
+    },
+  );
+
+Then export from functions/src/index.ts:
+  export { studentLogin } from './functions/studentLogin';
+
+Client refactor (lib/core/services/auth_service.dart, replace lines 501-612):
+
+  Future<Map<String, dynamic>> loginStudent({
+    required String studentCode,
+    required String password,
+  }) async {
+    final transaction = KlasivoSentry.transactions.loginFlow('student');
+    try {
+      KlasivoSentry.breadcrumb.auth('login_started', data: {'method': 'student_code'});
+
+      // Step 1: Call the studentLogin Cloud Function (server does the /users lookup)
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('studentLogin')
+          .call({'studentCode': studentCode, 'password': password});
+      final data = Map<String, dynamic>.from(result.data as Map);
+
+      // Step 2: Sign in with the custom token minted by the server
+      final userCred = await _auth.signInWithCustomToken(data['customToken'] as String);
+      // userCred.user!.uid === data['user']['id']
+
+      await KlasivoSentry.userContext.setUser(
+        uid: data['user']['id'] as String,
+        email: '',
+        role: AppConstants.roleStudent,
+        organizationId: data['user']['organizationId'] as String?,
+      );
+      transaction.status = const SpanStatus.ok();
+      return Map<String, dynamic>.from(data['user'] as Map);
+    } catch (e) {
+      transaction.status = const SpanStatus.internalError();
+      rethrow;
+    } finally {
+      await transaction.finish();
+    }
+  }
+
+Why custom token (not "return authEmail, client calls signInWithEmailAndPassword"):
+  - Returning authEmail to the client leaks the synthetic email format to the client (privacy + the email becomes a known target for password-reset abuse via FirebaseAuth.sendPasswordResetEmail).
+  - Returning authEmail also means the client still needs to call signInWithEmailAndPassword with the SAME password — exposing the password to the client twice and giving no server-side rate-limit point for failed attempts.
+  - Custom token keeps the entire auth flow server-mediated; the client only ever sees a one-time token.
+
+ALTERNATIVE (Option B — simpler, less secure): If you cannot deploy a new function immediately, you can change the student login screen to ask for the student's authEmail directly (the synthetic `student_{code}@students.klasivo.app`) plus password, then call `signInWithEmailAndPassword` directly. The Firestore query is removed entirely. Downside: WORSE UX (student must type a long synthetic email), and the authEmail format leaks to the client. Not recommended for production.
+
+DO NOT DO (anti-patterns explicitly rejected):
+  - DO NOT loosen firestore.rules to `allow read: if true;` on /users — that allows anonymous studentCode enumeration and full user-document leakage.
+  - DO NOT add `allow list: if true; match /users/{userId} { allow get: if true; }` — same enumeration risk on get if studentCode is discoverable.
+  - DO NOT move the lookup to a separate `studentCodes/{code}` collection with public read — same enumeration risk; you've just renamed the leak.
+  - DO NOT rely on the existing try/catch fallback at line 579; it does not catch the .get() permission-denied (it's at line 516, before the auth attempt).
+
+══════════════════════════════════════════════════════════════════════════════
+SUMMARY
+══════════════════════════════════════════════════════════════════════════════
+
+Root cause:
+  lib/core/services/auth_service.dart:511-516 calls `_firestore.collection('users').where('studentCode', isEqualTo: ...).get()` BEFORE `FirebaseAuth.signInWithEmailAndPassword`. Firestore rule `match /users/{userId} { allow read: if isAuth(); }` (firestore.rules:105-110) denies the anonymous read → `cloud_firestore/permission-denied`.
+
+Why the rule is correct:
+  Loosening it would expose every user document (including password hashes, auth emails, org IDs, role assignments) to anonymous enumeration. The rule MUST stay strict.
+
+Why the client code is wrong:
+  The student-login flow is structured as "lookup authEmail by studentCode, then sign in with that email + password" — but the lookup itself requires the very auth state the flow is establishing. Classic chicken-and-egg.
+
+Architectural gap:
+  No server-side function exists to perform the lookup. functions/src/index.ts exports createStudent (creates accounts) and changeUserPassword (requires authenticated caller), but NO studentLogin / lookupStudent. The client has no safe way to convert {studentCode, password} → {authEmail} → signInWithEmailAndPassword.
+
+Fix:
+  Add `studentLogin` v2 Callable Cloud Function (Option A above). Server does the /users lookup with Admin SDK, verifies the sha256 password hash server-side, mints a custom token via `admin.auth().createCustomToken()`, returns {customToken, user}. Client calls `_auth.signInWithCustomToken(token)`. Optionally enforce App Check + per-IP rate-limiting to prevent studentCode enumeration.
+
+Files Changed:
+- None (forensic audit only; no code modifications per task scope)
+
+Next Actions:
+1. [HIGH] Implement functions/src/functions/studentLogin.ts (Option A above) and export from functions/src/index.ts.
+2. [HIGH] Refactor lib/core/services/auth_service.dart:501-612 loginStudent to call the new callable + signInWithCustomToken. Remove the .where('studentCode').get() call.
+3. [MEDIUM] Delete or update the stale duplicate loginStudent in lib/features/auth/data/auth_service.dart:210-284 so a future refactor doesn't pick up the broken copy.
+4. [MEDIUM] Fix or delete the same broken pattern in lib/infrastructure/repositories/auth_repository.dart:175-196 (signInWithStudentCode).
+5. [LOW] Tighten firestore.rules:106 from `allow read: if isAuth();` to `allow read: if isAuth() && (request.auth.uid == userId || isTeacherOrOwnerInSameOrg());` — currently any authenticated user can read ANY other user's doc globally (no org boundary). Out of scope here but flagged for follow-up.
+6. [LOW] Consider enforcing App Check on the new `studentLogin` callable (the existing createStudent.ts comment notes AppCheck is disabled because "client has no FirebaseAppCheck init" — fix that separately).
+7. [LOW] Add per-IP/per-instanceId rate-limiting on studentLogin to prevent studentCode enumeration attacks (Firestore counter or Cloudflare WAF rule).
+---
+
+---
+Task ID: FORENSIC-10
+Agent: Explore (security audit)
+Task: Audit all 13 Klasivo Cloud Functions for authentication, authorization, org-scope, null handling, and fail-closed behavior
+
+Work Log:
+- Read /home/z/my-project/worklog.md (Tasks 1–7, FORENSIC-1 through FORENSIC-9) to establish prior context: Sentry integration (Task 1), createStudent unauthenticated investigation (Task 4 / FORENSIC-1), claims fallback addition (Task 6 / commit 9e207b3), Sentry secret EXPIRED root cause (FORENSIC-2), studentLogin gap (FORENSIC-9).
+- Read /home/z/my-project/functions/src/utils/rbac.ts (317 lines) — single source of truth for VALID_ROLES, ROLE_ASSIGNMENT_ROLES, SCOPE_ASSIGNMENT_ROLES, OVERRIDE_ASSIGNMENT_ROLES, STAFF_ROLES, INVITATION_ROLES, ANNOUNCEMENT_ROLES, PASSWORD_RESET_ROLES, LIVEKIT_ADMIN_ROLES, verifyOrgBoundary(), buildCustomClaims(), verifyScopeAuthorization() (fail-closed scope check).
+- Read /home/z/my-project/functions/src/config/sentry.ts (151 lines) — initSentry() + withIsolatedScope() helpers.
+- Read all 13 target function files in full (createStudent 680 lines, assignRole 158, assignScope 147, syncClaims 119, changeUserPassword 164, generateLiveKitToken 211, removeParticipant 157, sendContactForm 47, sendTeacherInvitation 60, sendSchoolAnnouncement 74, setPermissionOverrides 184, sentryTestEvent 58, scheduledClassReminder 128).
+
+Audit matrix (per function, 10-point checklist):
+
+| Function | Auth? | Authz? | OrgScope? | NullSafe? | FailClosed? | CrashRisk? | AuditLog? |
+|---|---|---|---|---|---|---|---|
+| createStudent.ts | ✅ HttpsError(unauthenticated) L235 | ✅ STUDENT_CREATION_ROLES L313 + Firestore fallback L272-307 | ✅ verifyOrgBoundary L420 | ✅ L391 validates required | ✅ L283 denies if user doc missing | ✅ L659-677 wraps unexpected in HttpsError('internal') | ✅ L611 |
+| assignRole.ts | ✅ L51 | ✅ ROLE_ASSIGNMENT_ROLES L61 | ✅ verifyOrgBoundary L80 | ✅ L67 | ✅ (empty role claim → '') | ❌ NO try/catch — Firestore get/setCustomUserClaims/update/audit add all unprotected | ✅ L132 |
+| assignScope.ts | ✅ L58 | ✅ SCOPE_ASSIGNMENT_ROLES L67 | ✅ verifyOrgBoundary L78 | ✅ L72 but no array-type validation | ✅ | ⚠️ try/catch rethrows raw error (not HttpsError) | ✅ L124 |
+| syncClaims.ts | ✅ L49 | ✅ self OR ROLE_ASSIGNMENT_ROLES L59 | ✅ L77 (cross-user only) | ✅ L56 | ✅ | ⚠️ try/catch rethrows raw error | ✅ L91 |
+| changeUserPassword.ts | ✅ L36 | ✅ self OR PASSWORD_RESET_ROLES L64 | ✅ L77 + explicit fail-closed L71-76 | ✅ L44 | ✅ L71-76 | ❌ NO try/catch — updateUser/update/audit add unprotected | ✅ L110, L145 |
+| generateLiveKitToken.ts | ✅ L68 (but throws Error not HttpsError) | ✅ verifyScopeAuthorization L130 (fail-closed) | ✅ verifyOrgBoundary L111 | ✅ L77 | ✅ | ❌ NO try/catch — Firestore gets + AccessToken unprotected; throws raw Error | ⚠️ denial-only L196 |
+| removeParticipant.ts | ✅ L54 (throws Error not HttpsError) | ⚠️ hardcoded ['teacher','owner','admin'] L67 — not LIVEKIT_ADMIN_ROLES; NO scope check | ⚠️ string comparison `roomOrgId !== callerOrgId` L86 — undefined===undefined → ALLOW; not verifyOrgBoundary | ✅ L74 | ❌ FAIL-OPEN when both org IDs undefined | ⚠️ partial try/catch (LiveKit SDK only) | ❌ NONE |
+| sendContactForm.ts | ❌ NONE (intentional public) | N/A | N/A | ✅ L20 | ✅ | ⚠️ no try/catch; throws raw Error | ❌ NONE |
+| sendTeacherInvitation.ts | ✅ L18 (Error not HttpsError) | ✅ INVITATION_ROLES L22 | ✅ verifyOrgBoundary L43 | ✅ L27 | ✅ | ⚠️ partial try/catch | ❌ NONE |
+| sendSchoolAnnouncement.ts | ✅ L18 (Error not HttpsError) | ✅ ANNOUNCEMENT_ROLES L22 | ✅ verifyOrgBoundary L53 | ✅ L27 | ✅ | ⚠️ partial try/catch | ❌ NONE |
+| setPermissionOverrides.ts | ✅ L66 | ✅ OVERRIDE_ASSIGNMENT_ROLES L75 | ✅ verifyOrgBoundary L111 | ✅ L85 | ✅ | ⚠️ try/catch rethrows raw error | ✅ L155 |
+| sentryTestEvent.ts | ❌ NONE — anonymous allowed by design | ❌ NONE | N/A | ✅ L26 | N/A (diagnostic) | ✅ inner try/catch for test exception | ❌ NONE |
+| scheduledClassReminder.ts | N/A (pub/sub) | N/A | N/A | ✅ | N/A | ✅ L37-125 outer try/catch | ❌ NONE |
+
+1. FUNCTIONS THAT CAN CRASH (return UNAVAILABLE/UNKNOWN to client) — root cause of production issues:
+
+   - **assignRole.ts** — NO try/catch wrapping function body. Firestore get() at L90, ownersSnapshot get() at L106, setCustomUserClaims() at L121, update() at L124, audit_logs.add() at L132 — any transient failure propagates as `UNKNOWN`/`UNAVAILABLE`. Client sees "Build failed" rather than a structured error.
+     Fix: wrap L88-147 in try/catch; on Firestore/Admin SDK errors, captureException + throw new HttpsError('internal', 'Role assignment failed.', { step: 'assign_role' }).
+     File:line: /home/z/my-project/functions/src/functions/assignRole.ts:88-147
+
+   - **changeUserPassword.ts** — NO try/catch. Firestore get() at L53, admin.auth().updateUser() at L93/129/135, db.update() at L101/130/136, audit_logs.add() at L110/145 — all unprotected. A transient Firestore blip during the audit_logs.add() AFTER the password was already updated would throw, leaving the operation in a partially-completed state from the client's perspective.
+     Fix: wrap L52-162 in try/catch; specifically, wrap audit_logs.add() in its own try/catch (non-critical, log + continue) so audit failure doesn't propagate as `UNAVAILABLE` after the password was changed.
+     File:line: /home/z/my-project/functions/src/functions/changeUserPassword.ts:52-162
+
+   - **generateLiveKitToken.ts** — NO try/catch. Firestore gets at L83/L119, AccessToken construction at L148, token.toJwt() at L166 — all unprotected. Additionally throws raw `Error` (not HttpsError) at L70, L78, L86, L93, L99, L114, L139 — Firebase v2 converts these to `UNKNOWN`/`UNAVAILABLE` with no actionable message.
+     Fix: import HttpsError and replace all `throw new Error(...)` with `throw new HttpsError('unauthenticated'/'invalid-argument'/'not-found'/'permission-denied'/'internal', ...)`. Wrap body in try/catch for the Firestore/LiveKit SDK operations.
+     File:line: /home/z/my-project/functions/src/functions/generateLiveKitToken.ts:68-176
+
+   - **removeParticipant.ts** — only the LiveKit SDK call (L103-111) has try/catch. Firestore gets at L61, L79 unprotected. Throws raw `Error` at L55, L63, L69, L75, L81, L87 — all become `UNKNOWN`/`UNAVAILABLE`.
+     Fix: same HttpsError pattern. Wrap L58-156 in try/catch.
+     File:line: /home/z/my-project/functions/src/functions/removeParticipant.ts:54-156
+
+   - **sendContactForm.ts** — no try/catch. sendEmail() failure rethrown as raw Error at L43.
+     Fix: wrap sendEmail in try/catch, throw HttpsError('internal', 'Failed to send contact form.', { reason }).
+     File:line: /home/z/my-project/functions/src/functions/sendContactForm.ts:38-44
+
+   - **sendTeacherInvitation.ts** — partial try/catch only around queueEmail (L47-58); validation throws raw Error.
+     Fix: replace raw Error throws with HttpsError.
+     File:line: /home/z/my-project/functions/src/functions/sendTeacherInvitation.ts:18-44
+
+   - **sendSchoolAnnouncement.ts** — same pattern as sendTeacherInvitation.
+     Fix: same.
+     File:line: /home/z/my-project/functions/src/functions/sendSchoolAnnouncement.ts:18-55
+
+   - **assignScope.ts / syncClaims.ts / setPermissionOverrides.ts** — these have try/catch (L82-145, L85-117, L118-182 respectively) but only `Sentry.captureException(err); throw err;` — the rethrown error is NOT wrapped in HttpsError, so the client still sees `UNKNOWN`/`UNAVAILABLE`.
+     Fix: replace `throw err` with `throw new HttpsError('internal', 'Operation failed.', { step, originalMessage: err.message })` (after captureException).
+
+2. FUNCTIONS RELYING ON STALE CUSTOM CLAIMS (fail for users without synced claims):
+
+   The Firestore fallback pattern is currently implemented ONLY in createStudent.ts (L272-307, added in commit 9e207b3). All other functions read `request.auth.token.role` / `request.auth.token.organizationId` directly. When claims are missing/stale (e.g. user registered before the claims-provisioning pipeline was wired into registerOwner/registerTeacher/acceptInvitation, OR a role was just changed but the user hasn't refreshed their token), these functions deny the action.
+
+   - **assignRole.ts** L56, L81 — reads `callerClaims.role` and `callerClaims.organizationId` directly. If claims missing → callerRole='' → L61 denies with "Only admins can assign roles." Owner who just registered cannot assign roles until they trigger syncClaims.
+   - **assignScope.ts** L65, L77, L128 — same pattern.
+   - **syncClaims.ts** L55, L76, L95 — partial: self-sync path is OK (doesn't need claims), cross-user sync requires ROLE_ASSIGNMENT_ROLES claim.
+   - **changeUserPassword.ts** L63, L70, L108-109, L143-144 — self-path OK; admin-reset path requires claims.
+   - **generateLiveKitToken.ts** L106-109 — reads role/org/scopeAccessLevel from claims. If claims missing → callerOrgId='' → verifyOrgBoundary fails (fail-closed, safe but blocks legit user).
+   - **sendTeacherInvitation.ts** L21, L42 — same.
+   - **sendSchoolAnnouncement.ts** L21, L52 — same.
+   - **setPermissionOverrides.ts** L73, L110, L159 — same.
+
+   Note: All of the above are FAIL-CLOSED (deny when claims missing) — no privilege escalation risk, just UX breakage. The proper fix is to mirror the createStudent.ts L272-307 Firestore fallback pattern in each, OR (better) ensure registerOwner/registerTeacher/acceptInvitation always call setCustomUserClaims at the end (the createStudent.ts L265-268 comment refers to this as "Phase 2").
+
+   Functions that DO have resilience:
+   - **createStudent.ts** ✅ Firestore fallback (commit 9e207b3)
+   - **removeParticipant.ts** ✅ reads role/org from Firestore user doc directly (L61-66, L84-85) — most resilient pattern of the LiveKit functions
+
+3. SECURITY VULNERABILITIES:
+
+   3a. **PRIVILEGE ESCALATION via password reset** — changeUserPassword.ts
+       `PASSWORD_RESET_ROLES = ['super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager']` (rbac.ts L136-138). A `campus_manager` (scoped to a campus) can reset the password of an `owner` or `admin` (org-wide authority) in the same org. The function checks org boundary (L77) but NOT role hierarchy. A campus_manager could reset the owner's password, then log in as the owner, gaining org-wide control.
+       File:line: /home/z/my-project/functions/src/functions/changeUserPassword.ts:62-83
+       Fix: after the org-boundary check, add role-hierarchy enforcement:
+       ```typescript
+       // After L82:
+       const targetRole = userData.role || 'student';
+       const ROLE_HIERARCHY = ['student','parent','observer','assistant_teacher','teacher','academic_supervisor','stage_manager','campus_manager','admin','owner','super_admin'];
+       const callerRank = ROLE_HIERARCHY.indexOf(callerRole);
+       const targetRank = ROLE_HIERARCHY.indexOf(targetRole);
+       if (callerRole !== 'super_admin' && callerRank <= targetRank) {
+         throw new HttpsError('permission-denied', 'Cannot reset the password of a user with equal or higher role.');
+       }
+       ```
+
+   3b. **MISSING SCOPE CHECK in removeParticipant** — removeParticipant.ts
+       Unlike generateLiveKitToken.ts (which calls verifyScopeAuthorization at L130), removeParticipant.ts ONLY checks (a) caller role is hardcoded `['teacher','owner','admin']` (L67) and (b) caller org matches room org via string comparison (L86). It does NOT verify the caller is the teacher OF THAT CLASS. Any teacher in the same org can remove ANY participant from ANY classroom — including classrooms they don't teach. Also: the role check is hardcoded rather than using `LIVEKIT_ADMIN_ROLES` from rbac.ts — drift risk.
+       File:line: /home/z/my-project/functions/src/functions/removeParticipant.ts:60-88
+       Fix: after L88, load the room's classId, load the caller's classIds from Firestore, and verify `caller.classIds.includes(room.classId)` OR caller is admin/owner/super_admin. Use `verifyScopeAuthorization` from rbac.ts for consistency. Replace hardcoded `['teacher','owner','admin']` with `LIVEKIT_ADMIN_ROLES`.
+
+   3c. **FAIL-OPEN org check** — removeParticipant.ts L86
+       `if (roomOrgId !== callerOrgId)` — when both `roomOrgId` and `callerOrgId` are `undefined`, `undefined !== undefined` evaluates to `false`, so the check PASSES and the function continues. A room doc missing `organizationId` (e.g. created before the migration) called by a user whose Firestore doc is also missing `organizationId` → access granted.
+       File:line: /home/z/my-project/functions/src/functions/removeParticipant.ts:86
+       Fix: replace L86 with `if (!verifyOrgBoundary(callerOrgId || '', roomOrgId || '', callerRole)) {` to inherit rbac.ts's fail-closed behavior (empty string !== real org ID, and only super_admin bypasses).
+
+   3d. **UNAUTHENTICATED Sentry test callable** — sentryTestEvent.ts
+       The function accepts anonymous calls (L27: `authUid = request.auth?.uid ?? 'anonymous'`) and sends arbitrary messages + exceptions to Sentry. An attacker can call it in a loop to (a) pollute the Sentry event stream with garbage, (b) exhaust the Sentry event quota, (c) mask real errors in the dashboard. The function has maxInstances=3 / concurrency=10 which limits blast radius per-instance but doesn't prevent multi-instance abuse.
+       File:line: /home/z/my-project/functions/src/functions/sentryTestEvent.ts:18-58
+       Fix: require authentication AND restrict to super_admin:
+       ```typescript
+       if (!request.auth) throw new HttpsError('unauthenticated', 'Must be authenticated.');
+       const role = (request.auth.token.role as string) || '';
+       if (role !== 'super_admin') throw new HttpsError('permission-denied', 'Super admin only.');
+       ```
+
+   3e. **SELF-ESCALATION to super_admin** — assignRole.ts
+       The admin-cannot-assign-super_admin check is at L75 (`if (callerRole === 'admin' && ...)`), but an `owner` can call assignRole with `targetUserId = own uid` and `newRole = 'super_admin'` — there is no check preventing this. The self-demotion check at L97 only fires when `oldRole === 'owner' && newRole !== 'owner'`, so self-elevation from owner → super_admin is not blocked. Since super_admin is a global cross-org role, this lets any org owner self-promote to global super_admin.
+       File:line: /home/z/my-project/functions/src/functions/assignRole.ts:97-102
+       Fix: extend the L75 guard to also block `owner` from assigning super_admin:
+       ```typescript
+       if (callerRole !== 'super_admin' && newRole === 'super_admin') {
+         throw new HttpsError('permission-denied', 'Only super_admin can assign the super_admin role.');
+       }
+       ```
+
+   3f. **UNVALIDATED scope arrays** — assignScope.ts
+       `scope.campusIds`, `scope.stageIds`, etc. are written directly to Firestore (L107-112) without type validation. A caller passing `scope.campusIds = "all"` (string, not array) would corrupt the user doc. There is also no validation that the scope IDs (campusId, classId, etc.) actually exist in the caller's org — a campus_manager could grant a teacher scope to a campus in a DIFFERENT org (since the only org check is on the targetUserId's org, not on the scope entities themselves).
+       File:line: /home/z/my-project/functions/src/functions/assignScope.ts:107-112
+       Fix: add type validation before L107:
+       ```typescript
+       for (const [key, value] of Object.entries(scope)) {
+         if (!Array.isArray(value) || value.some(v => typeof v !== 'string' || v.length > 64)) {
+           throw new HttpsError('invalid-argument', `scope.${key} must be an array of strings (max 64 chars each).`);
+         }
+       }
+       ```
+       (Cross-org scope-entity validation is a larger fix; out of scope for this audit.)
+
+   3g. **No rate limiting on public contact form** — sendContactForm.ts
+       Anyone (including bots) can call this function repeatedly. With maxInstances=10 and concurrency=80, that's 800 concurrent invocations. Each sends an email via Resend. Email quota / bounce rate abuse risk. No reCAPTCHA, no IP-based throttling.
+       File:line: /home/z/my-project/functions/src/functions/sendContactForm.ts:11-47
+       Fix: add App Check enforcement once client initializes it, AND/OR add per-IP rate limiting via a Firestore counter (max 5 submissions per IP per hour).
+
+   3h. **Missing audit log for participant removal** — removeParticipant.ts
+       Participant removal is a moderation action (forcibly ejecting a student from a live class). It should be auditable. The function writes a notification to the removed user (L134) but does NOT write to `audit_logs`. There is no way to investigate who removed whom and when.
+       File:line: /home/z/my-project/functions/src/functions/removeParticipant.ts:113-130
+       Fix: before L154 return, add:
+       ```typescript
+       try {
+         await db.collection('audit_logs').add({
+           organizationId: roomOrgId || '',
+           performedBy: callerUid,
+           performedByRole: callerRole,
+           targetType: 'livekit_room',
+           targetId: roomId,
+           action: 'remove_participant',
+           metadata: { roomName, participantIdentity },
+           timestamp: admin.firestore.FieldValue.serverTimestamp(),
+         });
+       } catch (e) { console.warn('audit log failed', e); }
+       ```
+
+4. MISSING FAIL-CLOSED CONDITIONS:
+
+   - **removeParticipant.ts L86** — string comparison `roomOrgId !== callerOrgId` is fail-OPEN when both are undefined. (Detailed in 3c above.)
+   - **removeParticipant.ts L67** — `if (!['teacher', 'owner', 'admin'].includes(callerRole))` — if `callerRole` is undefined (user doc has no role field), the check correctly denies. ✅ But if the user doc exists but `role` field is missing, `callerRole` is `undefined`, `.includes(undefined)` returns false, throws "Only teachers can remove participants." ✅ Fail-closed.
+   - **generateLiveKitToken.ts L111** — verifyOrgBoundary('', roomOrgId, '') returns false (empty string !== real ID; callerRole '' is not 'super_admin'). ✅ Fail-closed.
+   - **assignRole.ts L80-86** — verifyOrgBoundary('', organizationId, '') returns false. ✅ Fail-closed.
+   - **changeUserPassword.ts L71-76** — explicit fail-closed for missing org IDs. ✅
+   - All other functions either use verifyOrgBoundary (inheriting fail-closed) or are N/A.
+
+5. SENTRY INTEGRATION:
+   All 13 functions correctly use `initSentry()` + `withIsolatedScope()` from /home/z/my-project/functions/src/config/sentry.ts. The withIsolatedScope helper calls `scope.clear()` at the start of each invocation (sentry.ts L90) to prevent tag/user context leaking between concurrent v2 invocations. ✅
+
+Stage Summary:
+- 13 functions audited against 10-point security checklist.
+- 1 function (createStudent.ts) is fully hardened: Firestore fallback for claims, top-level HttpsError wrapping, audit log, fail-closed on missing user doc. (Confirming commit 9e207b3 fix is in place.)
+- 1 function (removeParticipant.ts) has 3 critical issues: missing scope check (any teacher can remove from any room in their org), fail-open org check (undefined !== undefined grants access), missing audit log.
+- 1 function (changeUserPassword.ts) has privilege escalation: campus_manager can reset owner's password.
+- 1 function (sentryTestEvent.ts) is publicly callable and spams Sentry.
+- 1 function (assignRole.ts) allows owner → super_admin self-escalation.
+- 8 functions throw raw `Error` instead of `HttpsError`, causing the client to see `UNKNOWN`/`UNAVAILABLE` on transient Firestore failures — this is the most likely root cause of the production "Build failed with status: EXPIRED" / UNAVAILABLE issues the user has been reporting (see FORENSIC-2 for the secret-EXPIRED variant).
+- 8 functions rely on stale custom claims without Firestore fallback (safe-but-broken for users with unsynced tokens).
+- Files Changed: NONE (audit only, per task scope).
+
+Next Actions:
+1. [CRITICAL] Wrap assignRole, changeUserPassword, generateLiveKitToken, removeParticipant, sendContactForm, sendTeacherInvitation, sendSchoolAnnouncement in top-level try/catch that re-throws as HttpsError. Replace all `throw new Error(...)` with `throw new HttpsError(...)`. This is the production-facing fix for the recurring UNAVAILABLE errors.
+2. [CRITICAL] Fix changeUserPassword.ts L82 — add role-hierarchy check so campus_manager/stage_manager cannot reset admin/owner passwords.
+3. [CRITICAL] Fix removeParticipant.ts L86 — replace `roomOrgId !== callerOrgId` with `verifyOrgBoundary(...)` (fail-closed). Add scope check (caller's classIds must include room's classId, OR caller is admin/owner/super_admin).
+4. [CRITICAL] Add authentication + super_admin role check to sentryTestEvent.ts.
+5. [HIGH] Fix assignRole.ts L75 — block owner from assigning super_admin (only super_admin can assign super_admin).
+6. [HIGH] Add audit_logs entry to removeParticipant.ts for moderation actions.
+7. [HIGH] Mirror the createStudent.ts L272-307 Firestore-claims-fallback in assignRole, assignScope, generateLiveKitToken, sendTeacherInvitation, sendSchoolAnnouncement, setPermissionOverrides so users with stale claims can still operate (or, better, ensure registerOwner/registerTeacher/acceptInvitation always call setCustomUserClaims — the "Phase 2" referenced in createStudent.ts L265-268).
+8. [MEDIUM] Fix assignScope.ts L107 — validate scope arrays are arrays of strings with reasonable length caps before writing to Firestore.
+9. [MEDIUM] Add rate limiting / App Check to sendContactForm.ts and sentryTestEvent.ts.
+10. [LOW] Unify the role check in removeParticipant.ts L67 — replace hardcoded `['teacher','owner','admin']` with `LIVEKIT_ADMIN_ROLES` from rbac.ts to prevent drift.
+---
+
+---
+Task ID: FORENSIC-9
+Agent: Explore (Forensic Firestore Rules Audit)
+Task: Audit EVERY collection's rules in /home/z/my-project/firestore.rules for security vulnerabilities, missing fail-closed conditions, privilege escalation, and owner bypass issues
+
+Work Log:
+- Read entire /home/z/my-project/firestore.rules (752 lines) — 40 named collection match blocks, ~12 helper functions.
+- Read lib/core/services/auth_service.dart:500-630 (loginStudent flow) to confirm student-login chicken-and-egg.
+- Grep'd codebase for collection('recordings'|'emailQueue'|'emailLogs'|'email_queue'|'email_log') to identify naming mismatches vs rules.
+- Read functions/src/services/queueService.ts (lines 12-26) and emailLogService.ts:17 to confirm real collection names used by Cloud Functions.
+- Read lib/features/livekit/data/livekit_repository.dart:470-500 to confirm client reads from `recordings`.
+- Cross-referenced 6 prior FORENSIC-* task entries (FORENSIC-1, -2, -3, -4, -5, -6, -7) to avoid duplicate findings; FORENSIC-9 is the first rules-specific audit.
+
+HELPER-FUNCTION AUDIT (lines 9-98):
+- isAuth()           = `request.auth != null`                              — OK (auth-only gate).
+- getUserOrgId()     = `get(users/uid).data.organizationId`                — assumes every authed user has a users doc; throws (denies) if missing — fail-closed ✓.
+- isInSameOrg()      = `isAuth() && exists(users/uid) && resource.data.organizationId == getUserOrgId()` — checks RESOURCE org vs CALLER org ✓.
+- isIncomingSameOrg()= same, but uses `request.resource.data.organizationId` — checks NEW payload org ✓ (correct for create/update).
+- isTeacherOrOwner() = role ∈ {teacher, owner, admin}  — does NOT include org check; safe only when AND'd with isInSameOrg().
+- isTeacherOrOwnerInSameOrg() = isTeacherOrOwner() && isInSameOrg()  — ✓.
+- isOwner()          = role == 'owner'  — does NOT include org check.
+- isOwnerInSameOrg() = isOwner() && isInSameOrg()  — ✓.
+- parentHasAccessToStudent(studentId) = exists(parent_links/{uid_studentId}) && status=='approved'  — ✓ (linkId format matches queueService and parent_links create path).
+- isResourceOwner() = resource.data.createdBy == request.auth.uid  — defined but NEVER USED in any rule.
+- studentSafeSubmissionUpdate() = checks studentId==uid AND blocks diffKeys(['score','grade','totalScore','percentage','status','gradedBy','gradedAt','isGraded'])  — ✓ field-level enforcement.
+
+GLOBAL COLLECTION AUDIT TABLE:
+
+| # | Collection | Read | Create | Update | Delete | Vulnerability | Severity |
+|---|------------|------|--------|--------|--------|---------------|----------|
+| 1 | users/{userId} | `isAuth()` (line 106) — ANY auth user reads ANY user doc across ALL orgs | `isAuth() && uid==userId` (line 107) — user can self-create with arbitrary `role`/`organizationId` | `isAuth() && uid==userId` (line 108) — NO field restrictions; user can flip own `role` to 'owner'/'admin' | `if false` (line 109) — blocks all deletes including owner self-delete; no Cloud Function path exists | **PRIVILEGE ESCALATION (update role), CROSS-TENANT LEAK (read), DELETE-BLOCK (if false)** | CRITICAL |
+| 2 | classes/{classId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None — wizard path may write `organizationId:''` (per FORENSIC-1) but that's a data bug, not a rule bug | LOW |
+| 3 | stages/{stageId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 4 | campuses/{campusId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isCampusManager())` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 5 | grades/{gradeId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 6 | organizations/{orgId} | `isAuth()` (line 238) — ANY auth user reads ANY org; cross-tenant leak | `isAuth()` (line 239) — any auth user can create an org | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| resource.data.ownerId==uid)` ✓ | `if false` ✓ | **CROSS-TENANT READ LEAK** (intended for invite-code lookup but exposes ALL org metadata to ALL users) | HIGH |
+| 7 | questions/{questionId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 8 | question_banks/{questionId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isInComingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None (also note `question_bank` singular is NOT in rules — confirm no client uses singular) | NONE |
+| 9 | exams/{examId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 10 | exam_templates/{templateId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 11 | exam_instances/{instanceId} | `isAuth() && isInSameOrg()` — any student in org can read ALL exam instances (incl. other students' scores!) | `isAuth() && isIncomingSameOrg()` (line 201) — any auth user can create an exam_instance with arbitrary `studentId` (impersonation) | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| (isStudent() && resource.data.studentId==uid && field-block))` ✓ | `if false` ✓ | **STUDENT CROSS-READ LEAK (read), IMPERSONATION (create)** | HIGH |
+| 12 | submissions/{submissionId} | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isStudent&&own \|\| isParent&&linked)` ✓ | `isAuth() && isIncomingSameOrg()` (line 178) — any auth user can create a submission with arbitrary `studentId` | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| studentSafeSubmissionUpdate())` ✓ | `if false` ✓ | **IMPERSONATION on create** (student A submits answers as student B) | HIGH |
+| 13 | assignment_submissions/{submissionId} | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isStudent&&own \|\| isParent&&linked)` ✓ | `isAuth() && isIncomingSameOrg()` (line 358) — same impersonation vuln | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| (isStudent() && own && field-block))` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | **IMPERSONATION on create** | HIGH |
+| 14 | attendance/{attendanceId} | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isParent&&linked)` — note: NO student-self read path | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | Students cannot read their OWN attendance (UX bug, not security) | LOW |
+| 15 | conversations/{conversationId} | `isAuth() && isInSameOrg()` — ANY auth user in org can read ALL conversations incl. DMs between others | `isAuth() && isIncomingSameOrg()` — any user can create conversation | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| participants.hasAny([uid]))` ✓ | `if false` ✓ | **DM CROSS-READ LEAK within org** | HIGH |
+| 16 | messages/{messageId} | `isAuth() && isInSameOrg()` (line 289) — ANY auth user in org can read ALL messages incl. other users' DMs | `isAuth() && isIncomingSameOrg()` ✓ | `isAuth() && isInSameOrg() && resource.data.senderId==uid` ✓ | `if false` ✓ | **DM CONTENT CROSS-READ LEAK within org** | HIGH |
+| 17 | notifications/{notificationId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isAuth() && isInSameOrg()` (line 231) — ANY auth user in org can update ANY notification (mark-as-read fraud, content tampering) | `if false` ✓ | **CROSS-USER UPDATE (no recipient check)** | MEDIUM |
+| 18 | teacher_assignments/{assignmentId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 19 | parent_links/{linkId} | `isAuth() && isInSameOrg()` (line 404) — ANY auth user in org (incl. students!) can read ALL parent_links → leaks parent-child mapping org-wide | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| (isParent() && resource.data.parentId==uid))` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | **PARENT-CHILD RELATIONSHIP LEAK to all students** | HIGH |
+| 20 | audit_logs/{logId} | `isTeacherOrOwner() && isInSameOrg()` ✓ | `isAuth() && isIncomingSameOrg()` ✓ | `if false` ✓ | `if false` ✓ | None | NONE |
+| 21 | feature_flags/{flagId} | `isAuth() && isInSameOrg()` ✓ | `isOwner() && isIncomingSameOrg()` ✓ | `isOwner() && isInSameOrg()` ✓ | `isOwner() && isInSameOrg()` ✓ | None (isOwner alone has no org check, but combined w/ isInSameOrg/isIncomingSameOrg is safe) | NONE |
+| 22 | permission_overrides/{overrideId} | `isAuth() && isInSameOrg()` ✓ | `isOwner() && isIncomingSameOrg()` ✓ | `isOwner() && isInSameOrg()` ✓ | `isOwner() && isInSameOrg()` ✓ | None | NONE |
+| 23 | gradebook/{gradebookId} | `isAuth() && isInSameOrg()` — students can read ALL gradebook data for ALL classes | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | **STUDENT CROSS-READ of other students' gradebook** | MEDIUM |
+| 24 | gradebook_entries/{entryId} | `isAuth() && isInSameOrg()` — same student cross-read leak | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | **STUDENT CROSS-READ of individual grade entries** | MEDIUM |
+| 25 | gradebook_categories/{categoryId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 26 | content_progress/{progressId} | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isStudent&&own)` ✓ | `isAuth() && isIncomingSameOrg()` — any user can create progress for any student (fake progress) | `isAuth() && isInSameOrg() && (isTeacherOrOwner() \|\| isStudent&&own)` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | **IMPERSONATION on create** (low impact) | LOW |
+| 27 | session_analytics/{analyticsId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isOwnerInSameOrg()` ✓ | None | NONE |
+| 28 | livekit_rooms/{roomId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isOwnerInSameOrg()` ✓ | None | NONE |
+| 29 | livekit_rooms/{roomId}/messages/{messageId} | `isAuth() && isInSameOrg()` ✓ | `isAuth() && isInSameOrg()` — any user can post chat | `if false` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None significant (chat is open-by-design) | NONE |
+| 30 | livekit_rooms/{roomId}/raised_hands/{handId} | `isAuth() && isInSameOrg()` ✓ | `isAuth() && isInSameOrg()` ✓ | `isAuth() && isInSameOrg()` (line 700) — ANY user can modify ANYONE's raised hand | `isAuth() && isInSameOrg()` (line 701) — ANY user can DELETE ANYONE's raised hand | **CROSS-USER MODIFY/DELETE** (student can clear other students' raised hands) | MEDIUM |
+| 31 | livekit_rooms/{roomId}/attendance/{attendanceId} | `isAuth() && isInSameOrg()` ✓ | `isAuth() && isInSameOrg()` (line 707) — ANY user can create attendance for ANY student → attendance FRAUD | `isTeacherOrOwnerInSameOrg()` ✓ | `if false` ✓ | **ATTENDANCE FRAUD on create** | HIGH |
+| 32 | scheduled_classes/{classId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 33 | email_queue/{emailId} | `if false` ✓ | `if false` ✓ | `if false` ✓ | `if false` ✓ | Naming mismatch: Cloud Functions write to `emailQueue` (camelCase) at queueService.ts:12,26 and onUserDeleted.ts:159. Rules guard `email_queue` (snake_case) — DEAD RULE. Real `emailQueue` collection has NO rule and relies on Admin SDK bypass. | LOW (Cloud-Function-only collection) |
+| 34 | email_log/{logId} | `isOwnerInSameOrg()` ✓ | `if false` ✓ | `if false` ✓ | `if false` ✓ | Naming mismatch: Cloud Functions write to `emailLogs` (camelCase) at emailLogService.ts:17. Rules guard `email_log` (snake_case) — DEAD RULE. Client cannot read either; Admin SDK bypass used by Cloud Functions. | LOW |
+| 35 | deep_links/{linkId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 36 | search_keywords/{keywordId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 37 | academic_years/{yearId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 38 | groups/{groupId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 39 | group_members/{memberId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 40 | moderation_queue/{itemId} | `isTeacherOrOwner() && isInSameOrg()` ✓ | `isAuth() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 41 | invite_codes/{codeId} | `isAuth() && isInSameOrg()` ✓ | `isTeacherOrOwner() && isIncomingSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | `isTeacherOrOwnerInSameOrg()` ✓ | None | NONE |
+| 42 | recordings/{recordingId} | **MISSING — NO RULE** | **MISSING — NO RULE** | **MISSING — NO RULE** | **MISSING — NO RULE** | Client at lib/features/livekit/data/livekit_repository.dart:480,493 reads `recordings` but rules file has zero `match /recordings/` block → falls through to default-deny → `watchRecordings`/`watchRoomRecordings` will throw `permission-denied` at runtime | HIGH (functional break, not security) |
+
+DIRECT ANSWERS TO THE 8 SPECIFIC AUDIT QUESTIONS:
+
+1. **RULES CAUSING STUDENT LOGIN FAILURE (chicken-and-egg on `users`)**:
+   YES — CONFIRMED CRITICAL BUG.
+   - Rule (line 106): `allow read: if isAuth();`
+   - Student login flow at lib/core/services/auth_service.dart:514-519 runs an UNAUTHENTICATED Firestore query:
+       `_firestore.collection('users').where('studentCode', isEqualTo: studentCode).where('role', isEqualTo: 'student').limit(1).get();`
+     This query is fired BEFORE `_auth.signInWithEmailAndPassword` (line 572).
+   - Result: Firestore returns `permission-denied` → student login throws "Student not found. Please check your student code." (caught at line 522 with `snapshot.docs.isEmpty`) OR throws the raw Firestore permission-denied error.
+   - The same rule also enables a cross-tenant data leak (any authed user in org A can read user docs of org B by doc ID), but the LOGIN BLOCKER is the more severe operational impact.
+
+2. **RULES CAUSING DELETE FAILURE (`users/{userId}` delete blocked)**:
+   YES — CONFIRMED.
+   - Rule (line 109): `allow delete: if false;`
+   - This blocks ALL client deletes of user docs, including an owner trying to delete their own account or a teacher trying to delete a student.
+   - I verified (grep on functions/src) there is NO `deleteUser`-style Cloud Function exposed to the client that performs the Firestore `users/{uid}` deletion as a server-side bypass. The only user-deletion path is `onUserDeleted.ts` which is a Firestore-triggered cleanup that fires AFTER the auth account is deleted (cascade) — it does not delete the user doc itself.
+   - Net: there is NO working path for a client to delete a user doc. The only way is the Firebase Console or a server-side admin script.
+
+3. **RULES CAUSING ACADEMIC-STRUCTURE WIZARD FAILURES**:
+   NOT a rules blocker. The classes/stages/grades rules (lines 113-134) all use `allow create: if isTeacherOrOwner() && isIncomingSameOrg();` which correctly validates the OWNER's write. The wizard failure reported in FORENSIC-1 is a CLIENT-SIDE state bug (`organizationId: ''` written when Hive box unhydrated), not a rules rejection. The rules correctly REJECT such docs because `isIncomingSameOrg()` compares `''` to the real org ID and denies — so a wizard that writes `organizationId: ''` will actually be REJECTED by rules, surfacing as a different error. Conclusion: rules are correctly fail-closed; the bug is upstream in the client writing an empty org ID.
+
+4. **PRIVILEGE ESCALATION via `users/{userId}` update role field**:
+   YES — CONFIRMED CRITICAL.
+   - Rule (line 108): `allow update: if isAuth() && request.auth.uid == userId;`
+   - There is NO field-level restriction. A teacher (role='teacher') can call:
+       `_firestore.collection('users').doc(myUid).update({'role': 'owner'});`
+     …and the rules will ALLOW it. The next request that reads `getUserOrgId()` / `isOwner()` will then see them as owner.
+   - Same vuln on CREATE (line 107): `allow create: if isAuth() && request.auth.uid == userId;` — a brand-new signup can self-assign `role: 'admin'` and `organizationId: '<victim_org_id>'`, instantly gaining admin over an existing org.
+   - The `studentSafeSubmissionUpdate()` helper (lines 93-98) proves the team knows how to do field-level `diffKeys` blocks — the same pattern must be applied to users/{userId}.
+
+5. **OWNER BYPASS (can owner of org A read/write org B's data?)**:
+   MOSTLY NO for write — but YES for read on `users` and `organizations`.
+   - `isOwnerInSameOrg()` (line 56-58) correctly combines `isOwner() && isInSameOrg()`, so owner writes are org-scoped everywhere that helper is used (feature_flags, permission_overrides, livekit_rooms delete, session_analytics delete, RBAC permissions subcollection).
+   - HOWEVER `users/{userId}` read (line 106) is `isAuth()` only — no org check. An owner of org A can read ALL user docs in org B by doc ID (not by query — query would still need a where filter, but `get(/users/{victimUid})` succeeds).
+   - `organizations/{orgId}` read (line 238) is also `isAuth()` only — exposes every org's metadata (name, ownerId, plan, etc.) to every authenticated user globally.
+
+6. **MISSING FAIL-CLOSED (`allow read: if true` or `allow read: if request.auth != null` without org check)**:
+   YES — TWO INSTANCES, both intentional-looking but security-impacting:
+   - `users/{userId}` line 106: `allow read: if isAuth();`  → cross-tenant user-data leak.
+   - `organizations/{orgId}` line 238: `allow read: if isAuth();`  → cross-tenant org-metadata leak. (Comment says "needed for invite code lookup" — but invite_codes already has its own `isAuth() && isInSameOrg()` rule, so the open read on `organizations` is unjustified.)
+   - `organizations/{orgId}` create (line 239): `allow create: if isAuth();`  → any authed user can spawn an org. Probably acceptable for self-serve onboarding but worth tightening to require a unique `ownerId == request.auth.uid` constraint.
+   - No `allow read: if true` anywhere — the team has not used fully-public reads.
+
+7. **STUDENT DATA ISOLATION (can student in class A read another student's data in class B same org?)**:
+   PARTIALLY BROKEN.
+   - PROTECTED correctly (student can read only own):
+     - submissions (line 173-177): explicit `resource.data.studentId == request.auth.uid` check ✓
+     - assignment_submissions (line 353-357): same ✓
+     - exam_instances READ (line 200): **NO student-self check** — any student in org can read ALL exam_instances including other students' scores, answers, grading. ❌
+     - violations (line 219-221): student-self check ✓
+     - content_progress (line 519-521): student-self check ✓
+   - LEAKED (any student in org can read):
+     - `messages` (line 289): ALL chat messages org-wide, incl. teacher-to-teacher DMs ❌
+     - `conversations` (line 280): ALL conversation metadata org-wide ❌
+     - `gradebook` + `gradebook_entries` (lines 379, 395): ALL student grades org-wide ❌
+     - `exam_instances` (line 200): ALL exam scores org-wide ❌
+     - `parent_links` (line 404): ALL parent-child link records org-wide (PII leak) ❌
+     - `users` (line 106): ALL user docs org-wide (incl. password hashes for legacy students — see auth_service.dart:533-548 which still supports `password` plaintext field) ❌
+
+8. **PARENT DATA ISOLATION (can parent linked to student A read student B's data, different parent?)**:
+   PARTIALLY BROKEN.
+   - PROTECTED correctly (uses `parentHasAccessToStudent(resource.data.studentId)`):
+     - submissions (line 176-177) ✓
+     - assignment_submissions (line 356-357) ✓
+     - attendance (line 370-371) ✓
+     - payments (line 652) ✓ (checks `resource.data.parentId == request.auth.uid`)
+     - transport_assignments (line 670) ✓
+   - LEAKED to any parent in org (no per-student link check):
+     - `gradebook` + `gradebook_entries`: any parent can read grades of ALL students in the org ❌
+     - `exam_instances`: any parent can read exam scores of ALL students ❌
+     - `parent_links` itself: any parent can read ALL parent_links (mapping of every parent to every student) ❌
+     - `messages` / `conversations`: any parent can read ALL chat messages org-wide ❌
+
+TOP 5 CRITICAL RULE FIXES (with exact rule text):
+
+=== FIX #1 (CRITICAL — restores student login + closes cross-tenant user leak) ===
+Replace lines 105-110 (the entire `match /users/{userId}` block) with:
+
+    match /users/{userId} {
+      // Unauthenticated lookup by studentCode is REQUIRED for student login
+      // (auth_service.dart:514 fires the query before signInWithEmailAndPassword).
+      // Lock the unauthenticated path to ONLY the student-code-login projection.
+      allow read: if isAuth() ||
+        // Pre-auth path: allow list/get where the query is the exact student-code-login shape.
+        // Firestore rules can only restrict list queries via request.query — get-by-id is denied pre-auth.
+        (request.auth == null &&
+         request.query != null &&
+         request.query.limit == 1 &&
+         request.query.whereFields == ['studentCode', 'role']);
+      // Authenticated reads must be org-scoped, OR self-read (needed before user doc exists).
+      // The above does NOT fully cover the get-by-doc-id pre-auth path; see note below.
+      allow create: if isAuth() && request.auth.uid == userId &&
+        // Lock down self-assignable role to student/parent/teacher ONLY.
+        // Owner/admin must be granted by an existing owner via Cloud Function.
+        request.resource.data.role in ['student', 'parent', 'teacher'] &&
+        // Organization ID is required and must be non-empty.
+        request.resource.data.organizationId is string &&
+        request.resource.data.organizationId.size() > 0;
+      allow update: if isAuth() && request.auth.uid == userId &&
+        // BLOCK role and organizationId changes (privilege-escalation prevention).
+        // Users may edit profile fields only (name, avatar, preferences, etc.).
+        !request.resource.data.diffKeys(resource).hasAny(['role', 'organizationId', 'isActive', 'passwordHash', 'password']);
+      allow delete: if isAuth() && request.auth.uid == userId;  // self-delete allowed; org-level deletes go through a Cloud Function
+    }
+
+NOTE: Firestore rules cannot fully express "unauthenticated get-by-doc-id where the doc's role==student" — the pre-auth student-code-login path MUST go through a `list` query (which is what auth_service.dart:514 already does). The above `request.query.whereFields` clause is the canonical pattern. If the Firebase rules emulator rejects `whereFields`, fall back to:
+    allow read: if isAuth() ||
+      (request.auth == null && request.query != null && request.query.limit == 1);
+and accept that the unauthenticated path is intentionally narrow (1-doc limit, only the studentCode lookup query).
+
+ALTERNATIVE (preferred, lower risk): move the student-code lookup to a Callable Cloud Function `lookupStudentByCode` that runs with Admin SDK and returns only `{uid, authEmail, isActive}` — then the `users` collection rule can be tightened to `allow read: if isAuth() && (request.auth.uid == userId || isInSameOrg());` with NO unauthenticated read path at all.
+
+=== FIX #2 (CRITICAL — closes privilege escalation on users update) ===
+Already covered by FIX #1's update clause. The key snippet is:
+    allow update: if isAuth() && request.auth.uid == userId &&
+      !request.resource.data.diffKeys(resource).hasAny(['role', 'organizationId', 'isActive', 'passwordHash', 'password']);
+Without this, a teacher can self-promote to owner/admin by writing `{role: 'owner'}` to their own doc.
+
+=== FIX #3 (CRITICAL — closes cross-tenant organization read + tightens create) ===
+Replace lines 236-244 (the entire `match /organizations/{orgId}` block) with:
+
+    match /organizations/{orgId} {
+      // Org metadata is private to org members. Invite-code lookup must use the
+      // invite_codes collection (which has its own isAuth()+isInSameOrg rule),
+      // NOT a read on organizations/{orgId}.
+      allow read: if isAuth() && isInSameOrg();
+      // Self-serve org creation: the creator must be the owner of the new org.
+      allow create: if isAuth() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.id is string &&
+        request.resource.data.id.size() > 0;
+      allow update: if isAuth() && isInSameOrg() &&
+        (isOwner() || resource.data.ownerId == request.auth.uid);
+      allow delete: if false;
+    }
+
+NOTE: this BREAKS the invite-code lookup flow IF any client code reads `organizations/{orgId}` to resolve an invite code (search the codebase for `.collection('organizations').doc(` to confirm). If such a flow exists, move it to `invite_codes` or a Callable Cloud Function.
+
+=== FIX #4 (HIGH — closes DM / message / conversation / gradebook cross-read within org) ===
+Tighten the `messages`, `conversations`, `gradebook`, `gradebook_entries`, `exam_instances`, and `parent_links` READ rules to scope by participant/recipient/student/parent:
+
+    match /messages/{messageId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         resource.data.recipientId == request.auth.uid ||
+         resource.data.senderId == request.auth.uid ||
+         (resource.data.participantIds is list &&
+          resource.data.participantIds.hasAny([request.auth.uid])));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isTeacherOrOwner() ||
+         request.resource.data.senderId == request.auth.uid);
+      allow update: if isAuth() && isInSameOrg() && resource.data.senderId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (resource.data.participants is list &&
+          resource.data.participants.hasAny([request.auth.uid])));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isTeacherOrOwner() ||
+         (request.resource.data.participants is list &&
+          request.resource.data.participants.hasAny([request.auth.uid])));
+      allow update: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (resource.data.participants is list &&
+          resource.data.participants.hasAny([request.auth.uid])));
+      allow delete: if false;
+    }
+
+    match /exam_instances/{instanceId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && parentHasAccessToStudent(resource.data.studentId)));
+      // … create/update/delete unchanged
+    }
+
+    match /gradebook/{gradebookId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && parentHasAccessToStudent(resource.data.studentId)));
+      // … create/update/delete unchanged
+    }
+
+    match /gradebook_entries/{entryId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && parentHasAccessToStudent(resource.data.studentId)));
+      // … create/update/delete unchanged
+    }
+
+    match /parent_links/{linkId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isParent() && resource.data.parentId == request.auth.uid));
+      // … create/update/delete unchanged
+    }
+
+NOTE: the field-name assumptions above (`recipientId`, `participantIds`, `participants`, `studentId`) must be verified against the actual document schemas — search the codebase for the relevant model classes before applying. If a collection uses a different field name (e.g. `userId` instead of `recipientId`), adjust accordingly.
+
+=== FIX #5 (HIGH — closes impersonation-on-create for submissions/exam_instances/assignment_submissions/attendance) ===
+Tighten the `create` rules so a student can only create docs where they are the named student, and a parent can only create on behalf of their linked student:
+
+    match /submissions/{submissionId} {
+      // … read unchanged
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid) ||
+         (isParent() && parentHasAccessToStudent(request.resource.data.studentId)));
+      // … update / delete unchanged
+    }
+
+    match /exam_instances/{instanceId} {
+      // … read unchanged
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      // … update / delete unchanged
+    }
+
+    match /assignment_submissions/{submissionId} {
+      // … read unchanged
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid) ||
+         (isParent() && parentHasAccessToStudent(request.resource.data.studentId)));
+      // … update / delete unchanged
+    }
+
+    match /livekit_rooms/{roomId}/attendance/{attendanceId} {
+      // … read unchanged
+      allow create: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      // … update / delete unchanged
+    }
+
+    match /livekit_rooms/{roomId}/raised_hands/{handId} {
+      allow read: if isAuth() && isInSameOrg();
+      allow create: if isAuth() && isInSameOrg() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() || resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() || resource.data.userId == request.auth.uid);
+    }
+
+BONUS FIX #6 (HIGH — adds the missing `recordings` collection rule):
+Add the following block (e.g. immediately after `livekit_rooms/{roomId}/attendance` at line 710):
+
+    // ====== Recordings Collection ======
+    match /recordings/{recordingId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isTeacherOrOwner() ||
+         (isStudent() && resource.data.classId != null &&
+          exists(/databases/$(database)/documents/group_members/$(request.auth.uid + '_' + resource.data.classId))));
+      allow create: if false;  // Only the LiveKit webhook Cloud Function creates these (Admin SDK bypass)
+      allow update: if false;
+      allow delete: if isOwnerInSameOrg();
+    }
+
+NOTE: the `isStudent` branch above assumes group_members documents are keyed `{uid}_{classId}` — verify against the actual group_members ID convention before deploying. If unsure, simplify to `isTeacherOrOwner()` read-only.
+
+BONUS FIX #7 (LOW — naming consistency for emailQueue / emailLogs):
+Either rename the rules to match the code, OR rename the code to match the rules. Recommended: keep code as-is (`emailQueue`, `emailLogs`) and rename rules:
+    // ====== Email Queue Collection ======
+    match /emailQueue/{emailId} {
+      allow read: if false;     // Cloud-Functions-only
+      allow create: if false;   // Cloud-Functions-only (queueService.enqueue)
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====== Email Logs Collection ======
+    match /emailLogs/{logId} {
+      allow read: if isOwnerInSameOrg();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+DIRECT ANSWER — Owner/admin org-boundary bypass:
+- Writes: NO bypass. `isOwnerInSameOrg()` correctly chains `isOwner() && isInSameOrg()`; all owner-only collections (feature_flags, permission_overrides, RBAC permissions subcollection, livekit_rooms delete, session_analytics delete) are org-scoped.
+- Reads: YES bypass on `users` (line 106) and `organizations` (line 238) — both use bare `isAuth()`. An owner of org A can read user docs and org metadata of org B by doc ID. See FIX #1 and FIX #3.
+
+DIRECT ANSWER — Students/parents reading other orgs' data:
+- For collections using `isAuth() && isInSameOrg()` (the majority): NO, blocked by org check.
+- For `users` and `organizations`: YES, any authed user (incl. students/parents) can read across orgs. See FIX #1, #3.
+
+DIRECT ANSWER — Privilege-escalation paths:
+- (CRITICAL) Teacher → owner/admin via `users/{uid}` update `{role:'owner'}` — FIX #2.
+- (CRITICAL) New signup → admin of existing org via `users/{uid}` create `{role:'admin', organizationId:'<victim>'}` — FIX #1 create clause.
+- (HIGH) Any student → impersonate another student on create for submissions/exam_instances/assignment_submissions — FIX #5.
+- (MEDIUM) Any authed user in org → tamper with ANY notification via `notifications/{id}` update (line 231) — recommended tightening: `allow update: if isAuth() && isInSameOrg() && (isTeacherOrOwner() || resource.data.userId == request.auth.uid);`
+- (MEDIUM) Any authed user in org → delete ANY raised_hand (line 701) — FIX #5.
+
+Files Inspected (no changes made — Explore agent only):
+- /home/z/my-project/firestore.rules (full read, 752 lines)
+- /home/z/my-project/worklog.md (full read for FORENSIC-1..-7 context)
+- /home/z/my-project/lib/core/services/auth_service.dart:500-630 (loginStudent flow)
+- /home/z/my-project/lib/features/livekit/data/livekit_repository.dart:470-500 (recordings reads)
+- /home/z/my-project/functions/src/services/queueService.ts:1-30 (emailQueue writes)
+- /home/z/my-project/functions/src/services/emailLogService.ts:1-25 (emailLogs writes)
+- /home/z/my-project/functions/src/functions/onUserDeleted.ts:155-165 (emailQueue cleanup)
+
+Stage Summary:
+- Audited 42 distinct collection match blocks (40 top-level + 2 LiveKit subcollections + RBAC permissions subcollection) plus 12 helper functions.
+- 1 CRITICAL functional bug: `users` read rule blocks student-code login (chicken-and-egg) — auth_service.dart:514 fires an unauthenticated query that the rules reject.
+- 1 CRITICAL security bug: `users` update rule allows privilege escalation (role field unrestricted).
+- 1 HIGH cross-tenant leak: `users` and `organizations` reads use bare `isAuth()` with no org check.
+- 4 HIGH within-org cross-user leaks: messages, conversations, gradebook/gradebook_entries, exam_instances, parent_links all allow any student/parent to read other students' data.
+- 4 HIGH impersonation-on-create vulns: submissions, exam_instances, assignment_submissions, livekit attendance — any authed user can create docs with an arbitrary `studentId`.
+- 1 HIGH functional break: `recordings` collection has NO rule, breaks `watchRecordings`/`watchRoomRecordings` in livekit_repository.dart.
+- 2 DEAD RULES due to camelCase vs snake_case mismatch: `email_queue`/`email_log` rules guard collections that the code calls `emailQueue`/`emailLogs`.
+- 1 MEDIUM notification-update vuln: any authed user in org can update any notification.
+- 1 MEDIUM raised_hands vuln: any authed user in org can delete/modify anyone's raised hand.
+- 1 LOW delete-block: `users/{userId}` delete is `if false` with no Cloud Function path — owners cannot delete students, users cannot self-delete.
+- Owner/admin write bypass: NONE (correctly org-scoped via isOwnerInSameOrg).
+- Owner/admin read bypass: YES on `users` and `organizations` only.
+- Top 5 (plus 2 bonus) fixes provided with exact rule text above. No code changes made — Explore agent only.
