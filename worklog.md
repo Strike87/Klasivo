@@ -2288,3 +2288,438 @@ Stage Summary:
 - Owner/admin write bypass: NONE (correctly org-scoped via isOwnerInSameOrg).
 - Owner/admin read bypass: YES on `users` and `organizations` only.
 - Top 5 (plus 2 bonus) fixes provided with exact rule text above. No code changes made — Explore agent only.
+
+---
+Task ID: FORENSIC-8C
+Agent: Explore (createStudent validation deep dive)
+Task: Deep-dive createStudent.ts validation logic and compare against actual class/stage shapes
+
+Work Log:
+- Read /home/z/my-project/worklog.md FORENSIC-1 (lines 1057-1177), FORENSIC-8 (lines 1364-1691), FORENSIC-10 (lines 1694-1713+) for prior context. FORENSIC-1 already established the Hive-box hydration hypothesis for the createStudent permission-denied error; FORENSIC-8 confirmed the student-login chicken-and-egg gap; FORENSIC-10 confirmed createStudent passes all 7 audit checklist items.
+- Read /home/z/my-project/functions/src/functions/createStudent.ts in full (681 lines). Captured every Firestore read, every comparison, every throw.
+- Read /home/z/my-project/functions/src/utils/rbac.ts (317 lines) for verifyOrgBoundary() implementation (callerOrgId === targetOrgId, super_admin bypass).
+- Read /home/z/my-project/lib/core/services/class_service.dart (234 lines) — Manual class-creation path.
+- Read /home/z/my-project/lib/core/services/stage_service.dart (197 lines) — Academic Structure / SetupWizard path (createStagesBatch at L147-196).
+- Read /home/z/my-project/lib/features/stages/pages/stage_list_screen.dart:390-655 — SetupWizardSheet templates + _createStructure() caller. Confirmed templates (egyptian/american/saudi/tutoring) DO contain non-empty `classes` arrays, so createStagesBatch DOES create class docs for those stages.
+- Read /home/z/my-project/lib/core/services/student_service.dart:80-159 — client-side addStudent callable invocation (passes organizationId, classId, fullName, password, email, phone only).
+- Read /home/z/my-project/lib/features/students/pages/student_form_screen.dart:60-180 — confirmed orgId source is `ref.read(currentOrganizationIdProvider) ?? ''`.
+- Read /home/z/my-project/lib/core/models/tenant_migration.dart (470 lines) — TenantMigration utility that can back-fill `tenantId` AND `campusId` onto classes/stages collections (L110-112, L158-167, L247-295). Verified via grep that `TenantMigration.migrateOrganizationToTenant()` / `backfillCollection()` are NEVER called from anywhere in lib/ — the migration utility is dead code / admin-CLI-only.
+- Searched entire repo for `departmentId` → 0 matches anywhere (lib/, functions/, firestore.rules).
+- Searched entire repo for `'academicYearId'` / `"academicYearId"` writes → only 1 match: `lib/core/rbac/scoped_query_builder.dart:166` (a string-mapping constant, NOT a field written to any document).
+- Searched entire repo for `'campusId'` writes to classes/stages → only the TenantMigration utility writes it (and only if explicitly invoked); NO production code path writes `campusId` to class/stage docs.
+- Searched functions/ for `collection('classes')` / `collection('stages')` writes → only createStudent.ts (read at L127, L447; update studentCount at L588) and api/index.ts:942 (read-only count for analytics dashboard). NO Cloud Function creates class/stage documents.
+- Read /home/z/my-project/firestore.rules:1-260 — confirmed `match /classes/{classId}` (L113-118) and `match /stages/{stageId}` (L121-126) rules check ONLY `organizationId` (via isInSameOrg/isIncomingSameOrg). Rules do NOT validate `campusId`, `tenantId`, `academicYearId`, `departmentId`, or `isArchived`.
+
+Stage Summary:
+
+- Fields createStudent reads from class doc (createStudent.ts:447-458):
+  - `classDoc.exists` (L448) — null/missing check
+  - `classDoc.data()?.['organizationId']` (L452) — cast to string
+  - That is the COMPLETE set. ONLY ONE FIELD is read from the class document.
+
+- Fields createStudent reads from stage doc: NONE — no stage lookup is performed at all. createStudent never fetches `/stages/{stageId}`.
+
+- Fields createStudent reads from org doc: NONE — no organization lookup is performed. The org boundary is checked purely by comparing `callerOrgId` (from caller's claims or caller's user doc) against `organizationId` (from request.data, NOT from the org doc).
+
+- Fields createStudent reads from academicYear / campus / department docs: NONE. Zero. The function does not even know these collections exist.
+
+- Caller-side reads (for authorization, NOT for class validation):
+  - `users/{callerUid}` (L274) — read only when claims fallback fires; reads `role` (L291) and `organizationId` (L294).
+  - `users/{callerUid}` (L327) — diagnostic read on role rejection; reads `role`, `organizationId`, `fullName`, `isActive`, `hasCompletedSetup`, `fieldNames` for logging only.
+
+- All validation comparisons (with line numbers):
+  1. L235: `if (!request.auth)` → unauthenticated
+  2. L272: `if (!callerRole || !callerOrgId)` → triggers Firestore fallback for caller identity
+  3. L276: `if (!callerDoc.exists)` → caller user doc missing
+  4. L313: `if (!STUDENT_CREATION_ROLES.includes(callerRole))` → role not in [super_admin, owner, admin, campus_manager, stage_manager, academic_supervisor, teacher, assistant_teacher]
+  5. L391: `if (!organizationId || !classId || !fullName || !password)` → required-field check on request.data
+  6. L398: `if (password.length < 6)` → password length
+  7. L405: `if (fullName.trim().length < 2)` → full name length
+  8. L413: `if (!callerOrgId)` → resolved caller org ID must be non-empty
+  9. L420: `if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole))` → caller's resolved org ID must equal the request.data.organizationId (super_admin bypass)
+  10. L448: `if (!classDoc.exists)` → class doc must exist
+  11. L453: `if (classOrgId !== organizationId)` → class doc's `organizationId` field must EQUAL request.data.organizationId (the ONLY shape-based check against the class doc)
+
+- All rejection paths (HttpsError throws, with trigger condition and line number):
+  - L243: `unauthenticated` — `!request.auth` (no Firebase Auth user)
+  - L283-286: `permission-denied` "Caller user document not found. Cannot verify role." — claims fallback fired AND `users/{callerUid}` doc does not exist
+  - L382-385: `permission-denied` "Only staff members can create student accounts." — resolved callerRole not in STUDENT_CREATION_ROLES
+  - L392-395: `invalid-argument` "organizationId, classId, fullName, and password are required." — any of the four required request.data fields missing/empty
+  - L399-402: `invalid-argument` "Password must be at least 6 characters."
+  - L406-409: `invalid-argument` "Full name must be at least 2 characters."
+  - L414-417: `permission-denied` "Caller organization information is required for student creation." — resolved callerOrgId is empty AFTER fallback
+  - L428-431: `permission-denied` "You can only create students in your own organization." — `verifyOrgBoundary()` returned false (caller's org != request.data.org, and caller is not super_admin)
+  - L449: `not-found` "Class {classId} not found." — class document does not exist
+  - L454-457: `permission-denied` "Class does not belong to the specified organization." — `classDoc.data().organizationId !== request.data.organizationId`
+  - L488-491: `internal` "Failed to create Firebase Auth account: ..." — admin.auth().createUser threw (caught)
+  - L541-545: `internal` "Failed to create student document: ..." — Firestore user doc write threw (caught, Auth account rolled back)
+  - L672-676: `internal` "Student creation failed: ..." — catch-all wrapper for any non-HttpsError thrown inside the try block
+
+- Fields written by Manual "Create Class" (lib/core/services/class_service.dart:21-37, called from lib/features/classes/pages/class_form_screen.dart:90-97):
+  organizationId, stageId, name, code, capacity, homeroomTeacherId, academicYear (STRING, not academicYearId), studentCount (0), createdBy (real uid), isArchived (false), archivedAt (null), archivedBy (null), searchKeywords (from name+code), createdAt, updatedAt — 15 fields.
+
+- Fields written by Academic Structure "Create Class" (lib/core/services/stage_service.dart:174-188, called from lib/features/stages/pages/stage_list_screen.dart:631-654 _SetupWizardSheet._createStructure):
+  organizationId, stageId, name, code, capacity, homeroomTeacherId (null), studentCount (0), createdBy (real uid), isArchived (false), archivedAt (null), archivedBy (null), createdAt, updatedAt — 13 fields.
+
+  Note: There is a separate `ClassService.createClassesBatch()` at lib/core/services/class_service.dart:203-233 ("Smart Setup Wizard" batch writer), but it is NEVER called from anywhere in the codebase (grep verified — only the definition exists, no callers). It would write the same 13-field sparse schema as the Academic Structure path (missing `academicYear` and `searchKeywords`).
+
+- Fields written by Stage creation (both manual `StageService.createStage()` L18-30 and Academic Structure `createStagesBatch()` L156-167):
+  organizationId, name, description, order, createdBy, isArchived (false), archivedAt (null), archivedBy (null), searchKeywords (manual only — Academic Structure omits it), createdAt, updatedAt.
+
+- MISMATCH ANALYSIS:
+
+  (A) Fields written by the client (BOTH paths) but NEVER validated by createStudent.ts:
+      - stageId — written by both paths, but createStudent never reads it from the class doc. (createStudent receives classId from the caller; it does NOT verify that the class actually belongs to the claimed stageId, or that the stage belongs to the org.)
+      - name, code, capacity, homeroomTeacherId, academicYear, studentCount, createdBy, isArchived, archivedAt, archivedBy, searchKeywords, createdAt, updatedAt — all written by the client, NONE read by createStudent.
+      - isArchived specifically: createStudent does NOT check whether the class is archived. A teacher can add students to an archived class. This is a logic bug but does NOT cause permission-denied.
+
+  (B) Fields createStudent.ts reads from the class doc that the client does NOT write:
+      - NONE. The only field createStudent reads is `organizationId`, and BOTH client paths write it.
+
+  (C) Fields the user's hypothesis mentioned (academicYearId, campusId, departmentId):
+      - `academicYearId` — NEVER written to any class/stage document by any client path or Cloud Function. The closest field is `academicYear` (a STRING label like "2024-2025"), written ONLY by the manual path. createStudent does not read either.
+      - `campusId` — NOT written to class/stage docs by any production path. The TenantMigration utility CAN back-fill it (tenant_migration.dart:110-112, 158-167), but the migration is NEVER auto-invoked (grep confirmed — no callers anywhere in lib/). Even if the migration DID run and added `campusId`, createStudent.ts does not read `campusId`, so it would not affect the permission-denied check.
+      - `departmentId` — does not exist anywhere in the codebase (0 grep matches across lib/, functions/, firestore.rules).
+
+  (D) The EXACT comparison that produces permission-denied for class ownership (createStudent.ts:452-457):
+      ```
+      const classOrgId = classDoc.data()?.['organizationId'] as string | undefined;
+      if (classOrgId !== organizationId) {
+        throw new HttpsError('permission-denied',
+          'Class does not belong to the specified organization.');
+      }
+      ```
+      - LHS `classOrgId` = the `organizationId` field stored on the Firestore `classes/{classId}` document.
+      - RHS `organizationId` = `request.data.organizationId` sent by the Flutter client (which sourced it from `ref.read(currentOrganizationIdProvider) ?? ''` at student_form_screen.dart:84).
+      - The comparison is strict `!==` (string inequality). Empty string `''` does NOT equal a real org ID like `ORG-XYZ123`. Both sides use the SAME field name `organizationId` and the SAME source `currentOrganizationIdProvider ?? ''`.
+
+  (E) Hypothesis DISPROVEN:
+      The user's hypothesis was that "Academic Structure may add fields like academicYearId, campusId, departmentId to class/stage documents" and that "createStudent.ts validates against the OLD shape". This is NOT what the code shows:
+      - Academic Structure writes FEWER fields than the manual path (missing `academicYear` and `searchKeywords`), not MORE.
+      - Neither path writes `academicYearId`, `campusId`, or `departmentId`.
+      - createStudent.ts validates only ONE field on the class doc (`organizationId`), and that field is written IDENTICALLY by both paths with the same name and same source.
+      - Therefore there is NO field-shape mismatch between Academic-Structure-created classes and the createStudent validation. The hypothesis is disproven by the source code.
+
+- KEY FINDINGS:
+
+  1. createStudent.ts validation is MINIMAL — it reads exactly ONE field (`organizationId`) from the class document and performs a strict string-equality check against `request.data.organizationId`. It does NOT read stageId, academicYear, isArchived, campusId, academicYearId, departmentId, or any other field from the class doc. It does NOT fetch the stage doc or the org doc at all.
+
+  2. The user's hypothesis (Academic Structure adds academicYearId/campusId/departmentId that createStudent doesn't know about) is DISPROVEN. Academic Structure does NOT add any of those fields — it actually writes a SPARSER class doc (missing `academicYear` and `searchKeywords` vs the manual path). `departmentId` does not exist anywhere in the codebase. `academicYearId` is never written to any document. `campusId` is only written by the never-invoked TenantMigration utility.
+
+  3. The ONLY way createStudent's class-ownership check (L453) can fail is if `classDoc.data().organizationId !== request.data.organizationId`. Since both sides use the same field name and the same source (`currentOrganizationIdProvider ?? ''`), the mismatch can ONLY arise when the Hive box `authBox.organizationId` has DIFFERENT values at class-creation time vs student-creation time. This is precisely the FORENSIC-1 hypothesis: at SetupWizard time the Hive box is unhydrated and `currentOrganizationIdProvider ?? ''` returns `''`, so the class doc is written with `organizationId: ''`. Later, when the owner logs in normally and the Hive box has the real org ID, the Add Student form passes that real org ID to createStudent, which reads `classOrgId = ''` from the class doc and throws permission-denied because `'' !== 'ORG-XYZ123'`.
+
+  4. No Cloud Function creates class/stage documents — only the Flutter client does (via ClassService.createClass or StageService.createStagesBatch). The only Cloud Functions touching the classes collection are createStudent.ts (read + studentCount update) and api/index.ts (read-only count for the analytics dashboard). So there is no server-side schema drift to worry about.
+
+  5. The firestore.rules for `classes/{classId}` and `stages/{stageId}` (firestore.rules:113-126) check ONLY `organizationId` via `isInSameOrg()` / `isIncomingSameOrg()` — they do NOT validate `campusId`, `tenantId`, `academicYearId`, `departmentId`, or `isArchived`. So the rules themselves cannot cause a permission-denied specifically for Academic-Structure-created docs based on field-shape differences.
+
+  BOTTOM LINE: The recurring createStudent permission-denied on Academic-Structure-created classes is NOT caused by a field-shape mismatch (no such mismatch exists in the code). It is caused by the Hive-box hydration timing bug identified in FORENSIC-1: the SetupWizard writes `organizationId: ''` to the class doc when invoked before `saveAuthData()` has populated `authBox.organizationId`. The fix is to (a) reject empty `organizationId` in `StageService.createStagesBatch()` and `ClassService.createClass()` so the bug surfaces loudly at class-creation time, and/or (b) gate the SetupWizard on a non-empty `currentOrganizationIdProvider`. There is NOTHING to fix in createStudent.ts's validation logic — it is already correct for the field shape that actually exists in production.
+
+Files Inspected (no changes made — Explore agent only):
+- /home/z/my-project/functions/src/functions/createStudent.ts (full read, 681 lines)
+- /home/z/my-project/functions/src/utils/rbac.ts (full read, 317 lines)
+- /home/z/my-project/firestore.rules (lines 1-260)
+- /home/z/my-project/lib/core/services/class_service.dart (full read, 234 lines)
+- /home/z/my-project/lib/core/services/stage_service.dart (full read, 197 lines)
+- /home/z/my-project/lib/core/services/student_service.dart (lines 80-209)
+- /home/z/my-project/lib/features/stages/pages/stage_list_screen.dart (lines 390-655)
+- /home/z/my-project/lib/features/students/pages/student_form_screen.dart (lines 60-180)
+- /home/z/my-project/lib/core/models/tenant_migration.dart (full read, 470 lines)
+- /home/z/my-project/functions/src/api/index.ts (targeted greps for classes/stages/campusId/academicYearId/departmentId writes — none found except read-only count at L942)
+- Repo-wide grep for `departmentId` (0 matches), `'academicYearId'` writes (0 matches), `'campusId'` writes to classes/stages (only TenantMigration, never invoked), `createClassesBatch` callers (0 — dead code), `TenantMigration.migrateOrganizationToTenant` callers (0 — dead code).
+
+---
+
+---
+Task ID: FORENSIC-8A
+Agent: Explore (Academic Structure investigation)
+Task: Investigate Academic Structure feature document shapes vs manual class/stage creation
+
+Work Log:
+- Read /home/z/my-project/worklog.md prior FORENSIC entries (FORENSIC-1..-7, -8, -9, -10) for context. Established that createStudent.ts is the canonical student-creation path ( FORENSIC-10 row 1) with Firestore fallback for stale claims (commit 9e207b3), and that firestore.rules for `classes/{classId}` use plain `isAuth() && isInSameOrg()` for read and `isTeacherOrOwner() && isIncomingSameOrg()` for create/update (FORENSIC-9 row 2).
+- Searched the entire repo for `academic_structure`, `AcademicStructure`, `academicStructure` — NO dedicated feature folder exists. The `lib/features/academic/` tree contains only empty placeholder barrel exports (domain/data/application/presentation/providers all have "will be migrated here" comments). The feature flagged as "Academic Structure" in the UI is actually the `StageListScreen` (lib/features/stages/pages/stage_list_screen.dart) AppBar title plus the `_SetupWizardSheet` it spawns.
+- Located the wizard entrypoint: lib/features/stages/pages/stage_list_screen.dart:133 `_showSetupWizard` → `_SetupWizardSheet._createStructure` (line 631) → `stageServiceProvider.createStagesBatch(organizationId, stages)`.
+- Read lib/core/services/stage_service.dart (197 lines) in full — confirmed `createStagesBatch` (lines 147-196) writes stage docs AND, for each stage template that contains a `classes` array, writes nested class docs in the same batch.
+- Read lib/core/services/class_service.dart (234 lines) in full — confirmed `createClass` (manual single-class create, lines 8-42) and `createClassesBatch` (lines 203-233, used by an alternate wizard path). Both files (lib/core/services/class_service.dart AND lib/features/classes/data/class_service.dart) are byte-for-byte identical duplicates.
+- Read lib/providers/stage_provider.dart and lib/providers/class_provider.dart — confirmed StageData and ClassData domain models and their fromFirestore/toMap field lists.
+- Read functions/src/functions/createStudent.ts (681 lines) — confirmed the ONLY shape-based validation the server performs against the class doc is `classDoc.exists && classDoc.data().organizationId === request.data.organizationId` (lines 447-458). No academicYearId, campusId, departmentId, or scope checks on the class doc.
+- Read lib/core/services/student_service.dart (lines 80-159) — confirmed the client sends ONLY `{organizationId, classId, fullName, password, email, phone}` to the createStudent callable. No additional scope/context fields.
+- Read lib/core/services/academic_year_service.dart and lib/features/organizations/services/campus_service.dart to confirm these are standalone CRUD services for `academic_years` and `campuses` collections — they are NOT invoked by the Academic Structure wizard and do NOT decorate stages/classes with `academicYearId`/`campusId` references.
+- Read firestore.rules (753 lines) in full — confirmed rules exist for `classes` (L113), `stages` (L121), `academic_years` (L441), `campuses` (L562). NO rules exist for `departments`, `terms`, or `semesters` collections (verified by grepping the file). No rules reference `academicYearId`, `campusId`, or `departmentId` as required incoming fields.
+- Grep AppConstants (lib/core/config/app_constants.dart) — confirmed registered collections: `stagesCollection='stages'`, `classesCollection='classes'`, `academicYearsCollection='academic_years'`, `campusesCollection='campuses'`. No `departmentsCollection`, `termsCollection`, or `semestersCollection` constants exist — these collections are not part of the Klasivo data model at all.
+
+Stage Summary:
+- Does Academic Structure feature exist? YES, but not as a separate module — it is a "Setup Wizard" embedded inside `StageListScreen` (lib/features/stages/pages/stage_list_screen.dart:133-655). The `lib/features/academic/*` folder is a placeholder-only migration skeleton with no implementation.
+- Collections created by Academic Structure wizard: `stages` and `classes` ONLY (same two collections used by manual creation). The wizard does NOT create `academic_years`, `campuses`, `departments`, `terms`, or `semesters` — those are independent features managed by `AcademicYearService` and `CampusService` and are not invoked by the wizard.
+
+- Document shape for MANUALLY-created STAGE (lib/core/services/stage_service.dart:16-30 createStage):
+  ```
+  {
+    organizationId, name, description, order, createdBy,
+    isArchived, archivedAt, archivedBy,
+    searchKeywords,                  ← present
+    createdAt, updatedAt
+  }
+  ```
+
+- Document shape for ACADEMIC-STRUCTURE-created STAGE (lib/core/services/stage_service.dart:156-167 createStagesBatch):
+  ```
+  {
+    organizationId, name, description, order, createdBy,
+    isArchived, archivedAt, archivedBy,
+    createdAt, updatedAt
+                                     ← MISSING searchKeywords
+  }
+  ```
+
+- Document shape for MANUALLY-created CLASS (lib/core/services/class_service.dart:21-37 createClass, IDENTICAL in lib/features/classes/data/class_service.dart):
+  ```
+  {
+    organizationId, stageId, name, code, capacity,
+    homeroomTeacherId, academicYear,   ← both present
+    studentCount, createdBy,
+    isArchived, archivedAt, archivedBy,
+    searchKeywords,                    ← present
+    createdAt, updatedAt
+  }
+  ```
+
+- Document shape for ACADEMIC-STRUCTURE-created CLASS (lib/core/services/stage_service.dart:174-188 nested inside createStagesBatch, also same shape in class_service.dart:213-227 createClassesBatch):
+  ```
+  {
+    organizationId, stageId, name, code, capacity,
+    homeroomTeacherId,
+                                     ← MISSING academicYear
+    studentCount, createdBy,
+    isArchived, archivedAt, archivedBy,
+                                     ← MISSING searchKeywords
+    createdAt, updatedAt
+  }
+  ```
+
+- Fields present in MANUAL but MISSING in ACADEMIC-STRUCTURE:
+  - On Stage: `searchKeywords` (array of lowercase name tokens, generated by SearchKeywordService)
+  - On Class: `searchKeywords` AND `academicYear` (nullable String)
+- Fields present in ACADEMIC-STRUCTURE but not in MANUAL: NONE. The wizard does NOT add `academicYearId`, `campusId`, `departmentId`, or any other extra field. The user's original hypothesis is REVERSED.
+
+- New collections introduced and their rules:
+  - `academic_years/{yearId}` — rule at firestore.rules L441-446: read `isAuth() && isInSameOrg()`, create `isTeacherOrOwner() && isIncomingSameOrg()`, update/delete `isTeacherOrOwnerInSameOrg()`. NOT created by Academic Structure wizard (created by AcademicYearService used in /academic/years screens).
+  - `campuses/{campusId}` — rule at firestore.rules L562-568: read `isAuth() && isInSameOrg()`, create `isTeacherOrOwnerInSameOrg()`, update `isAuth() && isInSameOrg() && (isTeacherOrOwner() || isCampusManager())`, delete `isTeacherOrOwnerInSameOrg()`. NOT created by Academic Structure wizard (created by CampusService used in /organizations/campuses screens).
+  - `departments`, `terms`, `semesters` — NO collections and NO rules. Do not exist in the codebase.
+
+- KEY FINDINGS:
+  1. **Hypothesis REVERSED**: The user's hypothesis was that Academic Structure ADDS fields (academicYearId, campusId, departmentId) that createStudent.ts doesn't validate. The reality is the opposite: Academic Structure wizard OMITS two fields that manual creation includes — `searchKeywords` on both Stage and Class, plus `academicYear` on Class. Neither flow adds academicYearId/campusId/departmentId — those fields are not part of the Stage or Class data model anywhere in the codebase.
+  2. **No scope mismatch on createStudent.ts**: The createStudent Cloud Function (lines 447-458) validates ONLY `classDoc.exists && classDoc.data().organizationId === request.data.organizationId`. Both manual and wizard-created class docs write a valid `organizationId` field. Therefore createStudent.ts will accept wizard-created classes WITHOUT a permission-denied error arising from document shape. The "permission-denied" symptom reported by the user is NOT caused by an Academic-Structure-vs-createStudent shape mismatch.
+  3. **Real (smaller) bug**: Wizard-created stages and classes are missing `searchKeywords`, so they will not appear in any `array-contains` / `array-contains-any` search query that filters by `searchKeywords`. The stage/class list screens themselves don't filter by searchKeywords (they query by `organizationId` + `isArchived==false`), so the wizard output will still show up in the list views — but the search bar (if any uses searchKeywords) will silently exclude wizard-created entities. This is a data-quality bug, not a permissions bug.
+  4. **Real (smaller) bug #2**: Wizard-created classes never set `academicYear`. If any downstream code path requires `academicYear` to be non-null (e.g., filtering the class list by current academic year), wizard-created classes will be excluded. Manual creation passes `academicYear` through from the form (nullable, may also be null if user didn't pick one). So this is a degradation, not a hard break — both paths can leave it null.
+  5. **Two duplicate code paths exist**: `lib/core/services/class_service.dart` and `lib/features/classes/data/class_service.dart` are byte-for-byte identical. Both define a `createClassesBatch` with the SAME wizard shape (missing searchKeywords + academicYear). Similarly `lib/core/services/stage_service.dart` defines `createStagesBatch` with the same wizard shape. This means ANY future fix to align the two shapes must be applied in at least 3 places (one stage service + two duplicate class services).
+  6. **Recommendation**: If the production "permission-denied" still reproduces after a wizard-created class is used as the target, the cause lies OUTSIDE the document-shape comparison — likely in (a) the `callerOrgId` resolution path in createStudent.ts (FORENSIC-10 finding #2 — claims may be stale and the Firestore fallback may not be returning the right org for an owner who just registered), or (b) the wizard passing an empty string for `organizationId` (FORENSIC-9 finding about `organizationId: ''` written when Hive box unhydrated — same risk applies here since `widget.ref.read(currentOrganizationIdProvider) ?? ''` at stage_list_screen.dart:634 falls back to empty string). Recommend verifying that the wizard does NOT commit the batch when `orgId == ''`.
+
+---
+Task ID: FORENSIC-8B
+Agent: Explore (Stage/Class CRUD audit)
+Task: Audit Stage/Class CRUD operations - identify missing Delete/Archive/Restore
+
+Work Log:
+- Read /home/z/my-project/worklog.md (Tasks 1–7, FORENSIC-1 through FORENSIC-10) to establish prior context: Sentry integration (Task 1), createStudent ownership check (FORENSIC-1: classOrgId !== organizationId), student-login chicken-and-egg (FORENSIC-8A), Firestore rules audit (FORENSIC-9: stages/classes rules at lines 113-126 confirmed NONE/LOW severity, no isArchived rules), Cloud Functions security audit (FORENSIC-10: no stage/class lifecycle functions exist).
+- Read lib/core/services/stage_service.dart (197 lines) — full audit of StageService: createStage, updateStage, archiveStage, deleteStage, getStagesStream, getStages, getClassCount, createStagesBatch. NO restoreStage.
+- Read lib/core/services/class_service.dart (234 lines) — full audit of ClassService: createClass, updateClass, archiveClass, deleteClass (cascade), getClass, getClassesByStageStream, getClassesByOrganizationStream, getStudentCount, updateStudentCount, createClassesBatch. NO restoreClass.
+- Confirmed lib/features/classes/data/class_service.dart (234 lines) is an IDENTICAL DUPLICATE of lib/core/services/class_service.dart (FORENSIC-1 already noted this).
+- Read lib/features/stages/pages/stage_list_screen.dart (655 lines) — confirmed UI operations: Create (FAB line 60), Edit (PopupMenu 'edit' line 290), Archive (PopupMenu 'archive' line 300). NO Delete UI button, NO Restore UI, NO archived-stages view.
+- Read lib/features/classes/pages/class_list_screen.dart (320 lines) — confirmed UI operations: Create (FAB line 110), Edit (PopupMenu 'edit' line 281), QR code (line 291), Archive (line 302). NO Delete UI button, NO Restore UI, NO archived-classes view.
+- Read lib/features/classes/pages/class_form_screen.dart (296 lines) — confirmed handles both Create and Edit paths (isEditing flag at line 14). NO delete button on edit form.
+- Confirmed lib/features/classes/presentation/class_list_screen.dart and class_form_screen.dart are byte-identical duplicates of the pages/ versions (drift risk flagged).
+- Read lib/providers/stage_provider.dart (126 lines) — StageData model has isArchived/archivedAt/archivedBy fields. No archivedStagesProvider.
+- Read lib/providers/class_provider.dart (188 lines) — ClassData model has isArchived/archivedAt/archivedBy fields. No archivedClassesProvider.
+- Read firestore.rules (lines 1-300) — confirmed stages and classes rules at lines 113-126 are IDENTICAL and have NO isArchived guard, NO cascade check, NO field-level protection on isArchived.
+- Grep'd firestore.rules for `isArchived|archive` → 0 matches. Archive state is purely advisory/client-enforced.
+- Grep'd functions/ for `isArchived|archivedAt|archivedBy|archiveStage|archiveClass|restoreStage|restoreClass|deleteStage|deleteClass` → 0 matches. NO callable Cloud Functions for stage/class lifecycle exist.
+- Grep'd lib/ for `deleteStage|deleteClass|restoreStage|restoreClass` → only service definitions (no callers for delete; no restore methods at all).
+- Grep'd lib/ for `studentCount|teacherCount|examCount` — found 60+ references but NONE are used as pre-delete/archive validation gates. They are aggregation/display fields only.
+- Grep'd lib/ for `restore|unArchive|unarchive` method signatures → NO restore methods exist anywhere in the codebase (AcademicYearService also has archive+delete but no restore; same pattern).
+- Cross-referenced createStudent.ts (lines 240-681) — confirmed it uses classId (doc ID), NOT className, so duplicate class names don't directly cause student-creation failures. FORENSIC-1's hypothesis (empty organizationId at Setup-Wizard time) remains the leading root cause, NOT duplicate names. However, the missing Delete/Restore causes archived-doc accumulation which can lead to confusion (e.g., teacher re-creates "Grade 5" not realizing one is archived).
+
+Stage Summary:
+- Stage operations available:
+  - Create Stage: ✓ UI (stage_list_screen.dart:67 _showAddStageDialog → FAB at line 60) + ✓ Service (stage_service.dart:8 createStage)
+  - Edit Stage: ✓ UI (stage_list_screen.dart:256 PopupMenu 'edit' → _showEditStageDialog at line 322) + ✓ Service (stage_service.dart:37 updateStage)
+  - Delete Stage: ✗ NO UI BUTTON (PopupMenu only has 'edit' and 'archive'); ✓ Service exists but UNUSED (stage_service.dart:83 deleteStage — hard delete + cascade archives classes)
+  - Archive Stage: ✓ UI (stage_list_screen.dart:260 PopupMenu 'archive' with confirm dialog) + ✓ Service (stage_service.dart:65 archiveStage — soft delete isArchived=true)
+  - Restore Stage: ✗ NO UI (no archived-stages view exists) + ✗ NO Service (no restoreStage method anywhere)
+- Class operations available:
+  - Create Class: ✓ UI (class_list_screen.dart:110 FAB + class_form_screen.dart:60 _handleSubmit) + ✓ Service (class_service.dart:8 createClass)
+  - Edit Class: ✓ UI (class_list_screen.dart:75 onEdit → class_form_screen.dart with isEditing=true) + ✓ Service (class_service.dart:44 updateClass)
+  - Delete Class: ✗ NO UI BUTTON (PopupMenu only has 'edit', 'qr', 'archive'); ✓ Service exists but UNUSED (class_service.dart:98 deleteClass — DANGEROUS: hard deletes student Firestore docs but DOES NOT delete Firebase Auth accounts → orphans; also skips exams/exam_instances/submissions/grades/attendance/assignments/calendar_events/qr_enrollments/parent_links)
+  - Archive Class: ✓ UI (class_list_screen.dart:80 onArchive with confirm dialog) + ✓ Service (class_service.dart:80 archiveClass)
+  - Restore Class: ✗ NO UI (no archived-classes view exists) + ✗ NO Service (no restoreClass method anywhere)
+- firestore.rules for stages collection (lines 121-126): read=isAuth&&isInSameOrg; create=isTeacherOrOwner&&isIncomingSameOrg; update=isTeacherOrOwnerInSameOrg; delete=isTeacherOrOwnerInSameOrg. NO isArchived rule, NO cascade check, NO field-level protection on isArchived (any teacher can flip it).
+- firestore.rules for classes collection (lines 113-118): identical pattern to stages. Same gaps.
+- Cascade validation exists? NO. The services have helper methods getClassCount(stageId) (stage_service.dart:131) and getStudentCount(classId) (class_service.dart:176) but they are NEVER called before archive/delete. UI confirm dialogs use generic text with no entity counts. deleteClass cascade-DELETES students/subjects/groups/teacher_assignments but skips exams, exam_instances, submissions, exam_stats, grades, attendance, assignments, calendar_events, qr_enrollments, parent_links — leaving orphaned docs across 10+ collections. deleteStage doesn't validate stage has no live classes.
+- Archive pattern used anywhere? YES — widely adopted. 40 files in lib/ reference isArchived/archivedAt/archivedBy, including: stages, classes, grades, groups, subjects, exams, lessons, materials, units, assignments, academic_years, content_progress. BUT zero files implement a restore/unArchive method. The academic_years screen (academic_year_list_screen.dart:81-87) displays archived years in a separate section but offers NO restore button — same incomplete pattern. Cloud Functions (functions/) have ZERO references to archive fields, meaning all archive operations are client-side direct writes with no audit log.
+- Callable functions for stage/class lifecycle: NONE. Searched functions/src/ for deleteStage, deleteClass, archiveStage, archiveClass, restoreStage, restoreClass — 0 matches. All stage/class lifecycle operations are client-side direct Firestore writes (bypass audit_logs, bypass server-side cascade validation, bypass Firebase Auth account cleanup).
+
+KEY FINDINGS:
+1. The user is CORRECT: Delete Stage, Delete Class, Restore Stage, Restore Class, and cascade validation are ALL MISSING from the UI. The services have deleteStage/deleteClass methods but they are NEVER called from any screen (verified via grep — 0 callers in lib/features/). The Restore operations don't even exist as service methods.
+2. deleteClass is a TIME BOMB: it cascade-deletes student Firestore docs but DOES NOT call admin.auth().deleteUser() — leaving orphaned Firebase Auth accounts that can never sign in again but never get cleaned up. It also skips 10+ related collections (exams, submissions, grades, attendance, assignments, etc.) — guaranteeing orphaned data even when invoked.
+3. Archive state has NO server-side enforcement: firestore.rules contain ZERO references to isArchived (verified via grep). Any teacher in the same org can (a) flip isArchived on any class/stage, (b) hard-delete any stage/class regardless of dependent students/exams, (c) read archived docs by simply omitting the isArchived filter. The archive is purely advisory.
+4. NO audit trail for stage/class lifecycle: because there are no callable Cloud Functions for create/archive/delete/restore, none of these operations write to audit_logs. An owner can delete a stage with 30 classes and 500 students, and there is no server-side record of who did it or when. (Compare: createStudent.ts:611-626 writes audit_logs for student creation.)
+5. The "duplicate stage/class names → student-creation failure" hypothesis is NOT supported by the code: createStudent.ts:447 uses classId (doc ID), not className. The actual root cause of student-creation failures remains FORENSIC-1's finding (empty organizationId written at Setup-Wizard time). HOWEVER, the missing Delete/Restore DOES cause archived-doc accumulation, which can mislead teachers into re-creating classes that already exist (archived), polluting the dataset and degrading UX over time.
+6. Duplicate code paths are a maintenance hazard: lib/features/classes/data/class_service.dart is a byte-identical copy of lib/core/services/class_service.dart (FORENSIC-1 flagged this); lib/features/classes/presentation/class_list_screen.dart and class_form_screen.dart are byte-identical copies of the pages/ versions. Any fix to one must be manually mirrored in the other, or the wrong copy could be picked up by a future refactor.
+
+---
+Task ID: FORENSIC-8D
+Agent: Explore (cross-cutting field search)
+Task: Cross-cutting search for academicYearId, campusId, departmentId, isArchived, archivedAt, archivedBy + related structural fields across lib/, functions/, firestore.rules, firestore.indexes.json
+
+Work Log:
+- Read /home/z/my-project/worklog.md (Tasks 1–7, FORENSIC-1 through FORENSIC-10) to establish prior context. FORENSIC-5 (class-creation-path drift) is the most relevant prior finding; FORENSIC-9 / FORENSIC-10 cover firestore.rules and Cloud-Function error-handling respectively.
+- Searched the entire repo for each target field name with Grep (ripgrep). Captured file:line, surrounding context, READ vs WRITE direction, and entity/collection.
+- Cross-referenced every match against firestore.rules (753 lines) and firestore.indexes.json (141 lines) to find which collections have rules and indexes for each field.
+- Read full source of: createStudent.ts (681 lines), academic_year_service.dart (182 lines), campus_service.dart (233 lines), class_service.dart (234 lines), stage_service.dart (197 lines), student_service.dart (477 lines), campus_model.dart (166 lines), campus_form_screen.dart (378 lines), campus_list_screen.dart (343 lines), stage_list_screen.dart (200 of 656 lines), assignScope.ts (130 of 148 lines), user_management_repository.dart (100 of 409 lines).
+- Counted occurrences of each field per top-level directory and per file. Confirmed NO matches for `departmentId`, `department_id`, `department`, `restoredAt`, `restoredBy`, `termId`, `semesterId`, `academicYearName`, `academic_year_id`, `campus_id`, `is_archived`, `archived_at`, `archived_by` in any code path (lib/, functions/, firestore.rules, firestore.indexes.json).
+- Compiled the Field Presence Matrix below and the new-collections/rules summary.
+- No code changes made — Explore agent only.
+
+Stage Summary:
+
+═══════════════════════════════════════════════════════════════════════════════
+Field Presence Matrix
+═══════════════════════════════════════════════════════════════════════════════
+
+| Field              | lib/ occurrences                                                                                                                                                                                                                                                                                                                                                                              | functions/ occurrences | firestore.rules                                                                                                                                                                        | firestore.indexes.json |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| academicYearId     | 1 (lib/core/rbac/scoped_query_builder.dart:166 — field-name MAPPING only, no actual read/write of this field anywhere)                                                                                                                                                                                                                                                                          | 0                      | 0 (only `match /academic_years/{yearId}` path var at line 441; no field-level rule)                                                                                                     | 0                      |
+| academicYearIds    | 16 (lib/core/rbac/user_scope.dart ×9, lib/core/rbac/scope_validator.dart ×5, lib/core/services/claims_service.dart:47; also test/core/rbac ×2) — plural LIST field on `users` docs (RBAC scope), NOT a singular ref                                                                                                                                       | 3 (assignScope.ts:31,98,111 — interface+read+write to users doc) | 0                                                                                                                                                                                      | 0                      |
+| academicYear       | 21 across 6 files (lib/core/services/class_service.dart ×4, lib/features/classes/data/class_service.dart ×4 [DUPLICATE service], lib/features/classes/domain/class_model.dart ×5, lib/features/classes/providers/class_provider.dart ×5, lib/providers/class_provider.dart ×5 [DUPLICATE provider], lib/features/dashboard/teacher_dashboard.dart:350) — string on `classes` docs, NOT a doc ref | 0                      | 0                                                                                                                                                                                      | 0                      |
+| campusId           | 64 across 11 files (lib/core/models/tenant_model.dart ×28, lib/core/models/tenant_migration.dart ×20, lib/core/models/analytics_models.dart ×30, lib/core/analytics/analytics_engine.dart ×6, lib/core/analytics/analytics_models.dart ×6, lib/shared/models/base_model.dart ×2, lib/shared/models/tenant_model.dart ×3, lib/features/organizations/services/campus_service.dart ×13 [incl. `.where('campusId', isEqualTo: …)` READ on users:185], lib/features/organizations/pages/campus_form_screen.dart:111 [WRITE `campusId: widget.campus!.id` — but this is `updateCampus`'s campusId PATH param, not a field write to a doc], lib/features/livekit/domain/*.dart ×14 across 3 model files) | 2 (functions/src/functions/onLiveKitRoomEvents.ts:296 — READ `afterData['campusId']`; functions/src/utils/rbac.ts:196 — `{ roomField: 'campusId', callerField: 'campusIds' }` mapping constant) | 0 (only `match /campuses/{campusId}` path var at line 562; no field-level rule)                                                                                                          | 0                      |
+| campusIds          | 27 across 7 files (lib/core/rbac/user_scope.dart ×12, lib/core/rbac/scope_validator.dart ×8, lib/core/rbac/scope_access_level.dart ×2 [comments], lib/core/rbac/scoped_query_builder.dart ×3, lib/features/user_management/data/user_management_repository.dart ×4, lib/features/user_management/pages/scope_assignment_screen.dart:271 [WRITE to scopeData['campusIds']], lib/features/user_management/pages/user_detail_screen.dart:436,868) — plural LIST field on `users` docs (RBAC scope) | 5 (assignScope.ts:27,94,107; api/index.ts:339; generateLiveKitToken.ts:123) — all READ/WRITE the campusIds LIST on users doc | 0                                                                                                                                                                                      | 0                      |
+| departmentId       | 0                                                                                                                                                                                                                                                                                                                                                                                              | 0                      | 0                                                                                                                                                                                      | 0                      |
+| department_id      | 0                                                                                                                                                                                                                                                                                                                                                                                              | 0                      | 0                                                                                                                                                                                      | 0                      |
+| department (word)  | 0                                                                                                                                                                                                                                                                                                                                                                                              | 0                      | 0                                                                                                                                                                                      | 0                      |
+| isArchived         | 160+ across 31 files — UNIVERSAL soft-delete pattern. Collections that write/read it: stages, classes, subjects, groups, assignments, materials, lessons, units, exams, resources, academic_years, search_keywords queries, progress_tracking, content_progress, analytics_service, user_management_repository (queries `users` by `isArchived`), staff_approval (derived `bool get isArchived => archivedAt != null`) | 0                      | 0 (no rule references `isArchived` — rules check `organizationId` only, never the soft-delete flag)                                                                                     | 22 indexes across 8 collections: stages (1), classes (3), subjects (2), groups (2), assignments (3), materials (5), lessons (4), units (3) — all composite indexes with `isArchived` as the 2nd leg |
+| is_archived        | 0                                                                                                                                                                                                                                                                                                                                                                                              | 0                      | 0                                                                                                                                                                                      | 0                      |
+| archivedAt         | 90+ across 21 files — co-written with `isArchived` on every archive() call. Same collections as isArchived except analytics/search/progress (those only READ `isArchived` for filtering)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 0                      | 0                                                                                                                                                                                      | 0                      |
+| archivedBy         | 80+ across 19 files — co-written with `isArchived`+`archivedAt`. Same pattern. Note: `staff_application_model.dart` has `archivedBy` WITHOUT a paired `isArchived` field (uses derived `archivedAt != null`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 0                      | 0                                                                                                                                                                                      | 0                      |
+| restoredAt         | 0 (not implemented — no restore-from-archive flow exists)                                                                                                                                                                                                                                                                                                                                       | 0                      | 0                                                                                                                                                                                      | 0                      |
+| restoredBy         | 0 (not implemented)                                                                                                                                                                                                                                                                                                                                                                             | 0                      | 0                                                                                                                                                                                      | 0                      |
+| termId             | 0 in code (only in DEVELOPMENT_ROADMAP.md:855,857,917,2350 as a future TODO)                                                                                                                                                                                                                                                                                                                  | 0                      | 0                                                                                                                                                                                      | 0                      |
+| semesterId         | 0                                                                                                                                                                                                                                                                                                                                                                                               | 0                      | 0                                                                                                                                                                                      | 0                      |
+| academicYearName   | 0                                                                                                                                                                                                                                                                                                                                                                                               | 0                      | 0                                                                                                                                                                                      | 0                      |
+
+═══════════════════════════════════════════════════════════════════════════════
+New Collections Discovered (with firestore.rules summary)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. `academic_years` — firestore.rules:441-446
+   - read:   isAuth() && isInSameOrg()
+   - create: isTeacherOrOwner() && isIncomingSameOrg()
+   - update: isTeacherOrOwnerInSameOrg()
+   - delete: isTeacherOrOwnerInSameOrg()
+   - Schema (from academic_year_service.dart:32-44): organizationId, name, startDate, endDate, isCurrent, isArchived, archivedAt, archivedBy, createdBy, createdAt, updatedAt
+   - Service: lib/core/services/academic_year_service.dart
+   - UI: lib/features/academic_years/pages/academic_year_{list,form}_screen.dart
+   - Provider: lib/providers/academic_year_provider.dart
+   - Constants: lib/core/config/app_constants.dart:75 — `academicYearsCollection = 'academic_years'`
+   - Indexes: NONE in firestore.indexes.json (no composite index for `organizationId + isArchived + startDate`, which is the exact query `getAcademicYearsStream` runs at line 118-123)
+   - CLEANUP: lib/core/models/tenant_migration.dart:283 includes `academic_years` in the tenant-backfill collection list
+
+2. `campuses` — firestore.rules:562-568
+   - read:   isAuth() && isInSameOrg()
+   - create: isTeacherOrOwnerInSameOrg()
+   - update: isAuth() && isInSameOrg() && (isTeacherOrOwner() || isCampusManager())
+   - delete: isTeacherOrOwnerInSameOrg()
+   - Schema (from campus_service.dart:73-90): organizationId, name, address, city, country, latitude, longitude, phone, email, isActive, isMain, headId, studentCount, teacherCount, createdAt, updatedAt
+   - **SCHEMA DRIFT**: Uses `isActive: false` for soft-delete (NOT `isArchived`/`archivedAt`/`archivedBy` like every other collection). `archiveCampus()` writes ONLY `{isActive: false, updatedAt: …}` — no archivedAt, no archivedBy, no isArchived flag. This means archived campuses are NOT visible to `isArchived == false` queries that the rest of the app uses universally.
+   - Service: lib/features/organizations/services/campus_service.dart
+   - UI: lib/features/organizations/pages/campus_{list,form}_screen.dart
+   - Provider: lib/features/organizations/providers/campus_provider.dart
+   - Constants: lib/core/config/app_constants.dart:76 — `campusesCollection = 'campuses'`
+   - Indexes: NONE in firestore.indexes.json
+   - Helper: `isCampusManager()` defined at firestore.rules:571-575 (checks role == 'campus_manager')
+
+3. `departments` — NOT PRESENT. No rule, no service, no model, no UI, no constant. (User's mention of `departmentId` is speculative — the field does not exist anywhere in the codebase.)
+
+4. `terms` / `semesters` — NOT PRESENT. Only mentioned in DEVELOPMENT_ROADMAP.md:859 as a future TODO (`academic_terms` collection).
+
+5. Other related collections confirmed PRESENT in rules but NOT in the new-structure scope:
+   - `tenants` (firestore.rules:554-559) — multi-tenant top-level collection
+   - `analytics_daily` / `analytics_weekly` / `analytics_monthly` (lines 603-633) — pre-computed analytics
+   - `fee_structures`, `payments`, `transport_routes`, `transport_assignments` (lines 640-674) — ERP
+
+═══════════════════════════════════════════════════════════════════════════════
+Academic Structure Feature Entry Points
+═══════════════════════════════════════════════════════════════════════════════
+
+UI screens (text matches "Academic Structure", "Academic Year", "Campus", "Term", "Semester"):
+- lib/features/stages/pages/stage_list_screen.dart:27 — AppBar title `'Academic Structure'` (main entry point)
+- lib/features/stages/pages/stage_list_screen.dart:136,529 — `'Setup Academic Structure'` (wizard dialog title)
+- lib/features/academic_years/pages/academic_year_list_screen.dart — full screen (uses `academicYearsProvider`)
+- lib/features/academic_years/pages/academic_year_form_screen.dart — create/edit form
+- lib/features/organizations/pages/campus_list_screen.dart:32 — AppBar title `'Campuses'`
+- lib/features/organizations/pages/campus_form_screen.dart:180,215 — `'Create Campus'` / `'Edit Campus'`
+- lib/features/user_management/pages/scope_assignment_screen.dart:323 — `'Can only access data within assigned campuses'`
+- lib/features/user_management/pages/role_assignment_sheet.dart:411 — `'Campus'` (role scope label)
+- lib/providers/audit_log_provider.dart:85 — `'academic_year' => 'Academic Year'` (target-type display label)
+- lib/l10n/app_en.arb:61 + lib/l10n/app_fr.arb:23 — `"campus": "Campus"` (localized string; only EN+FR, NOT in app_ar.arb or app_tr.arb — translation gap)
+- NO screen references "Term" or "Semester" (those features aren't built yet)
+
+Routing:
+- lib/core/routing/route_names.dart:46-47 — `academicYears = '/academic/years'`, `academicYearCreate = '/academic/years/create'`
+- lib/main.dart:94-95 — direct imports of academic_year screens (legacy non-GoRouter wiring)
+- lib/features/stages/pages/stage_list_screen.dart:159 — `context.go('/academic/stages/${stage.id}/classes')` (navigation to classes under a stage)
+
+Services:
+- lib/core/services/stage_service.dart — `createStage`, `createStagesBatch` (used by Smart Setup Wizard at line 147-196), `archiveStage`, `deleteStage` (cascades to classes)
+- lib/core/services/academic_year_service.dart — full CRUD + `setCurrentAcademicYear` + `archiveAcademicYear`
+- lib/features/organizations/services/campus_service.dart — full CRUD + `archiveCampus` + `deleteCampus` (cascades by removing `campusId` from users)
+- lib/core/services/class_service.dart — `createClass`, `createClassesBatch` (used by wizard via stage_service), `archiveClass`, `deleteClass`
+- lib/core/services/student_service.dart:65-159 — `addStudent` (calls `createStudent` Cloud Function)
+
+Cloud Functions:
+- functions/src/functions/assignScope.ts — assigns `campusIds` / `stageIds` / `classIds` / `subjectIds` / `academicYearIds` / `studentIds` arrays to user docs (RBAC scope)
+- functions/src/functions/createStudent.ts — creates student user doc; DOES NOT propagate any of campusId/academicYearId/departmentId/isArchived/archivedAt/archivedBy (validates only the OLD shape: organizationId, classId, fullName, password, email, phone)
+
+═══════════════════════════════════════════════════════════════════════════════
+KEY FINDINGS (5 bullets)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. **Schema drift CONFIRMED on `campuses` collection (soft-delete pattern broken).** Every other archiveable collection (stages, classes, subjects, groups, assignments, materials, lessons, units, exams, resources, academic_years) uses the triple `isArchived: bool / archivedAt: Timestamp? / archivedBy: String?`. The `campuses` collection uses ONLY `isActive: false` — no `isArchived`, no `archivedAt`, no `archivedBy`. `CampusModel` (lib/features/organizations/domain/campus_model.dart) doesn't even DECLARE these fields. `campus_service.archiveCampus()` (line 158-170) writes only `{isActive: false, updatedAt: …}`. The DEVELOPMENT_ROADMAP.md:2340 explicitly states "Soft delete pattern: `isArchived` + `archivedAt` on all entities" — campuses are in violation. Consequence: any future cross-collection "show me all archived entities" query will silently miss campuses.
+
+2. **Schema drift CONFIRMED on `academicYear` (string) vs `academicYearId` (doc ref).** Classes store `academicYear` as a free-text string (class_service.dart:28 `'academicYear': academicYear`). The `academic_years` collection exists with proper docs (academic_year_service.dart). The RBAC infrastructure declares the field-name mapping `'academic_year' => 'academicYearId'` (scoped_query_builder.dart:166) — implying that academic-year-scoped collections SHOULD have an `academicYearId` field — but NO service in the codebase ever writes `academicYearId` to any document. The plural `academicYearIds` exists ONLY as an RBAC scope array on `users` docs (assignScope.ts, user_scope.dart). Consequence: you cannot query "all classes in academic year X" by reference; you can only string-match the `academicYear` field, which breaks if the year name is ever renamed. This is a textbook schema-drift bug.
+
+3. **Validation-mismatch CONFIRMED on `createStudent`.** functions/src/functions/createStudent.ts:389-512 destructures and validates ONLY `{ organizationId, classId, fullName, password, email, phone }` (line 389). The resulting user doc (line 496-512) writes ONLY: organizationId, role, fullName, studentCode, authEmail, email, phone, passwordHash, classId, photoUrl, isActive, createdBy, authProvider, createdAt, updatedAt. NONE of: `campusId`, `academicYearId`, `academicYearIds`, `campusIds`, `stageId`, `isArchived`, `archivedAt`, `archivedBy`. This means a student created under a class that DOES have `campusId`/`academicYear` set (via tenant_migration.dart backfill) will NOT inherit those fields — breaking any downstream query that filters students by campus or academic year. This is the validation mismatch the user identified; combined with the permission-denied error from FORENSIC-1 / FORENSIC-8 (chicken-and-egg on student login), it explains why students created under new-structure classes appear orphaned from the campus/year scope.
+
+4. **NO `departmentId`, `department`, `termId`, `semesterId`, `restoredAt`, `restoredBy`, `academicYearName` exist ANYWHERE in the codebase.** The user's mention of `departmentId` is speculative — there is no `departments` collection, no `departmentId` field, no `DepartmentModel`, no `DepartmentService`. `termId` appears ONLY in DEVELOPMENT_ROADMAP.md:855 as a future-TODO field for `academic_terms` (not yet built). `restoredAt`/`restoredBy` don't exist — there is NO restore-from-archive flow anywhere; archive is one-way. Any audit/forensics query assuming these fields exist will return zero rows.
+
+5. **Missing Firestore indexes for the new structural fields.** `firestore.indexes.json` has 22 composite indexes that include `isArchived` (across 8 collections), but ZERO indexes for `campusId` or `academicYearId` on ANY collection. This means: (a) `campus_service.deleteCampus` at line 185 (`.collection('users').where('campusId', isEqualTo: campusId)`) will require a full collection scan on `users` for orgs with many users — slow but functional; (b) any future query like `.collection('classes').where('campusId', isEqualTo: …).where('isArchived', isEqualTo: false)` will FAIL with "The query requires an index" because no such composite index exists. Similarly, `academic_year_service.getAcademicYearsStream` (line 118-123) runs `.where('organizationId', isEqualTo: …).orderBy('startDate', descending: true)` — no composite index for `organizationId + startDate` exists either, but Firestore handles single-equality + single-orderBy without an explicit index. Recommend adding indexes for `campuses: organizationId + isActive + createdAt` and (if/when the field is written) `classes: campusId + isArchived + createdAt` and `classes: academicYearId + isArchived + createdAt`.
+
+Files Inspected (no changes made — Explore agent only):
+- /home/z/my-project/firestore.rules (full read, 753 lines) — confirmed `academic_years` rule at 441-446, `campuses` rule at 562-568, NO field-name references to any target field
+- /home/z/my-project/firestore.indexes.json (full read, 141 lines) — confirmed 22 `isArchived` composite indexes, ZERO `campusId`/`academicYearId`/`archivedAt`/`archivedBy` indexes
+- /home/z/project/functions/src/functions/createStudent.ts (full read, 681 lines) — confirmed OLD-shape-only validation, no new-structure fields
+- /home/z/my-project/functions/src/functions/assignScope.ts (lines 1-130 of 148) — confirmed `campusIds`/`academicYearIds` writes to `users` doc only (scope arrays, not singular refs)
+- /home/z/my-project/functions/src/functions/onLiveKitRoomEvents.ts:296 — confirmed `campusId` read from livekit_rooms and copied to scheduled_classes (LiveKit scope only)
+- /home/z/my-project/functions/src/utils/rbac.ts:196 — confirmed `campus: { roomField: 'campusId', callerField: 'campusIds' }` scope-mapping constant
+- /home/z/my-project/lib/core/services/academic_year_service.dart (full read, 182 lines) — confirmed `isArchived`+`archivedAt`+`archivedBy` written correctly on archive; SCHEMA-CONSISTENT
+- /home/z/my-project/lib/features/organizations/services/campus_service.dart (full read, 233 lines) — confirmed `isActive: false` soft-delete; SCHEMA-DRIFT (no isArchived/archivedAt/archivedBy)
+- /home/z/my-project/lib/features/organizations/domain/campus_model.dart (full read, 166 lines) — confirmed model lacks isArchived/archivedAt/archivedBy fields entirely
+- /home/z/my-project/lib/core/services/class_service.dart (full read, 234 lines) — confirmed `academicYear: String?` (not `academicYearId`); isArchived/archivedAt/archivedBy written correctly
+- /home/z/my-project/lib/core/services/stage_service.dart (full read, 197 lines) — confirmed `createStagesBatch` writes isArchived/archivedAt/archivedBy but OMITS academicYear, searchKeywords (matches FORENSIC-5 finding)
+- /home/z/my-project/lib/core/services/student_service.dart (full read, 477 lines) — confirmed `addStudent` only sends OLD shape to createStudent callable
+- /home/z/my-project/lib/features/stages/pages/stage_list_screen.dart (lines 1-200) — confirmed "Academic Structure" entry point + Setup Wizard dialog
+- /home/z/my-project/lib/features/organizations/pages/campus_{list,form}_screen.dart (full read) — confirmed Campus UI exists and works
+- /home/z/my-project/lib/features/user_management/data/user_management_repository.dart (lines 1-100) — confirmed `campusIds` (plural) on UserListItem model
+- /home/z/my-project/lib/core/routing/route_names.dart — confirmed `/academic/years` route
+- /home/z/my-project/lib/core/config/app_constants.dart:75-76 — confirmed `academicYearsCollection = 'academic_years'`, `campusesCollection = 'campuses'` (NO `departmentsCollection`, `termsCollection`, `semestersCollection`)
+- /home/z/my-project/lib/core/rbac/scoped_query_builder.dart:162-166 — confirmed field-name mappings `'campus' => 'campusId'` and `'academic_year' => 'academicYearId'` exist as constants, but NO service consumes them
+- /home/z/my-project/lib/core/rbac/user_scope.dart — confirmed `campusIds`/`stageIds`/`classIds`/`subjectIds`/`academicYearIds`/`studentIds` (all plural lists) on the user-scope model
+- /home/z/my-project/lib/l10n/app_en.arb:61, app_fr.arb:23 — confirmed `"campus": "Campus"` localized in EN+FR only (NOT in app_ar.arb or app_tr.arb — translation gap)
+
+Next Actions:
+1. [HIGH] Reconcile `campuses` soft-delete: either (a) add `isArchived`+`archivedAt`+`archivedBy` to `CampusModel` and `campus_service.archiveCampus()` to match the universal pattern, OR (b) update all "archived entities" queries to also check `isActive == false` on campuses. Recommend (a) — converges on the single documented pattern.
+2. [HIGH] Decide on `academicYear` vs `academicYearId`: either (a) migrate `classes.academicYear` (string) → `classes.academicYearId` (doc ref) with a one-time backfill, OR (b) remove the dangling `'academic_year' => 'academicYearId'` mapping from scoped_query_builder.dart:166 and document that academic-year scoping is string-based. Recommend (a) — ref-based scoping is required for RBAC scope_validator to work correctly on academic-year-scoped collections.
+3. [HIGH] Extend `createStudent` (functions/src/functions/createStudent.ts) to (a) accept optional `campusId`/`academicYearId` from the caller, (b) read the parent class's `campusId`/`academicYear`/`academicYearId` and propagate them onto the new student user doc, (c) write `isArchived: false, archivedAt: null, archivedBy: null` for consistency. Also update the `CreateStudentData` interface (line 43-50) and the client `StudentService.addStudent` (lib/core/services/student_service.dart:65-159) to pass the new fields through.
+4. [MEDIUM] Add the missing Firestore indexes to firestore.indexes.json: `campuses: organizationId + isActive + createdAt`; `users: campusId + role + isActive` (already covered? no — current `users` indexes use `classId` not `campusId`); `classes: campusId + isArchived + createdAt`; `classes: academicYearId + isArchived + createdAt` (after migration in #2); `academic_years: organizationId + isArchived + startDate`.
+5. [MEDIUM] Add localization for "Campus" in app_ar.arb and app_tr.arb (currently only EN+FR).
+6. [LOW] Remove or implement `restoredAt`/`restoredBy` — they're documented in the user's task description but don't exist. Either add a `restoreFromArchive()` method to each service (writing `restoredAt`/`restoredBy` and clearing `isArchived`/`archivedAt`/`archivedBy`), OR document that archive is permanent and the restore flow is intentionally absent.
+7. [LOW] Investigate whether `departments` / `terms` / `semesters` should be added per DEVELOPMENT_ROADMAP.md (they're listed as future TODO items). Currently the codebase has NO code path for them — the user's audit checklist should treat them as "not yet built" rather than "schema-drifted".
+---
