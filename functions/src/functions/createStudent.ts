@@ -221,10 +221,15 @@ export const createStudent = onCall(
         message: 'createStudent_auth_context',
         authExists: !!request.auth,
         uid: request.auth?.uid ?? null,
-        callerRole: (request.auth?.token?.role as string) ?? null,
+        callerRoleClaim: (request.auth?.token?.role as string) ?? null,
+        callerOrgIdClaim: (request.auth?.token?.organizationId as string) ?? null,
+        callerScopeAccessLevel: (request.auth?.token?.scopeAccessLevel as string) ?? null,
+        tokenAuthTime: request.auth?.token?.auth_time ?? null,
+        tokenIssuedAt: request.auth?.token?.iat ?? null,
         appExists: !!request.app,
         appTokenPresent: !!request.app?.token,
         hasData: !!request.data,
+        dataKeys: Object.keys(request.data || {}),
       }));
 
       if (!request.auth) {
@@ -306,12 +311,73 @@ export const createStudent = onCall(
 
       // ─── 2b. Role Check ────────────────────────────────────────────────
       if (!STUDENT_CREATION_ROLES.includes(callerRole as KlasivoRole)) {
+        // CRITICAL DIAGNOSTIC: always read the Firestore user doc on rejection,
+        // regardless of whether the fallback fired. This lets us distinguish
+        // between four root causes:
+        //   (a) claim missing + Firestore role missing → registration bug
+        //   (b) claim missing + Firestore role present but wrong → data issue
+        //   (c) claim present + wrong (e.g., 'parent') + Firestore correct
+        //       → claims sync issue (the fallback never fired because the
+        //          claim was truthy)
+        //   (d) claim present + correct + Firestore correct → impossible
+        //       (role check should have passed); indicates deployed code is
+        //       stale or wrong Firebase project
+        let firestoreSnapshot: Record<string, unknown> | null = null;
+        try {
+          const diagDoc = await admin.firestore().collection('users').doc(callerUid).get();
+          if (diagDoc.exists) {
+            const d = diagDoc.data()!;
+            firestoreSnapshot = {
+              exists: true,
+              role: d['role'] ?? null,
+              organizationId: d['organizationId'] ?? null,
+              fullName: d['fullName'] ?? null,
+              isActive: d['isActive'] ?? null,
+              hasCompletedSetup: d['hasCompletedSetup'] ?? null,
+              fieldNames: Object.keys(d),
+            };
+          } else {
+            firestoreSnapshot = { exists: false };
+          }
+        } catch (diagErr: unknown) {
+          const diagMsg = diagErr instanceof Error ? diagErr.message : String(diagErr);
+          firestoreSnapshot = { readError: diagMsg };
+        }
+
         console.error(JSON.stringify({
           message: 'createStudent_rejected_role',
           uid: callerUid,
-          callerRole,
+          // Claim state
           callerRoleClaim: callerRoleClaim || null,
+          callerOrgIdClaim: callerOrgIdClaim || null,
+          // Resolved state (after optional fallback)
+          resolvedCallerRole: callerRole,
+          resolvedCallerOrgId: callerOrgId,
+          // Whether fallback fired
+          fallbackUsed: !callerRoleClaim || !callerOrgIdClaim,
+          // Firestore snapshot for cross-reference
+          firestoreSnapshot,
+          // What would have passed
           allowedRoles: STUDENT_CREATION_ROLES,
+          // Diagnosis hints
+          diagnosis: {
+            claimRoleMissing: !callerRoleClaim,
+            claimRoleWrongButPresent:
+              !!callerRoleClaim && !STUDENT_CREATION_ROLES.includes(callerRoleClaim as KlasivoRole),
+            firestoreRolePresent:
+              firestoreSnapshot !== null &&
+              typeof firestoreSnapshot === 'object' &&
+              'exists' in firestoreSnapshot &&
+              firestoreSnapshot.exists === true &&
+              'role' in firestoreSnapshot &&
+              firestoreSnapshot.role != null,
+            firestoreRoleMatchesAllowed:
+              firestoreSnapshot !== null &&
+              typeof firestoreSnapshot === 'object' &&
+              'role' in firestoreSnapshot &&
+              typeof firestoreSnapshot.role === 'string' &&
+              STUDENT_CREATION_ROLES.includes(firestoreSnapshot.role as KlasivoRole),
+          },
         }));
         throw new HttpsError(
           'permission-denied',
