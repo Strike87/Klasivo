@@ -404,9 +404,14 @@ class _FeatureFlagTile extends ConsumerWidget {
                     children: [
                       Row(
                         children: [
-                          Text(label, style: KlasivoTypography.titleSmall.copyWith(
-                            color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
-                          )),
+                          Flexible(
+                            child: Text(label, style: KlasivoTypography.titleSmall.copyWith(
+                              color: isDark ? KlasivoColors.darkTextPrimary : KlasivoColors.lightTextPrimary,
+                            ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                           if (isCore) ...[
                             const SizedBox(width: KlasivoSpacing.sm),
                             Container(
@@ -430,7 +435,10 @@ class _FeatureFlagTile extends ConsumerWidget {
                       const SizedBox(height: KlasivoSpacing.xs),
                       Text(description, style: KlasivoTypography.bodySmall.copyWith(
                         color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
-                      )),
+                      ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
@@ -509,7 +517,10 @@ class _FlagDetailSheetState extends ConsumerState<_FlagDetailSheet> {
         Text('Flag: ${widget.flagKey}', style: KlasivoTypography.caption.copyWith(
           color: isDark ? KlasivoColors.darkTextTertiary : KlasivoColors.lightTextTertiary,
           fontFamily: 'RobotoMono',
-        )),
+        ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         const SizedBox(height: KlasivoSpacing.xxl),
 
               // ── Enable/Disable ──

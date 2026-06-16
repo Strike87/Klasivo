@@ -26,11 +26,30 @@ class KlasivoToast {
   }) {
     final (icon, color, bgColor) = _toastStyles(type);
 
+    // ── Compute safe margin for floating SnackBar ──────────────────────
+    // Floating SnackBars can render off-screen or behind bottom navigation
+    // bars. Add a bottom margin that lifts the SnackBar above any
+    // BottomNavigationBar / NavigationBar / FAB that the Scaffold might
+    // have. Use MediaQuery viewInsets to also avoid the keyboard.
+    final mediaQuery = MediaQuery.of(context);
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
+
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         duration: duration,
         behavior: SnackBarBehavior.floating,
+        // ── Safe margin: lift above keyboard + bottom nav ──
+        // The default floating margin (28px) can be pushed off-screen by
+        // the bottom navigation bar. Use a larger margin when the keyboard
+        // is open, and always ensure at least 80px from the bottom edge
+        // to clear typical BottomNavigationBar heights (~56-80px).
+        margin: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          viewInsetsBottom > 0 ? viewInsetsBottom + 16 : 80,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.snackbar),
         ),
@@ -47,6 +66,8 @@ class KlasivoToast {
                       ? AppColors.darkTextPrimary
                       : AppColors.lightTextPrimary,
                 ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

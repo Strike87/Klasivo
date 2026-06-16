@@ -185,6 +185,8 @@ class _StageCard extends ConsumerWidget {
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (stage.description.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -194,31 +196,44 @@ class _StageCard extends ConsumerWidget {
                       color: Colors.grey[600],
                       fontSize: 13,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 4),
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
                   children: [
-                    Icon(Icons.class_outlined,
-                        size: 14, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$classCount class${classCount != 1 ? 'es' : ''}',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 13,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.class_outlined,
+                            size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$classCount class${classCount != 1 ? 'es' : ''}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Icon(Icons.people_outline,
-                        size: 14, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$totalStudents student${totalStudents != 1 ? 's' : ''}',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 13,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.people_outline,
+                            size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$totalStudents student${totalStudents != 1 ? 's' : ''}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

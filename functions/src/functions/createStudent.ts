@@ -32,7 +32,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 
-import { verifyOrgBoundary, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
+import { verifyOrgBoundary, buildCustomClaims, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 import { queueEmail } from '../services/queueService';
 
@@ -239,12 +239,69 @@ export const createStudent = onCall(
       }
 
       const callerUid = request.auth.uid;
-      const callerRole = (request.auth.token.role as string) || '';
+      const callerRoleClaim = (request.auth.token.role as string) || '';
+      const callerOrgIdClaim = (request.auth.token.organizationId as string) || '';
       scope.setUser({ id: callerUid });
-      scope.setTag('caller_role', callerRole);
+      scope.setTag('caller_role_claim', callerRoleClaim);
 
-      // ─── 2. Role Check ─────────────────────────────────────────────────
+      // ─── 2. Resolve caller role & org (claim → Firestore fallback) ──────
+      // Custom claims may not be set yet for users who registered before
+      // syncClaims was called, or whose registration flow didn't set claims.
+      // The Firestore user doc is the authoritative source of truth.
+      let callerRole = callerRoleClaim;
+      let callerOrgId = callerOrgIdClaim;
+      let claimsSyncNeeded = false;
+
+      if (!callerRole || !callerOrgId) {
+        const db = admin.firestore();
+        const callerDoc = await db.collection('users').doc(callerUid).get();
+
+        if (!callerDoc.exists) {
+          console.error(JSON.stringify({
+            message: 'createStudent_rejected_no_user_doc',
+            uid: callerUid,
+            callerRoleClaim: callerRoleClaim || null,
+            callerOrgIdClaim: callerOrgIdClaim || null,
+          }));
+          throw new HttpsError(
+            'permission-denied',
+            'Caller user document not found. Cannot verify role.',
+          );
+        }
+
+        const callerData = callerDoc.data()!;
+        if (!callerRole) {
+          callerRole = (callerData['role'] as string) || '';
+          claimsSyncNeeded = true;  // Claims are stale — sync after this call
+        }
+        if (!callerOrgId) {
+          callerOrgId = (callerData['organizationId'] as string) || '';
+          claimsSyncNeeded = true;
+        }
+
+        console.log(JSON.stringify({
+          message: 'createStudent_claims_fallback_used',
+          uid: callerUid,
+          roleFromClaim: callerRoleClaim || null,
+          roleFromFirestore: callerRole,
+          orgFromClaim: callerOrgIdClaim || null,
+          orgFromFirestore: callerOrgId,
+          claimsSyncNeeded,
+        }));
+      }
+
+      scope.setTag('caller_role', callerRole);
+      scope.setTag('caller_org_id', callerOrgId);
+
+      // ─── 2b. Role Check ────────────────────────────────────────────────
       if (!STUDENT_CREATION_ROLES.includes(callerRole as KlasivoRole)) {
+        console.error(JSON.stringify({
+          message: 'createStudent_rejected_role',
+          uid: callerUid,
+          callerRole,
+          callerRoleClaim: callerRoleClaim || null,
+          allowedRoles: STUDENT_CREATION_ROLES,
+        }));
         throw new HttpsError(
           'permission-denied',
           'Only staff members can create student accounts.',
@@ -276,29 +333,21 @@ export const createStudent = onCall(
       }
 
       // ─── 4. Org Boundary Verification ─────────────────────────────────
-      const callerOrgId = (request.auth.token.organizationId as string) || '';
-
-      // Fail-closed: require both org IDs to be present
       if (!callerOrgId) {
-        // Fallback: read from Firestore user doc if claims aren't set yet
-        const db = admin.firestore();
-        const callerDoc = await db.collection('users').doc(callerUid).get();
-        const callerDocOrgId = callerDoc.data()?.['organizationId'] as string | undefined;
+        throw new HttpsError(
+          'permission-denied',
+          'Caller organization information is required for student creation.',
+        );
+      }
 
-        if (!callerDocOrgId) {
-          throw new HttpsError(
-            'permission-denied',
-            'Caller organization information is required for student creation.',
-          );
-        }
-
-        if (!verifyOrgBoundary(callerDocOrgId, organizationId, callerRole)) {
-          throw new HttpsError(
-            'permission-denied',
-            'You can only create students in your own organization.',
-          );
-        }
-      } else if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
+      if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
+        console.error(JSON.stringify({
+          message: 'createStudent_rejected_org_boundary',
+          uid: callerUid,
+          callerOrgId,
+          targetOrgId: organizationId,
+          callerRole,
+        }));
         throw new HttpsError(
           'permission-denied',
           'You can only create students in your own organization.',
@@ -509,6 +558,30 @@ export const createStudent = onCall(
         notifyTeachers(db, fullName.trim(), classId, organizationId, callerUid).catch(() => {
           // Already handled inside notifyTeachers
         });
+
+        // ─── 12b. Sync caller's custom claims (if stale) ────────────────
+        // If we had to fall back to Firestore for role/org, the caller's
+        // custom claims are stale. Sync them now so future calls use the
+        // fast path. Fire-and-forget — failure is non-critical.
+        if (claimsSyncNeeded) {
+          try {
+            const customClaims = buildCustomClaims(callerRole, callerOrgId);
+            admin.auth().setCustomUserClaims(callerUid, customClaims).then(() => {
+              console.log(JSON.stringify({
+                message: 'createStudent_claims_synced',
+                uid: callerUid,
+                role: callerRole,
+                organizationId: callerOrgId,
+              }));
+            }).catch((syncErr: unknown) => {
+              const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+              console.warn(`[createStudent] Claims sync failed (non-critical): ${msg}`);
+            });
+          } catch (syncErr: unknown) {
+            const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+            console.warn(`[createStudent] Claims sync setup failed (non-critical): ${msg}`);
+          }
+        }
 
         // ─── 13. Success ────────────────────────────────────────────────
         console.log(JSON.stringify({
