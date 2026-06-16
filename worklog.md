@@ -3562,3 +3562,943 @@ Files Inspected (no changes made — Explore agent only):
 - /home/z/my-project/functions/src/functions/onUserDeleted.ts (line 159 — confirmed reads from `emailQueue` camelCase; lines 126, 190 — confirmed cascade-cleanup collection list)
 
 ---
+Task ID: FORENSIC-13 (Phase 1 Task 9 — Specific Checks)
+Agent: Explore (Firestore Rules — Specific 6-Check Audit)
+Task: Verify 6 specific security checks against /home/z/my-project/firestore.rules (READ-ONLY)
+
+Work Log:
+- Read /home/z/my-project/worklog.md FORENSIC-9 (L1895-2000+) and FORENSIC-10 Issue 8 (L3265-3560) for prior context. FORENSIC-10 already produced the 63-collection matrix and 21-helper table; FORENSIC-9 produced the 42-collection table. Both flagged users/{uid} update (L108), notifications update (L231), organizations create (L239), and exam_instances create (L201) — but neither audit exhaustively covered (a) the invite_codes onboarding catch-22 with the actual client redemption flow, nor (b) the getUserOrgId() null/empty-string safety (FORENSIC-9 L1909 explicitly — and incorrectly — marked getUserOrgId() as "fail-closed ✓").
+- Read /home/z/my-project/firestore.rules in full (753 lines) — re-verified line numbers for the 6 target match blocks and helpers.
+- Read /home/z/my-project/lib/core/services/auth_service.dart L40-260 (registerOwner flow) and L640-790 (registerTeacherWithInvite flow) — confirmed the EXACT sequencing of Auth-user creation → user-doc creation → invite-code validation/update.
+- Read /home/z/my-project/lib/features/auth/data/auth_service.dart L288-470 (duplicate registerTeacherWithInvite / registerTeacherWithGoogle paths).
+- Read /home/z/my-project/lib/core/services/invite_code_service.dart in full (309 lines) — confirmed validateInviteCode() at L177-225 issues an UNAUTHENTICATED Firestore `.get()` query against invite_codes BEFORE the caller has created an Auth account.
+- Read /home/z/my-project/lib/core/services/deep_link_service.dart L161-204 (resolveJoinLink) — confirmed the same unauthenticated-query pattern for /join/{code} deep-link resolution.
+- Read /home/z/my-project/lib/features/auth/presentation/teacher_registration_screen.dart L1-100 — confirmed teacher registration invokes registerTeacherWithInvite with email+password+inviteCode from the registration form (caller is NOT pre-authenticated).
+- Read /home/z/my-project/functions/src/functions/onUserCreated.ts in full (96 lines) — confirmed this Auth-user().onCreate() trigger only queues a welcome email; it does NOT write the user's Firestore doc (debunking the "onUserCreated.ts race" framing — the real race is between the client's registerWithEmail and the client's docSet/.set on users/{uid}).
+- Read /home/z/my-project/lib/core/services/organization_service.dart L1-90 (createOrganization) — confirmed owner-registration flow writes the org doc via `.add({...})` and relies on the open `organizations/{orgId} allow create: if isAuth()` rule.
+- Read /home/z/my-project/lib/core/services/exam_service.dart L315-380 (startExam path) — confirmed the client `.add({...})` to exam_instances at L365-373 does NOT write `organizationId` and does NOT validate studentId == auth.uid.
+- Read /home/z/my-project/lib/core/services/notification_service.dart L422-466 (markAsRead / markAllAsRead / getUserNotificationsStream) — confirmed client updates notifications with `.update({'isRead': true})` and the rule permits ANY field update by ANY same-org user.
+- Read /home/z/my-project/lib/core/services/auth_service.dart L496-625 (loginStudent) — confirmed students do NOT use invite_codes (they use studentCode login); CHECK 5 catch-22 applies to TEACHER onboarding only.
+- Searched functions/ for invite-code redemption Cloud Functions — confirmed NONE exist. Only invite_codes references in functions/ are: index.js:359 (onUserDeleted cascade-delete), onUserDeleted.ts:58,173-174 (cascade-delete by createdBy). No acceptInvitation/redeemInvite CF exists.
+- No code changes made — Explore agent only.
+
+Stage Summary:
+
+CHECK 1 — Student self-escalation via /users update:
+- Status: VULNERABLE
+- Evidence: /home/z/my-project/firestore.rules:105-110 (users/{userId} match block)
+  ```
+  105: match /users/{userId} {
+  106:   allow read: if isAuth();
+  107:   allow create: if isAuth() && request.auth.uid == userId;
+  108:   allow update: if isAuth() && request.auth.uid == userId;
+  109:   allow delete: if false;
+  110: }
+  ```
+- Grep for `diffKeys` in firestore.rules → only 4 hits (L97, L192, L205, L362), all inside the submissions/answers/exam_instances/assignment_submissions update rules. NONE inside the users/{userId} match block.
+- Notes: The update rule at L108 ONLY checks `request.auth.uid == userId` — it does NOT block changes to `role`, `organizationId`, `isActive`, `passwordHash`, or `password` fields. A student (or any user) can call `_firestore.collection('users').doc(myUid).update({'role': 'owner', 'organizationId': 'victim_org_id'})` and the write succeeds. The team's own `studentSafeSubmissionUpdate()` helper at L93-98 proves they know the `!request.resource.data.diffKeys(resource).hasAny([...])` pattern — they just didn't apply it to users/{uid}. Cross-references FORENSIC-10 (Issue 8) row 1 / L3306 and FORENSIC-9 row 1 / L1924. The escalation fully manifests after a follow-up `syncClaims` call (FORENSIC-10 Issue 1 / L3111-3118 / FORENSIC-10 row 3e: assignRole allows owner → super_admin self-escalation), but even WITHOUT claims refresh, the user doc itself is the source of truth for `getUserRole()` / `getUserOrgId()` / `isTeacherOrOwner()` / `isOwner()` helpers — so any rule that depends on these helpers becomes spoofable. CRITICAL. Rule change needed: add `&& !request.resource.data.diffKeys(resource).hasAny(['role','organizationId','tenantId','isActive','passwordHash','password','authProvider'])` to L108.
+
+CHECK 2 — exam_instances overcreation:
+- Status: VULNERABLE
+- Evidence: /home/z/my-project/firestore.rules:199-207
+  ```
+  199: match /exam_instances/{instanceId} {
+  200:   allow read: if isAuth() && isInSameOrg();
+  201:   allow create: if isAuth() && isIncomingSameOrg();
+  202:   allow update: if isAuth() && isInSameOrg() &&
+  203:     (isTeacherOrOwner() ||
+  204:      (isStudent() && resource.data.studentId == request.auth.uid &&
+  205:       !request.resource.data.diffKeys(resource).hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+  206:   allow delete: if false;
+  207: }
+  ```
+- Client write path: /home/z/my-project/lib/core/services/exam_service.dart:365-373 (also duplicated at lib/features/exams/data/exam_service.dart:365)
+  ```dart
+  final docRef = await _firestore.collection(AppConstants.examInstancesCollection).add({
+    'examId': examId,
+    'studentId': studentId,           // <- arbitrary caller-supplied value
+    'classId': classId,
+    'isRandomized': randomizeQuestions,
+    'randomizedQuestionIds': ...,
+    'startedAt': FieldValue.serverTimestamp(),
+    'submissionId': submissionRef.id,
+  });
+  ```
+- Notes: The L201 create rule checks `isIncomingSameOrg()` which only verifies `request.resource.data.organizationId == getUserOrgId()`. There is NO check that `request.resource.data.studentId == request.auth.uid`. A student in org X can create an exam_instance with `studentId: '<another_student_uid>'` and the rule passes (as long as they include the correct `organizationId` in the payload — OR if both sides are null/empty, see CHECK 6). This is an IMPERSONATION vulnerability: student A could start an exam as student B, submit answers as B, and B would inherit whatever score A earns. Compounding issue: the legit client write at exam_service.dart:365-373 does NOT include `organizationId` at all, so the legit path would also be denied by `isIncomingSameOrg()` (request.resource.data.organizationId == null != getUserOrgId() string) — meaning either (a) the feature is currently broken in prod, OR (b) it works only because getUserOrgId() is also returning null/"" (see CHECK 6). Rule change needed: tighten L201 to `allow create: if isAuth() && isIncomingSameOrg() && request.resource.data.studentId == request.auth.uid;` and fix the client to include `organizationId`.
+
+CHECK 3 — Organizations open creation:
+- Status: INTENTIONAL (with abuse caveat)
+- Evidence: /home/z/my-project/firestore.rules:236-244
+  ```
+  236: match /organizations/{orgId} {
+  237:   // Any authenticated user can read org details (needed for invite code lookup)
+  238:   allow read: if isAuth();
+  239:   allow create: if isAuth();
+  240:   // Only members of the org who are teacher/owner can update, OR org owner
+  241:   allow update: if isAuth() && isInSameOrg() &&
+  242:     (isTeacherOrOwner() || resource.data.ownerId == request.auth.uid);
+  243:   allow delete: if false;
+  244: }
+  ```
+- Client write path: /home/z/my-project/lib/core/services/organization_service.dart:37-53 (createOrganization) — writes via `.add({...})` with `ownerId: ownerId, name, slug, ...` and is invoked from registerOwner at /home/z/my-project/lib/core/services/auth_service.dart:167-170.
+- Notes: This rule IS intentionally relied upon by the owner self-registration flow. At Step 3 of registerOwner, the user is already authenticated (Step 1 created the Firebase Auth account) and needs to spawn a new org document for their workspace. The `isAuth()` gate is the minimum necessary for that flow. HOWEVER, the rule is too permissive in two ways: (1) it does NOT verify that the caller is creating an org where they will be the owner — a malicious authed user could create org docs with `ownerId: '<someone_else_uid>'`, polluting the org collection; (2) there is no rate limit / quota — any authed user can spawn unlimited orgs. The same pattern is replicated at L556 (`tenants/{tenantId} allow create: if isAuth()`). Severity: LOW for the create-permission itself (since the rule must be open for owner onboarding to work); the abuse vector is INFO. Rule change needed: optional hardening — `allow create: if isAuth() && request.resource.data.ownerId == request.auth.uid;` (forces the caller to be the owner of the new org) plus a per-user rate limit via a separate counter collection.
+
+CHECK 4 — Notifications open update:
+- Status: RISK FOUND
+- Evidence: /home/z/my-project/firestore.rules:228-233
+  ```
+  228: match /notifications/{notificationId} {
+  229:   allow read: if isAuth() && isInSameOrg();
+  230:   allow create: if isTeacherOrOwner() && isIncomingSameOrg();
+  231:   allow update: if isAuth() && isInSameOrg();
+  232:   allow delete: if false;
+  233: }
+  ```
+- Client write path: /home/z/my-project/lib/core/services/notification_service.dart:423-432 (markAsRead)
+  ```dart
+  static Future<void> markAsRead(String notificationId) async {
+    await _firestore
+        .collection(AppConstants.notificationsCollection)
+        .doc(notificationId)
+        .update({'isRead': true});
+  }
+  ```
+- Notes: The L231 update rule checks ONLY `isAuth() && isInSameOrg()`. It does NOT verify that `resource.data.userId == request.auth.uid` (i.e., the caller is the notification's recipient). Consequences: (a) any teacher in the org can mark ANY other teacher's notification as read (mark-as-read fraud — hides alerts from the recipient); (b) any student can mark another student's notification as read; (c) WORSE: the rule allows ANY field update, not just `isRead` — a malicious user could call `.update({'title': 'fake', 'body': 'fake', 'type': 'announcement'})` and TAMPER with the notification content for any recipient in the org. There is no `diffKeys` block restricting which fields may be mutated. Cross-references FORENSIC-10 (Issue 8) row 14 / L3307 and FORENSIC-9 row 17 / L1940. Rule change needed: tighten L231 to `allow update: if isAuth() && isInSameOrg() && resource.data.userId == request.auth.uid && !request.resource.data.diffKeys(resource).hasAny(['title','body','type','userId','organizationId','createdAt','createdBy'])` — i.e., only the recipient can update, and only the `isRead` field may change.
+
+CHECK 5 — invite_codes onboarding catch-22 (CRITICAL — NEW CHECK):
+- Status: ONBOARDING BUG
+- Evidence: /home/z/my-project/firestore.rules:247-252
+  ```
+  247: match /invite_codes/{codeId} {
+  248:   allow read: if isAuth() && isInSameOrg();
+  249:   allow create: if isTeacherOrOwner() && isIncomingSameOrg();
+  250:   allow update: if isTeacherOrOwnerInSameOrg();
+  251:   allow delete: if isTeacherOrOwnerInSameOrg();
+  252: }
+  ```
+- isInSameOrg() helper (L20-24): `isAuth() && exists(users/{uid}) && resource.data.organizationId == getUserOrgId()` where getUserOrgId() (L15-17) reads `get(users/{uid}).data.organizationId`.
+- Client redemption flow (teacher onboarding): /home/z/my-project/lib/core/services/auth_service.dart:642-788 registerTeacherWithInvite
+  ```dart
+  642: Future<Map<String, dynamic>> registerTeacherWithInvite({...}) async {
+  653:   try {
+  654:     // Validate invite code
+  655:     final inviteService = InviteCodeService();
+  656:     final codeData = await inviteService.validateInviteCode(inviteCode);
+  ...
+  668:     // Create Firebase Auth account  ← happens AFTER validateInviteCode
+  669:     final userCredential = await FirebaseService.registerWithEmail(email, password);
+  ```
+  validateInviteCode at /home/z/my-project/lib/core/services/invite_code_service.dart:177-225 issues:
+  ```dart
+  var snapshot = await _firestore
+      .collection(AppConstants.inviteCodesCollection)
+      .where('code', isEqualTo: code)
+      .where('isUsed', isEqualTo: false)
+      .limit(1)
+      .get();
+  ```
+- Same pattern at /home/z/my-project/lib/core/services/deep_link_service.dart:161-168 (resolveJoinLink, used by /join/{code} deep-link flow).
+- Searched functions/ for any invite-code redemption Cloud Function — NONE exists. The only invite_codes references in functions/ are cascade-deletes in onUserDeleted.ts:58,173-174 and index.js:359,520. No `acceptInvitation` / `redeemInvite` / `validateInviteCode` callable is deployed.
+- Notes: THIS IS A CONFIRMED CATCH-22. The teacher onboarding flow calls `validateInviteCode()` (which queries the `invite_codes` collection) BEFORE the caller has created a Firebase Auth account. At that moment:
+  1. `request.auth` is `null` → `isAuth()` returns `false` → the L248 read rule denies the query with "Missing or insufficient permissions".
+  2. Even if the caller were already authenticated (e.g., signed in as some other user, or via anonymous auth), `exists(/databases/.../users/{uid})` returns `false` because their user doc hasn't been created yet (that happens later at L696) → `isInSameOrg()` returns `false` → denied.
+  3. Even if the caller were authenticated AND had a user doc with a `organizationId` field, `isInSameOrg()` requires `resource.data.organizationId == getUserOrgId()` — but the caller's user-doc organizationId is the org they ALREADY belong to, NOT the org encoded in the invite code. If a teacher from org A tries to redeem an invite code for org B, the check correctly denies; but a BRAND-NEW teacher (no org) trying to redeem ANY invite code is denied because their getUserOrgId() is null/empty (see CHECK 6).
+  4. Additionally, Firestore evaluates list/query operations under a stricter "the rule must be statically satisfied for every returned document" semantic — since the query does not include `where('organizationId', '==', <caller's org>)`, the query would be denied EVEN for a fully-authenticated in-org user.
+  
+  CONSEQUENCE: Teacher invite-code redemption is BROKEN in production. The teacher_registration_screen.dart calls registerTeacherWithInvite → validateInviteCode → permission-denied → throws "Invalid or expired invite code" (because validateInviteCode catches the error and the catch block at L82-84 of invite_code_service.dart rethrows, then registerTeacherWithInvite's `if (codeData == null)` check is bypassed because the catch propagates before codeData is set — actually the catch at L216-224 rethrows, so the caller sees the raw Firestore permission-denied error, not the friendly "Invalid or expired" message).
+  
+  The only way teacher invite-code onboarding could currently work is if the user is ALREADY a member of the org the invite code belongs to — which defeats the purpose of an invite code. NOTE: Students do NOT use this flow (they use studentCode login per auth_service.dart:501), so this catch-22 is specifically a TEACHER onboarding blocker.
+  
+  Rule change needed (one of):
+  (a) Add a public-by-code read exception: `allow read: if isAuth() && (isInSameOrg() || request.query.limit <= 1 && resource.data.code == request.query.field('code'))` — but Firestore rules can't reference query field values, so this doesn't work;
+  (b) Make the invite code `code` field itself a security token: `allow read: if isAuth() && (isInSameOrg() || resource.id == request.resource.id)` — also doesn't help for queries;
+  (c) RECOMMENDED: Deploy a `redeemInviteCode` Cloud Function (callable) that takes the code as input, validates server-side via Admin SDK (bypassing rules), creates the user doc, and marks the code as used. This is the only way to fix the catch-22 cleanly. The client's validateInviteCode call should be replaced with a call to the new CF.
+  (d) As an interim hack: change the L248 read rule to `allow read: if isAuth();` (any authed user can read any invite code by ID) — but this leaks invite code metadata cross-org and is NOT recommended.
+
+CHECK 6 — getUserOrgId() null safety (CRITICAL — NEW CHECK):
+- Status: VULNERABLE
+- Evidence: /home/z/my-project/firestore.rules:14-17
+  ```
+  14: // Helper: Get user's organization ID
+  15: function getUserOrgId() {
+  16:   return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+  17: }
+  ```
+- The L23 `isInSameOrg()` check is: `isAuth() && exists(/databases/.../users/{uid}) && resource.data.organizationId == getUserOrgId();`
+- Notes: FORENSIC-9 (L1909) marked this helper as "OK — fails-closed if user doc missing (throws → deny)". That assessment is INCOMPLETE. In Firestore Security Rules (CEL — Common Expression Language), accessing a missing field on a map returns `null` (not an error). The `get()` call itself only throws if the document DOES NOT EXIST — but `isInSameOrg()` has an `exists()` short-circuit guard at L22, so `get()` is never called on a missing doc. The fail-closed guarantee applies only to the "user doc missing" case; the "user doc exists but organizationId field is missing/null/empty" case is NOT fail-closed:
+
+  CASE A — user doc missing organizationId field entirely:
+    - `getUserOrgId()` returns `null`
+    - `isInSameOrg()` evaluates `resource.data.organizationId == null`
+    - If resource has a real org ID → `false` → DENIED (SILENT LOCKOUT — user can't read any org-scoped collection; UI shows empty data with no error)
+    - If resource also missing organizationId → `null == null` → `true` → GRANTED (CROSS-TENANT LEAK — two org-less docs match each other)
+
+  CASE B — user doc has organizationId = "" (empty string):
+    - `getUserOrgId()` returns `""`
+    - `isInSameOrg()` evaluates `resource.data.organizationId == ""`
+    - If resource has a real org ID → `false` → DENIED (SILENT LOCKOUT)
+    - If resource also has `organizationId: ""` → `"" == ""` → `true` → GRANTED (CROSS-TENANT LEAK — matches every other empty-string org doc, including stale Setup-Wizard-created classes per FORENSIC-1 L1130-1133 which confirmed class docs CAN have `organizationId: ''`)
+
+  CASE C — user doc has organizationId = null (explicit null):
+    - Same as CASE A.
+
+  CRITICAL EVIDENCE — the empty-string case is NOT hypothetical. The registerOwner flow at /home/z/my-project/lib/core/services/auth_service.dart:90-109 EXPLICITLY writes `'organizationId': ''` as a placeholder:
+  ```dart
+  90:    await SentryFirestoreHelper.docSet(
+  91:      collection: AppConstants.usersCollection,
+  92:      docId: user.uid,
+  93:      data: {
+  94:        'organizationId': '', // Placeholder — updated below after org creation
+  95:        'role': AppConstants.roleOwner,
+  ...
+  ```
+  The real org ID is only patched in at Step 4 (L207-216) AFTER the org doc is created in Step 3 (L167-170). During the Step 2 → Step 4 window (seconds, or indefinitely if Step 4 fails), the owner's user doc has `organizationId: ''` and getUserOrgId() returns `""`. If Step 4 fails (network blip, Firestore write denied, app crash), the owner is permanently locked into the empty-string state — every `isInSameOrg()` read for a real-org resource returns false (silent lockout), and every `isInSameOrg()` read for an empty-string-org resource returns true (cross-tenant leak with stale Setup-Wizard class docs).
+  
+  Note on onUserCreated.ts: this Cloud Function (Auth-user().onCreate() trigger) does NOT write the user's Firestore doc — it only queues a welcome email (L75-81). So the "onUserCreated.ts race" framing in the task description is a misnomer; the actual race is between the client's registerWithEmail (creates Auth user) and the client's docSet (creates Firestore user doc). During that window, `exists(users/{uid})` returns false → isInSameOrg() returns false (fail-closed, safe). The DANGEROUS window is AFTER docSet but BEFORE the Step 4 patch — where the doc EXISTS but has `organizationId: ''`.
+  
+  Rule change needed:
+  ```javascript
+  function getUserOrgId() {
+    let orgId = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+    return (orgId is string && orgId.size() > 0) ? orgId : null;
+  }
+  // AND tighten isInSameOrg to fail-closed on null:
+  function isInSameOrg() {
+    let callerOrg = getUserOrgId();
+    return isAuth() &&
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      callerOrg != null &&
+      resource.data.organizationId == callerOrg;
+  }
+  ```
+  This eliminates the empty-string leak by treating `""` the same as missing. ALSO recommended: add a client-side guard in registerOwner that retries Step 4 (the organizationId patch) on failure, and/or consolidates Step 2 + Step 4 into a single batched write that includes the real org ID — eliminating the placeholder window entirely. Cross-references FORENSIC-1 (L1130-1133 — confirmed class docs CAN have `organizationId: ''` from Setup-Wizard timing bug, so the empty-string match case is reachable in production data) and FORENSIC-9 (L1909 — prior incorrect "fail-closed ✓" assessment).
+
+RISK TABLE:
+| # | Collection | Finding | Severity | Rule Change Needed? |
+| 1 | users | Student self-escalation via /users update (L108 has no diffKeys guard on role/organizationId) | CRITICAL | YES — add diffKeys block on role/organizationId/isActive/passwordHash |
+| 2 | exam_instances | Create rule (L201) does not validate studentId == auth.uid → impersonation; client write at exam_service.dart:365 also missing organizationId | HIGH | YES — add `&& request.resource.data.studentId == request.auth.uid` to L201; fix client to include organizationId |
+| 3 | organizations | Open create (L239) is intentional for owner self-registration but lacks ownerId==uid enforcement and rate limiting | INFO | NO (intentional) — optional hardening to require ownerId == auth.uid |
+| 4 | notifications | Update rule (L231) has no recipient check and no field-level guard → mark-as-read fraud + content tampering across org | MEDIUM | YES — add `&& resource.data.userId == request.auth.uid` and diffKeys block on title/body/type |
+| 5 | invite_codes | Catch-22: L248 read rule requires isInSameOrg() but teacher onboarding calls validateInviteCode BEFORE the caller is authenticated or in any org → teacher invite-code redemption is BROKEN in production | CRITICAL | YES — deploy a redeemInviteCode Cloud Function (callable) that bypasses rules via Admin SDK; OR add a public-by-id read exception (not recommended) |
+| 6 | (helper getUserOrgId) | No null/empty-string guard → silent lockout for users with missing/empty organizationId field (incl. registerOwner Step 2→4 window where placeholder is explicitly `''`); also cross-tenant leak when two empty-string org docs match | HIGH | YES — add CEL guard `(orgId is string && orgId.size() > 0) ? orgId : null` and fail-closed `callerOrg != null` check in isInSameOrg |
+
+---
+
+Task ID: FORENSIC-12 (Phase 1 Task 4)
+Agent: Explore (Firebase Environment + Callable Region + CLI Audit)
+Task: Firebase project environment matrix, callable region audit, CLI inspection, per-function verification
+
+Work Log:
+- Read /home/z/my-project/worklog.md FORENSIC-2 (lines 682-789) — established the SENTRY_DSN missing-secret blocker that prevents all 19 Cloud Functions from deploying. This is the most critical prior finding: until SENTRY_DSN is created in Google Secret Manager OR stripped from the `secrets:` arrays, NO code change in functions/src/ will take effect in production.
+- Read /home/z/my-project/lib/firebase_options.dart (52 lines) — Android-only FirebaseOptions; projectId='klasivo-prod' (line 49); iOS/Web/macOS/Windows/Linux all throw UnsupportedError (lines 19-37). App is Android-only.
+- Read /home/z/my-project/.firebaserc (5 lines) — `"default": "klasivo-prod"` (confirmed).
+- Read /home/z/my-project/android/app/google-services.json (47 lines) — project_info.project_id='klasivo-prod', project_number='952580193002', storage_bucket='klasivo-prod.firebasestorage.app', mobilesdk_app_id='1:952580193002:android:f21194c3de1b0064ac3593'.
+- Verified /home/z/my-project/ios/ directory DOES NOT EXIST (ls returned "No such file or directory"); no GoogleService-Info.plist anywhere in repo (find returned 0 matches).
+- Grep'd entire repo for `smart-exam-pro` and `3d1cf` — ZERO matches. The `smart-exam-pro-3d1cf` project ID referenced in build/deploy logs is NOT present in any committed code or config.
+- Read /home/z/my-project/functions/src/index.ts (81 lines) — Gen2 v2 barrel file; admin.initializeApp() with no args (line 46) — uses GCLOUD_PROJECT env var set by `firebase deploy` (which reads .firebaserc → klasivo-prod). 19 named exports confirmed.
+- Read /home/z/my-project/functions/index.js (618 lines) — STALE LEGACY V1 file using `require('firebase-functions/v1')` (line 19). Exports ONLY 6 functions: onUserDelete, onUserCreate, sendWelcomeEmail, sendContactForm, sendTeacherInvitation, sendSchoolAnnouncement. Does NOT export createStudent, assignRole, assignScope, syncClaims, changeUserPassword, setPermissionOverrides, generateLiveKitToken, removeParticipant, sentryTestEvent, emailWorker, onLiveKitRoomEvents (x2), scheduledClassReminder, api. Stale helper files functions/services/emailService.js and emailTemplates.js are also present (referenced by stale index.js). functions/test-email.js is a stale test script.
+- Read /home/z/my-project/functions/package.json — `"main": "lib/index.js"` (compiled output, NOT the top-level index.js). `"build": "tsc"`. Node 22 engine. So the stale top-level index.js is NOT used by deploy unless package.json `main` is changed to `index.js`.
+- Verified functions/lib/ does NOT exist (gitignored per .gitignore line 100). functions/node_modules/ does NOT exist (gitignored per line 99).
+- Read /home/z/my-project/functions/tsconfig.json — outDir='lib', rootDir='src', include=['src/**/*'], exclude=['node_modules','lib']. So `npm run build` compiles src/ → lib/.
+- Read /home/z/my-project/firebase.json (13 lines) — `{ "functions": { "source": "functions", "runtime": "nodejs22" } }`. NO `predeploy` hook. This means the user MUST run `npm run build` manually before `firebase deploy --only functions`, or risk deploying stale lib/ (or failing if lib/ doesn't exist).
+- Grep'd all of lib/ for `FirebaseFunctions.instance` (10 matches across 8 files) and `FirebaseFunctions.instanceFor` (2 matches). Identified ALL 9 callable invocation sites and their regions.
+- Read each Flutter call site in full:
+  - lib/core/services/student_service.dart:17 — instanceFor(region: 'us-central1'); callable 'createStudent' at lines 104, 330 (bulk).
+  - lib/features/livekit/data/livekit_repository.dart:35 — instanceFor(region: 'us-central1'); callable 'generateLiveKitToken' at line 55; callable 'removeParticipant' at line 448.
+  - lib/features/contact/pages/contact_us_screen.dart:43 — FirebaseFunctions.instance (default = us-central1); callable 'sendContactForm'.
+  - lib/core/services/claims_service.dart:146 — FirebaseFunctions.instance; callable 'syncClaims'.
+  - lib/features/auth/pages/change_password_screen.dart:74 — FirebaseFunctions.instance; callable 'changeUserPassword'.
+  - lib/features/user_management/data/user_management_repository.dart:327 — FirebaseFunctions.instance; callable 'assignRole'.
+  - lib/features/user_management/data/user_management_repository.dart:346 — FirebaseFunctions.instance; callable 'assignScope'.
+  - lib/features/user_management/data/user_management_repository.dart:366 — FirebaseFunctions.instance; callable 'setPermissionOverrides'.
+  - lib/features/user_management/data/user_management_repository.dart:384 — FirebaseFunctions.instance; callable 'syncClaims' (second call site, admin path).
+- Grep'd all 9 function source files in functions/src/functions/ for `onCall(` and `region:`. ALL 9 use `region: 'us-central1'`. Confirmed Gen2 v2 API (`import { onCall } from 'firebase-functions/v2/https'`) in all 9. Cross-referenced functions/src/index.ts exports — all 9 names match Flutter callable names EXACTLY (case-sensitive).
+- Read functions/.env.example (34 lines) — STALE documentation: claims "RBAC callable functions: Gen1 (firebase-functions/v1)" but actual code in assignRole.ts/syncClaims.ts/etc imports from `firebase-functions/v2/https` (Gen2 v2). Documentation drift.
+- Attempted CLI commands:
+  - `which firebase gcloud git` → returned ONLY `/usr/bin/git`. firebase and gcloud CLIs are NOT installed in the sandbox.
+  - `firebase functions:list` → exit 127, "firebase: command not found".
+  - `gcloud functions describe createStudent --region=us-central1` → exit 127, "gcloud: command not found".
+  - `gcloud builds list` → exit 127, "gcloud: command not found".
+  - `git rev-parse HEAD` → 6e247f9e2bb25d7d687bb13bf232b99c47831e44 (success).
+- Verified git working tree is clean (`git status --short` returned no output).
+
+Stage Summary:
+
+PART A — FIREBASE PROJECT ENVIRONMENT MATRIX:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ FIREBASE PROJECT ENVIRONMENT MATRIX                     │
+│                                                         │
+│ Flutter app  (firebase_options.dart):   klasivo-prod    │
+│   (Android only — iOS/Web/macOS/Windows/Linux all       │
+│    throw UnsupportedError; not configured)              │
+│ Firebase CLI (.firebaserc):             klasivo-prod    │
+│ Android SDK  (google-services.json):    klasivo-prod    │
+│   project_number: 952580193002                          │
+│   app_id: 1:952580193002:android:f21194c3de1b0064ac3593 │
+│   storage_bucket: klasivo-prod.firebasestorage.app      │
+│ iOS SDK      (GoogleService-Info.plist):N/A             │
+│   (no /ios/ directory exists in repo; zero matches for  │
+│    GoogleService-Info.plist anywhere)                   │
+│ Cloud Functions source:                klasivo-prod     │
+│   (functions/src/index.ts:46 admin.initializeApp() with │
+│    no args — uses GCLOUD_PROJECT env var set by         │
+│    `firebase deploy` from .firebaserc default =         │
+│    klasivo-prod)                                        │
+│                                                         │
+│ All five match:  YES                                    │
+│                                                         │
+│ Mismatched components:                                  │
+│   NONE in committed code/config.                        │
+│   `smart-exam-pro-3d1cf` does NOT appear in ANY         │
+│   committed file (0 matches across entire repo —        │
+│   grep returned "No matches found" for both             │
+│   "smart-exam-pro" and "3d1cf").                        │
+│                                                         │
+│ Risk assessment:                                        │
+│   The `smart-exam-pro-3d1cf` reference in build/deploy  │
+│   logs can ONLY have come from a CLI invocation         │
+│   (`firebase use smart-exam-pro-3d1cf` or               │
+│   `firebase deploy --project smart-exam-pro-3d1cf`)     │
+│   run by the user from their own shell — NOT from any   │
+│   committed file. This is an OPERATIONAL mismatch, not  │
+│   a code mismatch. If such a deploy was performed:      │
+│     Flutter APK → Project A (klasivo-prod)              │
+│     Cloud Function → Project B (smart-exam-pro-3d1cf)   │
+│     = Auth tokens from klasivo-prod are invalid against │
+│       smart-exam-pro-3d1cf Functions                    │
+│     = ALL callable functions return UNAUTHENTICATED     │
+│     = callerRole = null (no valid auth context)         │
+│   This is a PLAUSIBLE explanation for the production    │
+│   `callerRole = null` symptom, but cannot be confirmed  │
+│   without CLI access (see PART C).                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+PART B — CALLABLE REGION AUDIT:
+
+Step 1 — Scan completeness:
+  Prior agent scan identified ONLY 2 files using `FirebaseFunctions.instanceFor`. That scan was INCOMPLETE: it missed the 6 files using `FirebaseFunctions.instance` (default region). Full scan results:
+
+  FirebaseFunctions.instanceFor (explicit region) — 2 files:
+    lib/core/services/student_service.dart:17                 → us-central1
+    lib/features/livekit/data/livekit_repository.dart:35      → us-central1
+
+  FirebaseFunctions.instance (default region = us-central1) — 6 files:
+    lib/features/contact/pages/contact_us_screen.dart:43
+    lib/core/services/claims_service.dart:146
+    lib/features/auth/pages/change_password_screen.dart:74
+    lib/features/user_management/data/user_management_repository.dart:327, 346, 366, 384
+
+  Total: 8 unique files, 10 callable invocation sites (syncClaims appears in 2 places).
+
+  NOTE: The Flutter `cloud_functions` SDK default region for `FirebaseFunctions.instance` is us-central1 (matches the default Firebase Functions region). So all 10 call sites target us-central1, whether explicitly or implicitly.
+
+Step 2 & 3 — Callable matrix:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ CALLABLE REGION AUDIT                                                │
+│                                                                      │
+│ Callable               | File                                  | Flutter Region                │
+│                        |                                       | (explicit/default)            │
+│ ────────────────────── | ───────────────────────────────────── | ────────────────────────────  │
+│ createStudent          | lib/core/services/student_service.dart| us-central1 (instanceFor)     │
+│ generateLiveKitToken   | lib/features/livekit/data/            | us-central1 (instanceFor)     │
+│                        |   livekit_repository.dart             |                               │
+│ removeParticipant      | lib/features/livekit/data/            | us-central1 (instanceFor)     │
+│                        |   livekit_repository.dart             |                               │
+│ sendContactForm        | lib/features/contact/pages/           | us-central1 (instance,        │
+│                        |   contact_us_screen.dart              |   default)                    │
+│ syncClaims (client     | lib/core/services/claims_service.dart | us-central1 (instance,        │
+│   path)                |                                       |   default)                    │
+│ syncClaims (admin      | lib/features/user_management/data/    | us-central1 (instance,        │
+│   path)                |   user_management_repository.dart     |   default)                    │
+│ assignRole             | lib/features/user_management/data/    | us-central1 (instance,        │
+│                        |   user_management_repository.dart     |   default)                    │
+│ assignScope            | lib/features/user_management/data/    | us-central1 (instance,        │
+│                        |   user_management_repository.dart     |   default)                    │
+│ setPermissionOverrides | lib/features/user_management/data/    | us-central1 (instance,        │
+│                        |   user_management_repository.dart     |   default)                    │
+│ changeUserPassword     | lib/features/auth/pages/              | us-central1 (instance,        │
+│                        |   change_password_screen.dart         |   default)                    │
+│                                                                      │
+│ All 9 callables target us-central1 on the Flutter side.             │
+│ All 9 functions in functions/src/ declare `region: 'us-central1'`.  │
+│ Regions match 100%. No mismatch.                                    │
+│                                                                      │
+│ Callables using FirebaseFunctions.instance (no explicit region):    │
+│   sendContactForm, syncClaims (x2), assignRole, assignScope,        │
+│   setPermissionOverrides, changeUserPassword                         │
+│   → All default to us-central1 in the cloud_functions SDK           │
+│   → This MATCHES the deployed function region (us-central1)         │
+│   → No runtime impact, but inconsistent style — recommend           │
+│     migrating all to FirebaseFunctions.instanceFor(region:           │
+│     'us-central1') for explicitness.                                │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Step 4 — Cross-reference with functions/index.js, functions/src/, and build pipeline:
+
+  (a) functions/index.js (top-level, 618 lines):
+      STALE LEGACY V1 file. Uses `require('firebase-functions/v1')` (line 19).
+      Exports ONLY 6 functions: onUserDelete, onUserCreate, sendWelcomeEmail,
+        sendContactForm, sendTeacherInvitation, sendSchoolAnnouncement.
+      DOES NOT export the other 13 functions (createStudent, assignRole,
+        assignScope, syncClaims, changeUserPassword, setPermissionOverrides,
+        generateLiveKitToken, removeParticipant, sentryTestEvent, emailWorker,
+        onLiveKitRoomCreated, onLiveKitRoomUpdated, scheduledClassReminder, api).
+      Stale helper files functions/services/emailService.js (referenced by
+        stale index.js line 26) and functions/services/emailTemplates.js are
+        also present. functions/test-email.js is a stale test script.
+
+  (b) functions/src/index.ts (81 lines, CURRENT):
+      Gen2 v2 barrel file. 19 named exports confirmed. admin.initializeApp()
+        with no args (line 46). Imports use `firebase-functions/v2/https`
+        throughout src/functions/*.ts.
+
+  (c) functions/lib/ (compiled JS): NOT PRESENT locally (gitignored per
+        .gitignore line 100). The actual deploy entry point per
+        functions/package.json `main` field is `lib/index.js` — i.e. the
+        COMPILED OUTPUT of `tsc` on src/, NOT the stale top-level index.js.
+
+  (d) functions/package.json:
+      `"main": "lib/index.js"` (line 17) — deploy entry point.
+      `"build": "tsc"` (line 5) — compiles src/ → lib/ per tsconfig.json.
+      `"engines": { "node": "22" }` — matches firebase.json runtime nodejs22.
+
+  (e) Build script presence: YES (`"build": "tsc"`).
+      But firebase.json has NO `predeploy` hook to auto-run it. The user
+        must manually `cd functions && npm run build` before
+        `firebase deploy --only functions`. If they forget, deploy either
+        fails (lib/ doesn't exist) or silently uses stale lib/.
+
+  (f) Do the exports in src/ match the exports in index.js (top-level)?
+      NO — the top-level index.js exports 6 v1 functions; src/index.ts
+        exports 19 v2 functions. The two files have DIFFERENT function
+        sets, DIFFERENT runtime generations (v1 vs v2), and DIFFERENT
+        secret-declaration styles. The top-level index.js is dead/stale.
+
+  (g) Stale-code risk: If anyone changes functions/package.json `main` from
+        `lib/index.js` to `index.js` (a plausible mistake given the file's
+        prominent location at the functions/ root), the deploy would use
+        the stale v1 file and createStudent/assignRole/syncClaims/etc.
+        would simply not exist in production — Flutter calls would return
+        NOT_FOUND at runtime. This is a SILENT-DEPLOY TRAP.
+
+  (h) Documentation drift in functions/.env.example (lines 31-33): claims
+        "RBAC callable functions: Gen1 (firebase-functions/v1 — for custom
+        claims compat)" but actual code in assignRole.ts:1, syncClaims.ts:1,
+        assignScope.ts, changeUserPassword.ts, setPermissionOverrides.ts
+        all import `onCall` from `firebase-functions/v2/https` (Gen2 v2).
+        The .env.example comment is stale and misleading.
+
+PART C — CLI INSPECTION:
+
+Tool availability:
+  `which firebase gcloud git` → returned ONLY `/usr/bin/git`.
+  firebase CLI: NOT INSTALLED in sandbox.
+  gcloud  CLI: NOT INSTALLED in sandbox.
+  git     CLI: INSTALLED at /usr/bin/git.
+
+Command-by-command results:
+
+  1. `firebase functions:list`
+     Result: FAILED — exit code 127.
+     Error: "/bin/bash: line 1: firebase: command not found"
+     Manual navigation path (Firebase Console):
+       https://console.firebase.google.com/project/klasivo-prod/functions
+       → Lists every deployed function with: name, region, trigger type,
+         last deployed timestamp, runtime, memory, status (active/error).
+       → Cross-reference: each of the 9 callables should appear here as
+         `us-central1` region Gen2 functions. If any are MISSING, that
+         function is NOT deployed and Flutter calls will get NOT_FOUND.
+       → If the project selector at top shows "smart-exam-pro-3d1cf"
+         instead of "klasivo-prod", that confirms the operational
+         project-mismatch hypothesis from PART A.
+
+  2. `gcloud functions describe createStudent --region=us-central1 --format="value(updateTime,status,sourceUploadUrl)"`
+     Result: FAILED — exit code 127.
+     Error: "/bin/bash: line 1: gcloud: command not found"
+     Manual navigation path (Firebase Console):
+       https://console.firebase.google.com/project/klasivo-prod/functions/createStudent
+       → "Details" tab shows: region, memory, timeout, min/max instances,
+         concurrency, last deployed (updateTime), runtime version, status.
+       → "Source" tab shows the uploaded source code (compare to git HEAD
+         6e247f9 to determine if deployed version is current or stale).
+       → "Trigger" tab shows trigger type (HTTPS callable), URL, security
+         (App Check on/off).
+
+  3. `gcloud functions describe createStudent --region=us-central1 --format="value(secretEnvironmentVariables)"`
+     Result: FAILED — exit code 127.
+     Error: "/bin/bash: line 1: gcloud: command not found"
+     Manual navigation path (Firebase Console):
+       https://console.firebase.google.com/project/klasivo-prod/functions/createStudent/variables
+       → "Variables" tab → "Secrets" section shows each secret's name,
+         version (latest or pinned), and status (BOUND / MISSING /
+         WRONG_VERSION).
+       → For createStudent, expect SENTRY_DSN. If status is "MISSING" or
+         the secret is not listed, the function CANNOT deploy successfully
+         (per FORENSIC-2 root cause).
+       → For sendContactForm, expect SENTRY_DSN + RESEND_API_KEY.
+       → For generateLiveKitToken and removeParticipant, expect
+         SENTRY_DSN + LIVEKIT_API_KEY + LIVEKIT_API_SECRET.
+
+  4. `gcloud builds list --limit=5 --filter="tags=firebase" --format="table(id,status,createTime,finishTime,logUrl)"`
+     Result: FAILED — exit code 127.
+     Error: "/bin/bash: line 1: gcloud: command not found"
+     Manual navigation path (GCP Console):
+       https://console.cloud.google.com/cloud-build/builds?project=klasivo-prod
+       → Filter by tag "firebase" or by trigger name "firebase deploy functions".
+       → Each build shows: ID, status (SUCCESS / FAILURE / EXPIRED /
+         WORKING), create time, finish time, log URL (clickable).
+       → The most recent FAILED or EXPIRED build's log will show the exact
+         secret-validation error confirming FORENSIC-2's root cause:
+         "Failed to validate secret versions: SENTRY_DSN".
+
+  5. `git rev-parse HEAD`
+     Result: SUCCESS — exit code 0.
+     Output: 6e247f9e2bb25d7d687bb13bf232b99c47831e44
+     Last 5 meaningful commits (with timestamps):
+       6e247f9  2026-06-16 23:20:28  acfcc72e-87e0-4b79-8af6-9ead143cb24c (UUID message)
+       651bacb  2026-06-16 22:47:20  cd0a9c0c-3912-4688-ba90-67926e93e02d (UUID message)
+       464e1b4  2026-06-16 22:22:55  edfad348-5f64-4b36-aa64-650254247309 (UUID message)
+       1b499aa  2026-06-16 22:10:06  27af407e-1aab-47d7-9629-2b0f1b14a175 (UUID message)
+       9f918c7  2026-06-16 20:29:38  725f8d18-1303-4944-91cd-2047cd731db4 (UUID message)
+       92f04b7  2026-06-16 15:57:53  feat(createStudent): enhanced rejection diagnostics to root-cause permission-denied
+       6e186c1  2026-06-16 15:04:36  chore: update worklog with Task 7
+       7cca44f  2026-06-16 15:04:18  chore: delete dead legacy student_service.dart
+       9e207b3  2026-06-16 14:57:26  fix(security): remove unsafe auto-claim-sync from createStudent
+     Working tree is CLEAN (`git status --short` returned no output).
+     Branch: main (remote: origin/main).
+
+PART D — PER-FUNCTION VERIFICATION MATRIX:
+
+  Schema note — Because the sandbox has no firebase/gcloud CLI, the
+  "Last successful deploy", "Last Cloud Build status", "Build failure
+  reason", and "Deployed git commit" fields cannot be populated from
+  inside the sandbox. They are marked "NOT DISCOVERABLE" with the manual
+  console path noted. The "Source in sync with deployed" field is
+  therefore also marked UNKNOWN for all 9 functions.
+
+  Common to ALL 9 functions:
+  - Callable name in functions/index.js (stale top-level): NOT EXPORTED
+    (the stale v1 file does not contain createStudent, assignRole,
+    assignScope, syncClaims, changeUserPassword, setPermissionOverrides,
+    generateLiveKitToken, removeParticipant, or sendContactForm).
+    (Exception: sendContactForm IS exported in the stale index.js, but
+    in v1 form with different secrets — only `RESEND_API_KEY`, no
+    `SENTRY_DSN`. See function-specific block below.)
+  - Callable name in functions/src/index.ts: EXPORTED — matches Flutter
+    name exactly (case-sensitive).
+  - Region in function definition (src/): us-central1.
+  - Region in Flutter call: us-central1 (explicit instanceFor OR default
+    FirebaseFunctions.instance, which defaults to us-central1).
+  - Firebase project (Flutter): klasivo-prod.
+  - Firebase project (Functions): klasivo-prod (via .firebaserc default
+    + admin.initializeApp() no-args + GCLOUD_PROJECT env var).
+  - Project match: YES (in committed code/config; operational mismatch
+    with smart-exam-pro-3d1cf is a CLI-usage issue, not a code issue).
+  - Secret SENTRY_DSN: MISSING (per FORENSIC-2 — never created in
+    Google Secret Manager; blocks ALL 19 functions from deploying).
+  - Last successful deploy: NOT DISCOVERABLE (no CLI).
+  - Last Cloud Build status: NOT DISCOVERABLE (no CLI).
+  - Build failure reason: Per FORENSIC-2 — "Failed to validate secret
+    versions: SENTRY_DSN" wrapping to "Build failed with status: EXPIRED"
+    (assumed for all 9 unless SENTRY_DSN has been created since FORENSIC-2).
+  - Deployed git commit: NOT DISCOVERABLE (no CLI).
+  - Current git HEAD: 6e247f9e2bb25d7d687bb13bf232b99c47831e44.
+  - Source in sync with deployed: UNKNOWN.
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: createStudent                                 │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       createStudent (line 63)                │
+  │ Callable name in Flutter httpsCallable:        createStudent (student_service.dart:104, 330) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (src/functions/createStudent.ts:205): us-central1      │
+  │ Region in Flutter call (student_service.dart:17):       us-central1 (instanceFor)    │
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project (from PART A matrix):                  │
+  │   Flutter:   klasivo-prod                              │
+  │   Functions: klasivo-prod                              │
+  │   Match:     YES (in code/config)                      │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE (only SENTRY_DSN declared) │
+  │                                                         │
+  │ Last successful deploy:         NOT DISCOVERABLE (no CLI)                             │
+  │ Last Cloud Build status:        NOT DISCOVERABLE (assumed EXPIRED per FORENSIC-2)     │
+  │ Build failure reason:           "Failed to validate secret versions: SENTRY_DSN"      │
+  │                                                         │
+  │ Deployed git commit:            NOT DISCOVERABLE       │
+  │ Current git HEAD:               6e247f9                │
+  │ Source in sync with deployed:   UNKNOWN                │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: syncClaims                                    │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       syncClaims (line 68)                   │
+  │ Callable name in Flutter httpsCallable:        syncClaims (claims_service.dart:146;   │
+  │                          user_management_repository.dart:384)                          │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (syncClaims.ts:36):       us-central1                  │
+  │ Region in Flutter call (both sites):                    us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE                            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: assignRole                                    │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       assignRole (line 66)                   │
+  │ Callable name in Flutter httpsCallable:        assignRole (user_management_repository.dart:327) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (assignRole.ts:37):       us-central1                  │
+  │ Region in Flutter call:                                 us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE                            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: assignScope                                   │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       assignScope (line 67)                  │
+  │ Callable name in Flutter httpsCallable:        assignScope (user_management_repository.dart:346) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (assignScope.ts:45):      us-central1                  │
+  │ Region in Flutter call:                                 us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE                            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: setPermissionOverrides                        │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       setPermissionOverrides (line 70)       │
+  │ Callable name in Flutter httpsCallable:        setPermissionOverrides (user_management_repository.dart:366) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (setPermissionOverrides.ts:52): us-central1            │
+  │ Region in Flutter call:                                 us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE                            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: generateLiveKitToken                          │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       generateLiveKitToken (line 59)         │
+  │ Callable name in Flutter httpsCallable:        generateLiveKitToken (livekit_repository.dart:55) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (generateLiveKitToken.ts:53): us-central1              │
+  │ Region in Flutter call (livekit_repository.dart:35):    us-central1 (instanceFor)    │
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing/unknown secrets:                         │
+  │   LIVEKIT_API_KEY    — declared via defineSecret (status NOT DISCOVERABLE)            │
+  │   LIVEKIT_API_SECRET — declared via defineSecret (status NOT DISCOVERABLE)            │
+  │   (Both must exist in Secret Manager; verify via Firebase Console → Functions →       │
+  │    generateLiveKitToken → Variables → Secrets section.)                               │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: removeParticipant                             │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       removeParticipant (line 60)            │
+  │ Callable name in Flutter httpsCallable:        removeParticipant (livekit_repository.dart:448) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (removeParticipant.ts:40): us-central1                 │
+  │ Region in Flutter call (livekit_repository.dart:35):    us-central1 (instanceFor)    │
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing/unknown secrets:                         │
+  │   LIVEKIT_API_KEY    — declared via defineSecret (status NOT DISCOVERABLE)            │
+  │   LIVEKIT_API_SECRET — declared via defineSecret (status NOT DISCOVERABLE)            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: changeUserPassword                            │
+  │                                                         │
+  │ Callable name in functions/index.js (stale): NOT EXPORTED                             │
+  │ Callable name in functions/src/index.ts:       changeUserPassword (line 69)           │
+  │ Callable name in Flutter httpsCallable:        changeUserPassword (change_password_screen.dart:74) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (changeUserPassword.ts:23): us-central1                │
+  │ Region in Flutter call:                                 us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets: NONE                            │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ FUNCTION: sendContactForm                               │
+  │                                                         │
+  │ Callable name in functions/index.js (stale):   sendContactForm (line 175 — v1 form)   │
+  │ Callable name in functions/src/index.ts:       sendContactForm (line 56)              │
+  │ Callable name in Flutter httpsCallable:        sendContactForm (contact_us_screen.dart:43) │
+  │ Names match (case-sensitive):                  YES                                    │
+  │                                                         │
+  │ Region in function definition (sendContactForm.ts:12):  us-central1                  │
+  │ Region in Flutter call:                                 us-central1 (instance default)│
+  │ Regions match:                                 YES                                    │
+  │                                                         │
+  │ Firebase project: Flutter=klasivo-prod, Functions=klasivo-prod, Match=YES             │
+  │                                                         │
+  │ Secret SENTRY_DSN: MISSING (FORENSIC-2)                │
+  │ Other missing secrets:                                 │
+  │   RESEND_API_KEY — declared as string literal in sendContactForm.ts:12                │
+  │                    (status NOT DISCOVERABLE; verify via Firebase Console →            │
+  │                     Functions → sendContactForm → Variables → Secrets)                │
+  │                                                         │
+  │ NOTE: The stale top-level functions/index.js DOES export a v1 sendContactForm         │
+  │       at line 175, but with ONLY `RESEND_API_KEY` secret (no SENTRY_DSN). If          │
+  │       package.json `main` is ever changed to `index.js`, this stale v1 version        │
+  │       would be deployed instead of the v2 version.                                     │
+  │                                                         │
+  │ Last successful deploy / Build status / git commit:    │
+  │   NOT DISCOVERABLE (no CLI); assumed EXPIRED per FORENSIC-2                            │
+  │ Current git HEAD: 6e247f9; Source in sync: UNKNOWN    │
+  │                                                         │
+  │ Overall status: BUILD FAILED — code changes will not take effect                      │
+  └─────────────────────────────────────────────────────────┘
+
+PART E — DEPLOYMENT BLOCKERS:
+
+BLOCKER 1 (CRITICAL): SENTRY_DSN secret not created in Google Secret Manager
+  Evidence: FORENSIC-2 confirmed all 19 functions declare `secrets: ['SENTRY_DSN']`
+    in their onCall config. ZERO local .env files define SENTRY_DSN. The Flutter
+    client has the DSN hardcoded (lib/core/config/app_environment.dart:129 —
+    https://c523c263a4f3fee05ea0fce5b477d606@o4511553244692480.ingest.us.sentry.io/4511553494319105)
+    but Cloud Functions Gen2 requires the secret to exist in Secret Manager to
+    mount it into process.env at cold start. The deploy error was
+    "Failed to validate secret versions: SENTRY_DSN" wrapping to
+    "Build failed with status: EXPIRED".
+  Resolution needed:
+    Option B (proper fix): `firebase functions:secrets:set SENTRY_DSN` (paste the
+      DSN above), then `firebase deploy --only functions`.
+    Option C (eliminate dependency): hardcode the DSN as fallback in
+      functions/src/config/sentry.ts:24 (process.env.SENTRY_DSN ?? '<DSN>') and
+      strip `'SENTRY_DSN'` from all 19 `secrets:` arrays. Aligns Cloud Functions
+      with the same DSN-public posture the Flutter client already uses.
+  Until resolved: NO code change in functions/src/ will take effect in
+    production. All 19 functions are blocked at the secret-validation stage of
+    Cloud Build. Any fix to createStudent.ts (or any other function) will not
+    deploy until this is resolved. The Flutter app will continue to receive
+    UNAVAILABLE / NOT_FOUND / EXPIRED errors on every callable invocation.
+
+BLOCKER 2 (HIGH): Stale legacy v1 functions/index.js at top-level creates silent-deploy risk
+  Evidence: functions/index.js (618 lines) uses `require('firebase-functions/v1')`
+    and exports only 6 v1 functions (onUserDelete, onUserCreate, sendWelcomeEmail,
+    sendContactForm, sendTeacherInvitation, sendSchoolAnnouncement). Does NOT
+    export createStudent, assignRole, assignScope, syncClaims, changeUserPassword,
+    setPermissionOverrides, generateLiveKitToken, removeParticipant, sentryTestEvent,
+    emailWorker, onLiveKitRoomCreated, onLiveKitRoomUpdated, scheduledClassReminder,
+    or api. Stale helper files functions/services/emailService.js and
+    functions/services/emailTemplates.js are also present (required by stale
+    index.js line 26). functions/test-email.js is a stale test script.
+    functions/package.json `main` = `lib/index.js` (the COMPILED output of src/,
+    NOT the stale top-level index.js), so the stale file is currently NOT used
+    by deploy — but it is a maintenance trap.
+  Resolution needed: Delete functions/index.js, functions/services/emailService.js,
+    functions/services/emailTemplates.js, functions/test-email.js. The actual
+    entry point is functions/lib/index.js (compiled from functions/src/ via tsc
+    per functions/tsconfig.json).
+  Until resolved: If anyone changes functions/package.json `main` to `index.js`
+    (a plausible mistake given the file's prominent location), the deploy would
+    use the stale v1 file and createStudent/assignRole/syncClaims/etc. would
+    simply not exist in production — Flutter calls would return NOT_FOUND at
+    runtime with NO error in the function logs (because the function is not
+    deployed).
+
+BLOCKER 3 (HIGH): firebase.json has NO `predeploy` hook for TypeScript build
+  Evidence: firebase.json functions section is `{ "source": "functions",
+    "runtime": "nodejs22" }` — no `predeploy` key. functions/lib/ is gitignored
+    (per .gitignore line 100) and NOT present in the repo. functions/package.json
+    `main` = `lib/index.js`. So the user MUST manually run
+    `cd functions && npm run build` before `firebase deploy --only functions`.
+  Resolution needed: Add a `predeploy` hook to firebase.json:
+    `"functions": { "source": "functions", "runtime": "nodejs22",
+                    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"] }`
+    OR always run `cd functions && npm run build` before deploy.
+  Until resolved: Risk of deploying stale compiled code. If the user edits
+    functions/src/createStudent.ts but forgets to rebuild, the deploy will use
+    the previous lib/index.js and the fix will silently not take effect. The
+    user would see "deploy succeeded" but the production behavior would not
+    change — this is the WORST kind of debugging trap because it looks like the
+    code fix didn't work.
+
+BLOCKER 4 (MEDIUM): CLI tools not available in sandbox — production function status cannot be verified automatically
+  Evidence: `which firebase gcloud git` returned only `/usr/bin/git`.
+    `firebase functions:list` → exit 127 ("command not found").
+    `gcloud functions describe createStudent` → exit 127.
+    `gcloud builds list` → exit 127.
+  Resolution needed: User must verify deployment status manually via:
+    - Firebase Console → klasivo-prod → Functions (list of deployed functions
+      with last-deployed timestamp, region, status).
+    - Firebase Console → klasivo-prod → Functions → <function-name> → Details
+      (per-function: updateTime, status, source code).
+    - Firebase Console → klasivo-prod → Functions → <function-name> → Variables
+      (per-function: secrets section — SENTRY_DSN status: BOUND/MISSING/WRONG_VERSION).
+    - GCP Console → klasivo-prod → Cloud Build → History (build status, log URL).
+  Until resolved: Cannot confirm whether ANY of the 9 callables is currently
+    deployed, what version is deployed, or whether SENTRY_DSN is now bound.
+    Cannot compare deployed source to git HEAD 6e247f9 to determine if the
+    deployed code matches the latest committed fix.
+
+BLOCKER 5 (MEDIUM): Operational risk of accidental project mismatch (klasivo-prod vs smart-exam-pro-3d1cf)
+  Evidence: `smart-exam-pro-3d1cf` referenced in build/deploy logs (per task
+    description) does NOT appear in ANY committed code/config (0 matches across
+    entire repo — grep returned "No matches found" for both "smart-exam-pro"
+    and "3d1cf"). All 5 committed config surfaces point to `klasivo-prod`:
+      .firebaserc default = klasivo-prod
+      lib/firebase_options.dart projectId = klasivo-prod
+      android/app/google-services.json project_id = klasivo-prod
+      functions/src/index.ts admin.initializeApp() no-args → uses .firebaserc default
+      (iOS SDK: N/A — no ios/ directory)
+    This means the `smart-exam-pro-3d1cf` reference can ONLY have come from a
+    CLI invocation run by the user from their own shell — most likely
+    `firebase use smart-exam-pro-3d1cf` or
+    `firebase deploy --project smart-exam-pro-3d1cf`.
+  Resolution needed:
+    1. ALWAYS run `firebase use klasivo-prod` (or `firebase use default`) before
+       any deploy. Verify with `firebase functions:list` (should show
+       klasivo-prod functions, not smart-exam-pro-3d1cf).
+    2. Check the Firebase Console project selector at the top of the page before
+       any deploy action — make sure it shows "klasivo-prod".
+    3. If any function was previously deployed to smart-exam-pro-3d1cf, delete
+       it from that project to avoid confusion (GCP Console → smart-exam-pro-3d1cf
+       → Cloud Functions → select all → Delete).
+  Until resolved: If the user accidentally deploys to smart-exam-pro-3d1cf, the
+    Flutter app (configured for klasivo-prod) will receive UNAUTHENTICATED /
+    NOT_FOUND from the functions it actually calls — because the ID tokens
+    minted by klasivo-prod Firebase Auth are invalid against smart-exam-pro-3d1cf
+    Cloud Functions. This is a PLAUSIBLE explanation for the production
+    `callerRole = null` symptom: the function runs in smart-exam-pro-3d1cf, the
+    user's Auth token was minted by klasivo-prod, request.auth is null/invalid
+    → callerRole = null. Cannot be confirmed without CLI access to verify which
+    project the deployed functions actually live in.
+
+KEY FINDINGS:
+1. ENVIRONMENT MATRIX IS CLEAN IN CODE: All 5 committed Firebase config surfaces point to `klasivo-prod` (firebase_options.dart, .firebaserc, google-services.json, functions/src admin.initializeApp, iOS=N/A). The `smart-exam-pro-3d1cf` reference in build/deploy logs has ZERO matches in the codebase — it is an OPERATIONAL mismatch (user running `firebase use` against the wrong project from their shell), NOT a code mismatch. This means the production `callerRole = null` symptom CAN be explained by this mismatch IF the user deployed functions to smart-exam-pro-3d1cf while the Flutter app authenticates against klasivo-prod — Firebase Auth tokens are not valid cross-project.
+
+2. ALL 9 CALLABLES ARE WIRED CORRECTLY: callable names match exactly (case-sensitive) between Flutter `httpsCallable('<name>')` and functions/src/index.ts exports; all 9 functions declare `region: 'us-central1'`; all 9 Flutter call sites target us-central1 (2 explicit instanceFor + 6 implicit FirebaseFunctions.instance default = us-central1, plus 1 second call site for syncClaims). No callable-name or region mismatch exists.
+
+3. PRIOR SCAN GAP CLOSED: prior agents identified only 2 files using `FirebaseFunctions.instanceFor`. The complete picture is 8 unique files / 10 call sites — 2 files use explicit `instanceFor(region: 'us-central1')` and 6 files use `FirebaseFunctions.instance` (which defaults to us-central1). All target the same region, so the gap was documentation-only, not a runtime issue.
+
+4. STALE LEGACY CODE TRAP: functions/index.js (top-level, 618 lines) is a STALE v1 file that exports only 6 of the 19 expected functions. functions/services/emailService.js and emailTemplates.js + functions/test-email.js are also stale. These are NOT used by deploy (functions/package.json `main` = `lib/index.js`, the compiled output), but they are a silent-deploy trap: if `main` is ever changed to `index.js`, the deploy would silently miss createStudent/assignRole/syncClaims/etc. and Flutter calls would return NOT_FOUND with NO error in function logs. These stale files should be deleted. functions/.env.example also has stale documentation (claims "RBAC callable functions: Gen1" but actual code uses Gen2 v2 onCall).
+
+5. THE CRITICAL BLOCKER REMAINS SENTRY_DSN (FORENSIC-2): No code change in functions/src/ will take effect in production until SENTRY_DSN is created in Google Secret Manager (Option B) OR stripped from all 19 `secrets:` arrays with a hardcoded fallback (Option C). Combined with the missing `predeploy` hook in firebase.json (Blocker 3), the deploy pipeline is currently in a state where the user can edit source files, run `firebase deploy --only functions`, see "deploy succeeded", and yet have ZERO production impact — either because the build fails on the missing secret (Blocker 1) or because the compiled lib/ is stale (Blocker 3). The user must resolve Blockers 1 and 3 in order before ANY function-side fix (including the FORENSIC-1 createStudent fix, the FORENSIC-9 rules-bug fix, or the FORENSIC-11 privilege-escalation fixes) will reach production.
+
+Files inspected (READ-ONLY — no modifications made):
+- /home/z/my-project/worklog.md (FORENSIC-2 lines 682-789 for SENTRY_DSN context)
+- /home/z/my-project/.firebaserc (5 lines)
+- /home/z/my-project/lib/firebase_options.dart (52 lines)
+- /home/z/my-project/android/app/google-services.json (47 lines)
+- /home/z/my-project/.gitignore (120 lines)
+- /home/z/my-project/.env (1 line)
+- /home/z/my-project/.env.example (35 lines)
+- /home/z/my-project/functions/.env.example (34 lines)
+- /home/z/my-project/firebase.json (13 lines)
+- /home/z/my-project/functions/package.json (31 lines)
+- /home/z/my-project/functions/tsconfig.json (19 lines)
+- /home/z/my-project/functions/index.js (618 lines — stale v1)
+- /home/z/my-project/functions/src/index.ts (81 lines — current v2 barrel)
+- /home/z/my-project/functions/src/functions/createStudent.ts (lines 195-224 of 681)
+- /home/z/my-project/functions/src/functions/assignRole.ts (lines 1-50 of 158)
+- /home/z/my-project/functions/src/functions/syncClaims.ts (lines 1-50 of 120)
+- /home/z/my-project/lib/core/services/student_service.dart (477 lines — full)
+- /home/z/my-project/lib/features/livekit/data/livekit_repository.dart (625 lines — full)
+- /home/z/my-project/lib/core/services/claims_service.dart (157 lines — full)
+- /home/z/my-project/lib/features/contact/pages/contact_us_screen.dart (lines 30-129)
+- /home/z/my-project/lib/features/auth/pages/change_password_screen.dart (lines 60-159)
+- /home/z/my-project/lib/features/user_management/data/user_management_repository.dart (lines 315-408)
+- ripgrep scans for `FirebaseFunctions.instance`, `FirebaseFunctions.instanceFor`, `smart-exam-pro`, `3d1cf`, `onCall(`, `region:` across functions/src and lib/
+
+---
