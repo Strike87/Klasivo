@@ -1,0 +1,9 @@
+# Normalize line endings and ensure JSON files are treated as text
+*.json     text eol=lf
+*.rules    text eol=lf
+*.md       text eol=lf
+*.dart     text eol=lf
+*.ts       text eol=lf
+*.js       text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
