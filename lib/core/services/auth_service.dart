@@ -32,6 +32,77 @@ class AuthService {
     return digest.toString();
   }
 
+  /// A9 PATCH: Best-effort rollback of an orphaned Firebase Auth account.
+  ///
+  /// Called from the catch block of every registration method that creates
+  /// an Auth account BEFORE writing the Firestore user doc. If the Firestore
+  /// write (or any subsequent step) fails, the Auth account would be orphaned
+  /// — it would fire onUserCreated with no user doc, send a welcome email to
+  /// a non-existent user, and linger in Firebase Auth indefinitely.
+  ///
+  /// This method:
+  ///   1. Signs in the user (if not already) using email+password.
+  ///   2. Deletes the current user's Auth account.
+  ///   3. Logs the rollback to Sentry.
+  ///
+  /// If the rollback itself fails (network, permissions, account already
+  /// deleted), logs a CRITICAL Sentry message for manual cleanup.
+  ///
+  /// [flow] is the registration flow name (e.g., 'registerOwner') for audit.
+  /// [originalError] is the error that triggered the rollback.
+  /// [email]/[password] are the credentials of the orphaned account.
+  Future<void> _rollbackOrphanedAuthAccount({
+    required String flow,
+    required Object originalError,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // Sign in to get a currentUser we can delete. The registration flow
+      // may have created the account but not signed in, or may have signed
+      // in and then failed on a subsequent step. Either way, we need to be
+      // signed in as the orphaned user to call .delete().
+      try {
+        await _auth.signInWithEmailAndPassword(email: email, password: password);
+      } on FirebaseAuthException catch (signInErr) {
+        // If sign-in fails (e.g., account already deleted, or network error),
+        // we can't delete via the client SDK. Log for manual cleanup.
+        await Sentry.captureMessage(
+          'A9 CRITICAL: Cannot rollback orphaned Auth account in $flow. '
+          'Sign-in failed: ${signInErr.code}. '
+          'Manual cleanup required in Firebase Console → Authentication → Users '
+          'for email=$email. Original error: $originalError',
+          level: SentryLevel.error,
+        );
+        return;
+      }
+
+      final orphanedUid = _auth.currentUser?.uid;
+      if (orphanedUid == null) {
+        await Sentry.captureMessage(
+          'A9: No currentUser to rollback in $flow. Account may already be clean. '
+          'Original error: $originalError',
+          level: SentryLevel.info,
+        );
+        return;
+      }
+
+      await _auth.currentUser?.delete();
+      await Sentry.captureMessage(
+        'A9: Rolled back orphaned Auth account $orphanedUid (email=$email) in $flow. '
+        'Original error: $originalError',
+        level: SentryLevel.info,
+      );
+    } catch (rollbackError) {
+      await Sentry.captureMessage(
+        'A9 CRITICAL: Failed to rollback orphaned Auth account in $flow. '
+        'Manual cleanup required in Firebase Console → Authentication → Users '
+        'for email=$email. Original error: $originalError. Rollback error: $rollbackError',
+        level: SentryLevel.error,
+      );
+    }
+  }
+
   // ─── Owner Registration (Email + Password) ────────────────────────────────
 
   /// Register a new owner with email and password.
@@ -295,6 +366,18 @@ class AuthService {
         'hasCompletedSetup': false,
       };
     } catch (e) {
+      // A9 PATCH: Rollback orphaned Auth account on any failure.
+      // Previous code caught the error and rethrew but did NOT delete the
+      // Auth account created at Step 1. This left orphaned Auth accounts
+      // that fired onUserCreated with no Firestore user doc → welcome email
+      // to a non-existent user, and the account existed indefinitely in
+      // Firebase Auth with no way for the user to know.
+      await _rollbackOrphanedAuthAccount(
+        flow: 'registerOwner',
+        originalError: e,
+        email: email,
+        password: password,
+      );
       transaction.status = const SpanStatus.internalError();
       await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'REGISTER_FAILED');
       rethrow;
@@ -302,8 +385,6 @@ class AuthService {
       await transaction.finish();
     }
   }
-
-  // ─── Owner Registration (Google Sign-In) ──────────────────────────────────
 
   /// Register a new owner via Google Sign-In.
   /// If user already exists, logs them in instead.
@@ -497,7 +578,35 @@ class AuthService {
 
   /// Student login using student code + password.
   /// Internally maps to Firebase Auth for push notifications,
-  /// multi-device, password reset, security rules, and analytics.
+  /// A1 PATCH: Derive the synthetic authEmail from a student code.
+  /// Mirrors functions/src/functions/createStudent.ts:generateAuthEmail().
+  /// Pattern: `student_${code.toLowerCase().replaceAll('-', '')}@students.klasivo.app`.
+  /// This eliminates the chicken-and-egg where loginStudent needed to read
+  /// the user doc BEFORE signing in, but Firestore rules require auth to read.
+  /// By deriving the authEmail client-side, we can sign in FIRST, then read.
+  static String _deriveStudentAuthEmail(String studentCode) {
+    final cleanCode = studentCode.toLowerCase().replaceAll('-', '');
+    return 'student_$cleanCode@students.klasivo.app';
+  }
+
+  /// Login a student using student code + password.
+  ///
+  /// A1+A2 PATCH (Phase 2): Previous flow did an UNAUTHENTICATED Firestore
+  /// `.get()` against `users.where('studentCode', isEqualTo: code)` BEFORE
+  /// `signInWithEmailAndPassword` → permission-denied (chicken-and-egg).
+  /// A try/catch then swallowed ALL Auth errors and returned success even on
+  /// wrong password → wrong-password student flagged isLoggedIn=true.
+  ///
+  /// New flow:
+  ///   1. Derive synthetic authEmail from studentCode (no Firestore read).
+  ///   2. Call signInWithEmailAndPassword(authEmail, password) FIRST.
+  ///      - Wrong code → user-not-found (authEmail doesn't exist)
+  ///      - Wrong password → wrong-password
+  ///      - Disabled account → user-disabled
+  ///   3. After successful Auth sign-in, fetch the user doc (now allowed).
+  ///   4. Verify the doc's studentCode matches what the user entered (defense
+  ///      in depth — catches any authEmail-pattern collision).
+  ///   5. Return user map on success; throw on any failure.
   Future<Map<String, dynamic>> loginStudent({
     required String studentCode,
     required String password,
@@ -509,7 +618,60 @@ class AuthService {
         'method': 'student_code',
       });
 
-      // Step 1: Find user by studentCode
+      // ── A1: Derive authEmail client-side (no Firestore read needed) ──
+      final authEmail = _deriveStudentAuthEmail(studentCode);
+
+      // ── Step 1: Sign in via Firebase Auth FIRST ────────────────────────
+      // This replaces the previous unauthenticated Firestore lookup.
+      // If the student code is wrong, the derived authEmail won't exist →
+      // user-not-found. If the password is wrong → wrong-password. Both
+      // are clean Auth errors that surface to the user.
+      final signInSpan = transaction.startChild('auth_signin');
+      try {
+        await _auth.signInWithEmailAndPassword(
+          email: authEmail,
+          password: password,
+        );
+        KlasivoSentry.breadcrumb.auth('student_auth_signed_in', data: {
+          'authEmail': authEmail,
+        });
+      } on FirebaseAuthException catch (authError) {
+        // A2 PATCH: Do NOT swallow Auth errors. Previous code had a
+        // try/catch here that swallowed ALL errors and returned success,
+        // causing wrong-password students to be flagged isLoggedIn=true.
+        // Now we translate Auth error codes to user-friendly messages and
+        // rethrow — login FAILS on any Auth error.
+        signInSpan.status = const SpanStatus.internalError();
+        KlasivoSentry.breadcrumb.auth('login_failed_auth_error', data: {
+          'method': 'student_code',
+          'code': authError.code,
+        });
+        String userMessage;
+        switch (authError.code) {
+          case 'user-not-found':
+            userMessage = 'Student not found. Please check your student code.';
+            break;
+          case 'wrong-password':
+          case 'invalid-credential':
+            userMessage = 'Invalid student code or password. Please try again.';
+            break;
+          case 'user-disabled':
+            userMessage = 'Your account has been deactivated.';
+            break;
+          case 'too-many-requests':
+            userMessage = 'Too many login attempts. Please try again later.';
+            break;
+          case 'network-request-failed':
+            userMessage = 'Network error. Please check your connection and try again.';
+            break;
+          default:
+            userMessage = 'Login failed: ${authError.message ?? authError.code}';
+        }
+        throw Exception(userMessage);
+      }
+      await signInSpan.finish();
+
+      // ── Step 2: Fetch the user doc (now allowed — caller is authenticated) ──
       final findUserSpan = transaction.startChild('find_user_by_code');
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
@@ -520,44 +682,39 @@ class AuthService {
       await findUserSpan.finish();
 
       if (snapshot.docs.isEmpty) {
-        KlasivoSentry.breadcrumb.auth('login_failed_student_not_found', data: {
-          'method': 'student_code',
-        });
-        throw Exception('Student not found. Please check your student code.');
+        // Auth succeeded but Firestore doc missing — sign out and fail.
+        // This is an inconsistent state (Auth account exists, user doc doesn't).
+        // Log to Sentry for manual investigation.
+        await _auth.signOut();
+        await Sentry.captureMessage(
+          'A1: Auth sign-in succeeded for $authEmail but no Firestore user doc found with studentCode=$studentCode. '
+          'Possible data inconsistency (Auth account exists without Firestore doc).',
+          level: SentryLevel.error,
+        );
+        throw Exception('Account data not found. Please contact your administrator.');
       }
 
       final userDoc = snapshot.docs.first;
       final student = userDoc.data();
 
-      // Step 2: Verify password
-      final storedPasswordHash = student['passwordHash'] as String?;
-      final storedPlaintext = student['password'] as String?;
-      final inputHash = hashPassword(password);
-
-      bool passwordMatches = false;
-      if (storedPasswordHash != null && storedPasswordHash.isNotEmpty) {
-        passwordMatches = inputHash == storedPasswordHash;
-      } else if (storedPlaintext != null) {
-        passwordMatches = password == storedPlaintext;
-        // Migrate to hash on successful login
-        if (passwordMatches) {
-          await _firestore
-              .collection(AppConstants.usersCollection)
-              .doc(userDoc.id)
-              .update({'passwordHash': inputHash});
-        }
+      // ── Step 3: Defense-in-depth — verify studentCode matches ──────────
+      // Catches the (extremely unlikely) case where two student codes
+      // derive to the same authEmail pattern.
+      final docStudentCode = student['studentCode'] as String?;
+      if (docStudentCode != studentCode) {
+        await _auth.signOut();
+        await Sentry.captureMessage(
+          'A1: studentCode mismatch after sign-in. Entered=$studentCode, '
+          'doc=$docStudentCode, authEmail=$authEmail. Possible collision.',
+          level: SentryLevel.error,
+        );
+        throw Exception('Account data mismatch. Please contact your administrator.');
       }
 
-      if (!passwordMatches) {
-        KlasivoSentry.breadcrumb.auth('login_failed_invalid_password', data: {
-          'method': 'student_code',
-          'userId': userDoc.id,
-        });
-        throw Exception('Invalid password. Please try again.');
-      }
-
+      // ── Step 4: Verify account is active ────────────────────────────────
       final isActive = student['isActive'] as bool? ?? true;
       if (!isActive) {
+        await _auth.signOut();
         KlasivoSentry.breadcrumb.auth('login_failed_account_deactivated', data: {
           'userId': userDoc.id,
           'role': 'student',
@@ -565,30 +722,17 @@ class AuthService {
         throw Exception('Your account has been deactivated.');
       }
 
-      // Step 3: Sign in via Firebase Auth using the student's internal email
-      final internalEmail = student['authEmail'] as String?;
-      if (internalEmail != null && internalEmail.isNotEmpty) {
-        try {
-          await _auth.signInWithEmailAndPassword(
-            email: internalEmail,
-            password: password,
-          );
-          KlasivoSentry.breadcrumb.auth('student_auth_signed_in', data: {
-            'userId': userDoc.id,
-          });
-        } catch (authError) {
-          // Graceful fallback — still allow login even if Firebase Auth fails
-          KlasivoSentry.breadcrumb.auth('student_auth_signin_failed_fallback', data: {
-            'userId': userDoc.id,
-            'error': authError.toString().substring(0, (authError.toString().length).clamp(0, 100)),
-          });
-        }
+      // ── Step 5: Check isArchived (D21 alignment) ────────────────────────
+      final isArchived = student['isArchived'] as bool? ?? false;
+      if (isArchived) {
+        await _auth.signOut();
+        throw Exception('Your account has been archived. Please contact your administrator.');
       }
 
       // Set Sentry user context
       await KlasivoSentry.userContext.setUser(
         uid: userDoc.id,
-        email: internalEmail ?? '',
+        email: authEmail,
         role: AppConstants.roleStudent,
         organizationId: student['organizationId'] as String?,
       );
@@ -780,6 +924,16 @@ class AuthService {
         'hasCompletedSetup': true,
       };
     } catch (e) {
+      // A9 PATCH: Rollback orphaned Auth account on any failure.
+      // registerTeacherWithInvite creates the Auth account at registerWithEmail
+      // (line ~758) BEFORE writing the Firestore user doc. If the doc write or
+      // invite-code update fails, the Auth account is orphaned.
+      await _rollbackOrphanedAuthAccount(
+        flow: 'registerTeacherWithInvite',
+        originalError: e,
+        email: email,
+        password: password,
+      );
       transaction.status = const SpanStatus.internalError();
       rethrow;
     } finally {
@@ -1058,6 +1212,16 @@ createUserDocSpan.status = const SpanStatus.ok();
         'hasCompletedSetup': false,
       };
     } catch (e) {
+      // A9 PATCH: Rollback orphaned Auth account on any failure.
+      // registerParent creates the Auth account at registerWithEmail (line ~1112)
+      // BEFORE writing the Firestore user doc. If the doc write fails, the
+      // Auth account is orphaned.
+      await _rollbackOrphanedAuthAccount(
+        flow: 'registerParent',
+        originalError: e,
+        email: email,
+        password: password,
+      );
       transaction.status = const SpanStatus.internalError();
       rethrow;
     } finally {

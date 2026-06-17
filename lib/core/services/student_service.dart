@@ -211,33 +211,42 @@ class StudentService {
     }
   }
 
-  Future<void> deleteStudent(String studentId, String classId) async {
+  /// A6 PATCH: Delete a student via the deleteStudent Cloud Function.
+  /// Previous implementation called SentryFirestoreHelper.docDelete →
+  /// CLIENT-SIDE Firestore delete → blocked by firestore.rules:109
+  /// `allow delete: if false`. No callable existed → student deletion
+  /// was structurally impossible.
+  ///
+  /// Now routes through the deleteStudent callable (Phase 2 TRACK-5)
+  /// which soft-deletes (isArchived=true) + disables the Auth account +
+  /// updates class studentCount + writes audit log. Hard-delete is
+  /// available via the `hardDelete: true` parameter (owner-only).
+  Future<void> deleteStudent(String studentId, String classId, {bool hardDelete = false}) async {
     try {
+      // Fetch the student's organizationId first (needed by the callable).
       final studentDoc = await _firestore
           .collection(AppConstants.usersCollection)
           .doc(studentId)
           .get();
-      final studentData = studentDoc.data();
+      if (!studentDoc.exists) {
+        throw Exception('Student $studentId not found.');
+      }
+      final organizationId = studentDoc.data()?['organizationId'] as String? ?? '';
+      if (organizationId.isEmpty) {
+        throw Exception('Student has no organizationId — cannot delete.');
+      }
 
-      await SentryFirestoreHelper.docDelete(
-        collection: AppConstants.usersCollection,
-        docId: studentId,
-        flow: 'student_deletion',
-        step: 'deleteStudent',
-      );
+      // Call the deleteStudent Cloud Function.
+      final result = await _functions.httpsCallable('deleteStudent').call({
+        'targetUserId': studentId,
+        'organizationId': organizationId,
+        'hardDelete': hardDelete,
+        'reason': 'deleted_by_client',
+      });
 
-      // Update student count
-      final countSnapshot = await _firestore
-          .collection(AppConstants.usersCollection)
-          .where('classId', isEqualTo: classId)
-          .where('role', isEqualTo: AppConstants.roleStudent)
-          .count()
-          .get();
-
-      await _firestore
-          .collection(AppConstants.classesCollection)
-          .doc(classId)
-          .update({'studentCount': countSnapshot.count ?? 0});
+      if (result.data['success'] != true) {
+        throw Exception('deleteStudent callable returned failure: ${result.data}');
+      }
     } catch (e, st) {
       await KlasivoObservability.reportError(
         e,

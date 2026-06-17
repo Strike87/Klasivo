@@ -3,7 +3,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Helper Functions
+    // Helper Functions — Phase 2 PATCH
+    // Patches: D1 (users self-escalation), D8 (getUserOrgId null safety),
+    //          D10 (parent_links deterministic ID), D17 (staff roles),
+    //          D20 (immutable field validation), D21 (archive state)
     // ═══════════════════════════════════════════════════════════════════════
 
     // Helper: Check if user is authenticated
@@ -11,81 +14,111 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Helper: Get user's organization ID
+    // Helper: Get user's organization ID (raw value — may be null/empty).
+    // Callers MUST use callerHasValidOrgId() before treating the value as a real org ID.
     function getUserOrgId() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
     }
 
-    // Helper: Check if user is in the same organization as the resource
-    function isInSameOrg() {
+    // Helper: Get user role (single get() — used by other helpers to avoid repeat reads).
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // ─── D8: Null-safe organizationId checks ───────────────────────────────
+    // Previous rule returned null or "" for missing/empty organizationId and
+    // then matched null==null or ""=="" in isInSameOrg() → cross-tenant leak.
+    // callerHasValidOrgId() forces the caller's org ID to be a non-empty string.
+    function callerHasValidOrgId() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserOrgId() is string &&
+        getUserOrgId().size() > 0;
+    }
+
+    // Helper: Check if user is in the same organization as the resource (D8 strict).
+    // Both caller org AND resource org must be valid non-empty strings AND match.
+    function isInSameOrg() {
+      return callerHasValidOrgId() &&
+        resource.data.organizationId is string &&
+        resource.data.organizationId.size() > 0 &&
         resource.data.organizationId == getUserOrgId();
     }
 
-    // Helper: Check if the incoming write data belongs to the same org
-    // Uses request.resource for create/update — checks the org of the NEW data
+    // Helper: Check if the incoming write data belongs to the same org (D8 strict).
     function isIncomingSameOrg() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      return callerHasValidOrgId() &&
+        request.resource.data.organizationId is string &&
+        request.resource.data.organizationId.size() > 0 &&
         request.resource.data.organizationId == getUserOrgId();
     }
 
-    // Helper: Check if user is a teacher or owner
-    function isTeacherOrOwner() {
+    // ─── D17: Complete staff role coverage ─────────────────────────────────
+    // Previous isTeacherOrOwner() only covered teacher/owner/admin — silently
+    // denied writes to campus_manager, stage_manager, academic_supervisor,
+    // assistant_teacher, observer (privilege DE-escalation).
+    function isStaff() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+        (getUserRole() in ['super_admin', 'owner', 'admin', 'campus_manager',
+                           'stage_manager', 'academic_supervisor', 'teacher',
+                           'assistant_teacher', 'observer']);
     }
 
-    // Helper: Check if user is a teacher or owner AND in the same org
+    // Back-compat alias — kept so existing rule blocks remain valid.
+    function isTeacherOrOwner() {
+      return isStaff();
+    }
+
+    function isStaffInSameOrg() {
+      return isStaff() && isInSameOrg();
+    }
+
+    // Back-compat alias — kept so existing rule blocks remain valid.
     function isTeacherOrOwnerInSameOrg() {
-      return isTeacherOrOwner() && isInSameOrg();
+      return isStaffInSameOrg();
     }
 
-    // Helper: Check if user is an owner
+    // Helper: Check if user is an owner (or super_admin — full enforcement
+    // of super_admin restriction happens in assignRole.ts, not here).
     function isOwner() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+        (getUserRole() in ['super_admin', 'owner']);
     }
 
-    // Helper: Check if user is an owner AND in the same org
     function isOwnerInSameOrg() {
       return isOwner() && isInSameOrg();
-    }
-
-    // Helper: Get user role
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     // Helper: Check if user is a student
     function isStudent() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+        getUserRole() == 'student';
     }
 
     // Helper: Check if user is a parent
     function isParent() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+        getUserRole() == 'parent';
     }
 
-    // Helper: Check if parent has approved link to a student
+    // Helper: campus_manager (back-compat with v2.0 ERP rule blocks)
+    function isCampusManager() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserRole() == 'campus_manager';
+    }
+
+    // ─── D10: parent_links lookup by deterministic ID ──────────────────────
+    // Client MUST write parent_links docs with deterministic ID `{parentId}_{studentId}`.
+    // See lib/core/services/parent_link_service.dart Phase 2 patch (TRACK-9).
     function parentHasAccessToStudent(studentId) {
       return isParent() &&
         exists(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)) &&
         get(/databases/$(database)/documents/parent_links/$(request.auth.uid + '_' + studentId)).data.status == 'approved';
-    }
-
-    // Helper: Check if user owns the resource
-    function isResourceOwner() {
-      return isAuth() && resource.data.createdBy == request.auth.uid;
     }
 
     // Helper: Check if a student is updating only allowed fields (not score/grade)
@@ -97,15 +130,64 @@ service cloud.firestore {
         !request.resource.data.diffKeys(resource).hasAny(['score', 'grade', 'totalScore', 'percentage', 'status', 'gradedBy', 'gradedAt', 'isGraded']);
     }
 
+    // ─── D20: Immutable-field preservation helpers ─────────────────────────
+    // Applied to UPDATE rules to prevent staff from rewriting organizationId,
+    // audit fields, or flipping isArchived on existing docs.
+    function preservesOrgId() {
+      return request.resource.data.organizationId == resource.data.organizationId;
+    }
+    function preservesCreatedAt() {
+      return request.resource.data.createdAt == resource.data.createdAt;
+    }
+    function preservesCreatedBy() {
+      return request.resource.data.createdBy == resource.data.createdBy;
+    }
+    // D21: Only owner can flip isArchived. Teachers cannot unarchive or re-archive
+    // docs to bypass business rules (e.g., adding students to archived classes).
+    function preservesArchiveState() {
+      return request.resource.data.isArchived == resource.data.isArchived || isOwner();
+    }
+    function preservesImmutableFields() {
+      return preservesOrgId() && preservesCreatedAt() && preservesCreatedBy() && preservesArchiveState();
+    }
+
+    // Safe staff update — staff + same org + immutable fields preserved.
+    function safeStaffUpdate() {
+      return isStaffInSameOrg() && preservesImmutableFields();
+    }
+
+    // Safe owner update — owner + same org + immutable audit fields preserved.
+    // Owner CAN flip isArchived (that's the unarchive path).
+    function safeOwnerUpdate() {
+      return isOwnerInSameOrg() && preservesOrgId() && preservesCreatedAt() && preservesCreatedBy();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // v1.6 Core Collections
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Users Collection ======
+    // D1 PATCH: Block self-escalation of role/organizationId/isArchived.
+    // Previous rule allowed any authenticated user to write {role: 'owner'} to
+    // their own doc → org takeover chain (D2). Now role/organizationId/tenantId/
+    // isArchived can only be changed via Cloud Functions (assignRole, assignScope,
+    // syncClaims) using Admin SDK which bypasses these rules.
     match /users/{userId} {
       allow read: if isAuth();
-      allow create: if isAuth() && request.auth.uid == userId;
-      allow update: if isAuth() && request.auth.uid == userId;
+      allow create: if isAuth() && request.auth.uid == userId &&
+        // New user doc must NOT self-assign a privileged role.
+        // Allowed roles on self-create: student, parent, teacher (pending approval).
+        // owner/admin/super_admin/*_manager/*_supervisor must come from
+        // a Cloud Function (registerOwner writes 'owner' via Admin SDK).
+        request.resource.data.role in ['student', 'parent', 'teacher'] &&
+        // organizationId may be empty on first create (registerOwner Step 2)
+        // but must be a string. Owner-side Cloud Function will populate it.
+        request.resource.data.organizationId is string;
+      allow update: if isAuth() && request.auth.uid == userId &&
+        // D1: Block self-mutation of privilege fields.
+        !request.resource.data.diffKeys(resource).hasAny(['role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy']) &&
+        // D20: Audit fields immutable from client.
+        !request.resource.data.diffKeys(resource).hasAny(['createdAt', 'createdBy']);
       allow delete: if false;
     }
 
@@ -169,25 +251,36 @@ service cloud.firestore {
     // SECURITY: Students can create their own submission and update non-grading
     // fields (answers, timing), but CANNOT change score/grade/status.
     // Teachers/owners in same org can do full updates.
+    // D12 PATCH: studentId == auth.uid enforced on create.
     match /submissions/{submissionId} {
       allow read: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
+        (isStaff() ||
          (isStudent() && resource.data.studentId == request.auth.uid) ||
          (isParent() && resource.data.studentId != null &&
           parentHasAccessToStudent(resource.data.studentId)));
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        // D12: Students can only create submissions for themselves.
+        (isStaff() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || studentSafeSubmissionUpdate());
+        (safeStaffUpdate() || studentSafeSubmissionUpdate());
       allow delete: if false;
     }
 
     // ====== Answers Collection ======
+    // D12 PATCH: studentId == auth.uid enforced on create.
     match /answers/{answerId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && resource.data.studentId != null &&
+          parentHasAccessToStudent(resource.data.studentId)));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isStaff() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
       // Students can update their own answers (before submission), teachers can grade
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
+        (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
           !request.resource.data.diffKeys(resource).hasAny(['isCorrect', 'score', 'gradedBy', 'gradedAt'])));
       allow delete: if false;
@@ -196,11 +289,18 @@ service cloud.firestore {
     // ====== Exam Instances Collection ======
     // SECURITY: Students can create (start exam) and update only their own
     // non-grading fields. Teachers/owners can update all fields.
+    // D9 + D12 PATCH: studentId == auth.uid enforced on create.
     match /exam_instances/{instanceId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && resource.data.studentId != null &&
+          parentHasAccessToStudent(resource.data.studentId)));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isStaff() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
+        (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
           !request.resource.data.diffKeys(resource).hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
       allow delete: if false;
@@ -225,10 +325,16 @@ service cloud.firestore {
     }
 
     // ====== Notifications Collection ======
+    // D14 PATCH: Update restricted to recipient. Previous rule allowed any
+    // same-org user to tamper with title/body/type of ANYONE's notification.
     match /notifications/{notificationId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isAuth() && isInSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && isIncomingSameOrg();
+      allow update: if isAuth() && isInSameOrg() &&
+        resource.data.userId == request.auth.uid &&
+        // Recipient can only flip read-state fields, not title/body/type.
+        !request.resource.data.diffKeys(resource).hasAny(['title', 'body', 'type', 'userId', 'organizationId', 'createdAt', 'createdBy']);
       allow delete: if false;
     }
 
@@ -244,11 +350,23 @@ service cloud.firestore {
     }
 
     // ====== Invite Codes Collection ======
+    // D7 PATCH: Read access split by use case:
+    //   - Authenticated same-org staff can read any invite code (admin UI).
+    //   - Unauthenticated users can read ONLY unused codes (isUsed == false).
+    //     This closes the catch-22 where validateInviteCode ran BEFORE
+    //     registerWithEmail. The query `where('code', '==', X).where('isUsed', '==', false).get()`
+    //     is allowed because the rule permits reading any doc where isUsed==false.
+    //   - Used/expired codes are blocked from unauthenticated reads — they
+    //     reveal who redeemed what (PII).
+    // The actual invite redemption (isUsed flip, usedBy write) MUST go
+    // through the redeemInviteCode Cloud Function (Phase 2 TRACK-4) OR
+    // through the authenticated client flow in registerTeacherWithInvite.
     match /invite_codes/{codeId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
-      allow delete: if isTeacherOrOwnerInSameOrg();
+      allow read: if (isAuth() && isInSameOrg()) ||
+        resource.data.isUsed == false;
+      allow create: if isStaff() && isIncomingSameOrg();
+      allow update: if safeStaffUpdate();
+      allow delete: if isOwnerInSameOrg();
     }
 
     // ====== Subjects Collection ======
@@ -276,19 +394,35 @@ service cloud.firestore {
     }
 
     // ====== Conversations Collection ======
+    // D13 PATCH: Restrict read to participants + staff. Previous rule leaked
+    // all conversations to any same-org user.
     match /conversations/{conversationId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() || resource.data.participants.hasAny([request.auth.uid]));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        // Creator must be a participant.
+        request.resource.data.participants.hasAny([request.auth.uid]);
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || resource.data.participants.hasAny([request.auth.uid]));
+        (safeStaffUpdate() ||
+         (resource.data.participants.hasAny([request.auth.uid]) &&
+          // Participants can only update non-PII fields like lastReadAt.
+          !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'createdAt', 'createdBy', 'participants'])));
       allow delete: if false;
     }
 
     // ====== Messages Collection ======
+    // D13 PATCH: Restrict read to sender/recipient/participants + staff.
     match /messages/{messageId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isIncomingSameOrg();
-      allow update: if isAuth() && isInSameOrg() && resource.data.senderId == request.auth.uid;
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (resource.data.recipientId != null && resource.data.recipientId == request.auth.uid) ||
+         (resource.data.senderId != null && resource.data.senderId == request.auth.uid) ||
+         (resource.data.participants != null && resource.data.participants.hasAny([request.auth.uid])));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        request.resource.data.senderId == request.auth.uid;
+      allow update: if isAuth() && isInSameOrg() &&
+        resource.data.senderId == request.auth.uid &&
+        !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'createdAt', 'senderId', 'recipientId']);
       allow delete: if false; // Messages are never truly deleted — use soft delete
     }
 
@@ -349,18 +483,21 @@ service cloud.firestore {
     }
 
     // ====== Assignment Submissions Collection ======
+    // D12 PATCH: studentId == auth.uid enforced on create.
     match /assignment_submissions/{submissionId} {
       allow read: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
+        (isStaff() ||
          (isStudent() && resource.data.studentId == request.auth.uid) ||
          (isParent() && resource.data.studentId != null &&
           parentHasAccessToStudent(resource.data.studentId)));
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isStaff() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
+        (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
           !request.resource.data.diffKeys(resource).hasAny(['score', 'grade', 'status', 'gradedBy', 'gradedAt'])));
-      allow delete: if isTeacherOrOwnerInSameOrg();
+      allow delete: if isStaffInSameOrg();
     }
 
     // ====== Attendance Collection ======
@@ -375,11 +512,16 @@ service cloud.firestore {
     }
 
     // ====== Gradebook Collection ======
+    // D13 PATCH: Restrict read to staff + student (own entries) + parent (linked).
     match /gradebook/{gradebookId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
-      allow delete: if isTeacherOrOwnerInSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && resource.data.studentId != null &&
+          parentHasAccessToStudent(resource.data.studentId)));
+      allow create: if isStaff() && isIncomingSameOrg();
+      allow update: if safeStaffUpdate();
+      allow delete: if isStaffInSameOrg();
     }
 
     // ====== Gradebook Categories Collection ======
@@ -391,22 +533,37 @@ service cloud.firestore {
     }
 
     // ====== Gradebook Entries Collection ======
+    // D13 PATCH: Restrict read to staff + student (own) + parent (linked).
     match /gradebook_entries/{entryId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
-      allow delete: if isTeacherOrOwnerInSameOrg();
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && resource.data.studentId != null &&
+          parentHasAccessToStudent(resource.data.studentId)));
+      allow create: if isStaff() && isIncomingSameOrg();
+      allow update: if safeStaffUpdate();
+      allow delete: if isStaffInSameOrg();
     }
 
     // ====== Parent Links Collection ======
+    // D10 PATCH: Client must write with deterministic ID `{parentId}_{studentId}`.
+    // D13 PATCH: Restrict read to parent (own link), staff, and the linked student.
     match /parent_links/{linkId} {
-      // Org-scoped: only same-org users can read; parents can update own link
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
+      // The doc ID encodes the parent-student pair. Parent can read their own
+      // links by querying where(parentId == auth.uid); staff can read any in org.
+      // The linked student can read their own parent-link record.
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         resource.data.parentId == request.auth.uid ||
+         resource.data.studentId == request.auth.uid);
+      allow create: if isStaff() && isIncomingSameOrg();
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() ||
-         (isParent() && resource.data.parentId == request.auth.uid));
-      allow delete: if isTeacherOrOwnerInSameOrg();
+        (safeStaffUpdate() ||
+         // Parent can update only the status/linkedAt fields on their own link
+         // (used during parent-link redemption flow).
+         (resource.data.parentId == request.auth.uid &&
+          !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'studentId', 'generatedBy', 'code', 'createdAt', 'createdBy'])));
+      allow delete: if isStaffInSameOrg();
     }
 
     // ====== Exam Templates Collection ======
@@ -574,61 +731,40 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'campus_manager';
     }
 
-    // Helper: Check if user is an academic manager
-    function isAcademicManager() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'academic_manager';
-    }
-
-    // Helper: Check if user is a stage supervisor
-    function isStageSupervisor() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'stage_supervisor';
-    }
-
-    // Helper: Check if user is an assistant teacher
-    function isAssistantTeacher() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'assistant_teacher';
-    }
+    // D19 PATCH: Removed dead helpers isAcademicManager() (wrong role name —
+    // checked 'academic_manager' but actual role is 'academic_supervisor'),
+    // isStageSupervisor() (wrong role name — checked 'stage_supervisor' but
+    // actual role is 'stage_manager'), isAssistantTeacher() (subsumed by isStaff()).
+    // Use isStaff() for all staff role checks — it covers all 9 management roles.
 
     // ═══════════════════════════════════════════════════════════════════════
     // v2.0 Enterprise Analytics — Pre-computed Collections
     // ═══════════════════════════════════════════════════════════════════════
 
     // ====== Daily Analytics Collection ======
+    // D17 PATCH: Replaced isAcademicManager() (dead, wrong role name) with isStaff()
+    // to grant analytics read to all management roles including academic_supervisor
+    // and stage_manager.
     match /analytics_daily/{docId} {
-      allow read: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager() || isAcademicManager());
-      allow create: if isAuth() && isIncomingSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
-      allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
+      allow read: if isAuth() && isInSameOrg() && isStaff();
+      allow create: if isAuth() && isIncomingSameOrg() && isStaff();
+      allow update: if isAuth() && isInSameOrg() && isStaff();
       allow delete: if false;
     }
 
     // ====== Weekly Analytics Collection ======
     match /analytics_weekly/{docId} {
-      allow read: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager() || isAcademicManager());
-      allow create: if isAuth() && isIncomingSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
-      allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
+      allow read: if isAuth() && isInSameOrg() && isStaff();
+      allow create: if isAuth() && isIncomingSameOrg() && isStaff();
+      allow update: if isAuth() && isInSameOrg() && isStaff();
       allow delete: if false;
     }
 
     // ====== Monthly Analytics Collection ======
     match /analytics_monthly/{docId} {
-      allow read: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager() || isAcademicManager());
-      allow create: if isAuth() && isIncomingSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
-      allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || isCampusManager());
+      allow read: if isAuth() && isInSameOrg() && isStaff();
+      allow create: if isAuth() && isIncomingSameOrg() && isStaff();
+      allow update: if isAuth() && isInSameOrg() && isStaff();
       allow delete: if false;
     }
 
@@ -694,18 +830,26 @@ service cloud.firestore {
     }
 
     // ====== LiveKit Room Raised Hands Sub-Collection ======
+    // D15 PATCH: Update/delete restricted to owner of the raised hand.
+    // Previous rule allowed any same-org user to tamper with anyone's raised hand.
     match /livekit_rooms/{roomId}/raised_hands/{handId} {
       allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isInSameOrg();
-      allow update: if isAuth() && isInSameOrg();
-      allow delete: if isAuth() && isInSameOrg();
+      allow create: if isAuth() && isInSameOrg() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && isInSameOrg() &&
+        resource.data.userId == request.auth.uid &&
+        !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'roomId', 'userId', 'createdAt']);
+      allow delete: if isAuth() && isInSameOrg() &&
+        (isStaff() || resource.data.userId == request.auth.uid);
     }
 
     // ====== LiveKit Room Attendance Sub-Collection ======
+    // D12 PATCH: userId == auth.uid enforced on create.
     match /livekit_rooms/{roomId}/attendance/{attendanceId} {
       allow read: if isAuth() && isInSameOrg();
-      allow create: if isAuth() && isInSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow create: if isAuth() && isInSameOrg() &&
+        (isStaff() || request.resource.data.userId == request.auth.uid);
+      allow update: if isStaffInSameOrg();
       allow delete: if false;
     }
 
@@ -733,7 +877,9 @@ service cloud.firestore {
       allow delete: if isOwnerInSameOrg();
     }
 
-    // ====== Email Queue Collection ======
+    // ====== Email Queue Collection (snake_case — DEAD, kept for back-compat) ======
+    // D18 NOTE: Code writes to camelCase `emailQueue` (see below). This snake_case
+    // block matches nothing but is kept to avoid breaking any stale docs.
     match /email_queue/{emailId} {
       allow read: if false; // Only accessed by Cloud Functions
       allow create: if false;
@@ -741,9 +887,82 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ====== Email Log Collection ======
+    // ====== Email Log Collection (snake_case — DEAD, kept for back-compat) ======
     match /email_log/{logId} {
       allow read: if isOwnerInSameOrg();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase 2 PATCH — D22 Missing Collections
+    // Adds rules for collections referenced in code but previously unrouted.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ====== Email Queue Collection (camelCase — ACTIVE) ======
+    // Written by Cloud Functions, read by emailWorker. No client access.
+    match /emailQueue/{emailId} {
+      allow read: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====== Email Logs Collection (camelCase — ACTIVE) ======
+    // Written by emailWorker, read by org owner for delivery audit.
+    match /emailLogs/{logId} {
+      allow read: if isOwnerInSameOrg();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====== LiveKit Recordings Collection ======
+    // D11/D22 PATCH: livekit_repository.dart reads recordings at lines 480,493.
+    // Without this rule, reads throw permission-denied.
+    match /recordings/{recordingId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (resource.data.participants != null &&
+          resource.data.participants.hasAny([request.auth.uid])));
+      allow create: if false; // Written only by LiveKit webhook via onLiveKitRoomEvents
+      allow update: if isOwnerInSameOrg();
+      allow delete: if isOwnerInSameOrg();
+    }
+
+    // ====== Exam Attempts Collection ======
+    // D22 PATCH: Referenced in exam-taking code but had no rule.
+    match /exam_attempts/{attemptId} {
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaff() ||
+         (isStudent() && resource.data.studentId == request.auth.uid) ||
+         (isParent() && resource.data.studentId != null &&
+          parentHasAccessToStudent(resource.data.studentId)));
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        (isStaff() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      allow update: if isAuth() && isInSameOrg() &&
+        (safeStaffUpdate() ||
+         (isStudent() && resource.data.studentId == request.auth.uid &&
+          !request.resource.data.diffKeys(resource).hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+      allow delete: if false;
+    }
+
+    // ====== Analytics Events Collection (raw event stream) ======
+    // D22 PATCH: Written by client analytics, aggregated by Cloud Functions.
+    match /analytics_events/{eventId} {
+      allow read: if isStaffInSameOrg();
+      allow create: if isAuth() && isIncomingSameOrg() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====== Health Check Collection ======
+    // D22 PATCH: Used by Cloud Functions health checks. No client access.
+    match /_health/{healthId} {
+      allow read: if false;
       allow create: if false;
       allow update: if false;
       allow delete: if false;

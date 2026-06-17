@@ -632,6 +632,21 @@ class _SetupWizardSheetState extends State<_SetupWizardSheet> {
     setState(() => _isCreating = true);
     try {
       final orgId = widget.ref.read(currentOrganizationIdProvider) ?? '';
+      // A4 part 2 PATCH: Guard against empty organizationId.
+      // Previous code passed '' to createStagesBatch when Hive box
+      // authBox.organizationId was unhydrated. This wrote classes with
+      // organizationId='' → createStudent.ts strict !== check failed →
+      // permission-denied. Now we abort with a clear error message.
+      if (orgId.isEmpty) {
+        if (mounted) {
+          KlasivoToast.error(
+            context,
+            message: 'Organization not loaded yet. Please wait a moment and try again, '
+                'or restart the app if the problem persists.',
+          );
+        }
+        return;
+      }
       final template = _templates[_selectedTemplate]!;
       final stages = template['stages'] as List<Map<String, dynamic>>;
 

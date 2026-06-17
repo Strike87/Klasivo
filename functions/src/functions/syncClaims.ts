@@ -4,8 +4,10 @@ import * as Sentry from '@sentry/node';
 
 import {
   ROLE_ASSIGNMENT_ROLES,
+  VALID_ROLES,
   buildCustomClaims,
   verifyOrgBoundary,
+  isHigherRole,
   type KlasivoRole,
 } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
@@ -70,6 +72,36 @@ export const syncClaims = onCall(
     const userData = userDoc.data()!;
     const role = userData.role || 'student';
     const organizationId = userData.organizationId || '';
+
+    // ─── D2 PATCH: Sanity checks on role + org ──────────────────────────
+    // syncClaims is the escalation primitive in the org-takeover chain.
+    // Even with D1 (Firestore rules) blocking self-mutation of role, we add
+    // defense-in-depth checks here:
+    //   1. role must be a valid Klasivo role (blocks garbage data → claims)
+    //   2. organizationId must be a non-empty string (D8 strict — blocks
+    //      empty-string org from being minted into claims)
+    //   3. Caller (if admin-syncing another user) cannot be LOWER rank than
+    //      the target — prevents admin from syncing super_admin claims for
+    //      a peer (defense in depth against D3 bypass via Firestore manipulation).
+    if (!VALID_ROLES.includes(role as KlasivoRole)) {
+      throw new HttpsError(
+        'failed-precondition',
+        `User ${targetUserId} has invalid role '${role}'. Refusing to sync claims.`,
+      );
+    }
+    if (!organizationId || typeof organizationId !== 'string') {
+      throw new HttpsError(
+        'failed-precondition',
+        `User ${targetUserId} has missing or invalid organizationId. Refusing to sync claims.`,
+      );
+    }
+    if (targetUserId !== callerUid &&
+        !isHigherRole(callerRole, role)) {
+      throw new HttpsError(
+        'permission-denied',
+        `Caller (${callerRole}) cannot sync claims for a user with equal or higher role (${role}).`,
+      );
+    }
 
     // ─── Org Boundary ───────────────────────────────────────────────────
     if (targetUserId !== callerUid && callerRole !== 'super_admin') {

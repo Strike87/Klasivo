@@ -61,6 +61,12 @@ export { removeParticipant } from './functions/removeParticipant';
 
 // ─── Student Management Functions (v2) ────────────────────────
 export { createStudent } from './functions/createStudent';
+export { deleteStudent } from './functions/deleteStudent';
+
+// ─── Auth Onboarding (v2) ─────────────────────────────────────
+// Phase 2 D7: redeemInviteCode closes the invite_codes catch-22.
+// Pre-auth callable that creates Auth + Firestore + claims atomically.
+export { redeemInviteCode } from './functions/redeemInviteCode';
 
 // ─── RBAC Functions (v2 — migrated from v1) ───────────────────
 export { assignRole } from './functions/assignRole';

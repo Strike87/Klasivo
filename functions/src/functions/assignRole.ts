@@ -7,6 +7,7 @@ import {
   ROLE_ASSIGNMENT_ROLES,
   buildCustomClaims,
   verifyOrgBoundary,
+  roleRank,
   type KlasivoRole,
 } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
@@ -71,9 +72,44 @@ export const assignRole = onCall(
       throw new HttpsError('invalid-argument', `Invalid role: ${newRole}. Valid roles: ${VALID_ROLES.join(', ')}`);
     }
 
-    // Admin cannot assign super_admin or owner
+    // ─── D3 PATCH: super_admin assignment restrictions ──────────────────
+    // Only super_admin can assign super_admin. Owner and admin are blocked.
+    // Previous rule only blocked admin → owner could self-promote a peer to
+    // super_admin → GLOBAL cross-org control.
+    if (newRole === 'super_admin' && callerRole !== 'super_admin') {
+      throw new HttpsError(
+        'permission-denied',
+        'Only super_admin can assign the super_admin role.',
+      );
+    }
+
+    // Admin cannot assign owner or super_admin
     if (callerRole === 'admin' && ['super_admin', 'owner'].includes(newRole)) {
       throw new HttpsError('permission-denied', 'Admins cannot assign super_admin or owner roles.');
+    }
+
+    // ─── D3 PATCH: Self-targeting block ─────────────────────────────────
+    // Callers cannot change their own role via assignRole. Self-role-changes
+    // are structurally suspect (self-promotion, self-demotion edge cases).
+    // Owner self-demotion is explicitly blocked at line 97 below; this block
+    // extends the prohibition to ALL self-targeted calls.
+    // Exception: super_admin may re-assign super_admin to themselves (no-op
+    // but allowed for admin tooling).
+    if (callerUid === targetUserId && callerRole !== 'super_admin') {
+      throw new HttpsError(
+        'permission-denied',
+        'Cannot change your own role via assignRole. Use a separate owner-approved flow.',
+      );
+    }
+
+    // ─── D3 PATCH: Hierarchy enforcement ────────────────────────────────
+    // Caller cannot assign a role HIGHER than their own. Prevents admin from
+    // making someone an owner, campus_manager from making someone an admin, etc.
+    if (roleRank(newRole) > roleRank(callerRole)) {
+      throw new HttpsError(
+        'permission-denied',
+        `Cannot assign a role higher than your own (${callerRole} → ${newRole}).`,
+      );
     }
 
     // Caller must be in the same organization

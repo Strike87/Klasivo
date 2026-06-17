@@ -61,6 +61,9 @@
     { "collectionGroup": "question_banks", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "type", "order": "ASCENDING" }] },
     { "collectionGroup": "question_banks", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "gradeId", "order": "ASCENDING" }] },
 
+    { "collectionGroup": "questions", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "order", "order": "ASCENDING" }] },
+    { "collectionGroup": "questions", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "order", "order": "DESCENDING" }] },
+
     { "collectionGroup": "violations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
     { "collectionGroup": "violations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "isReviewed", "order": "ASCENDING" }] },
 

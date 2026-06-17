@@ -78,6 +78,25 @@ class StageService {
     }
   }
 
+  /// Restore: unarchive the stage (Phase 2 hygiene — archive was previously a one-way door).
+  Future<void> restoreStage(String stageId, {String restoredBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.stagesCollection)
+          .doc(stageId)
+          .update({
+        'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
+        'restoredAt': FieldValue.serverTimestamp(),
+        'restoredBy': restoredBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// Hard-delete: removes the stage and all its classes.
   /// Use only for cleanup / admin purposes. Prefer [archiveStage] for normal flow.
   Future<void> deleteStage(String stageId) async {
@@ -144,24 +163,38 @@ class StageService {
 
   /// Batch-create stages with predefined templates.
   /// Used by the Smart Setup Wizard.
+  /// A10 PATCH: Now writes the same fields as createStage (searchKeywords)
+  /// and createClass (searchKeywords + academicYear) to eliminate schema drift.
   Future<void> createStagesBatch({
     required String organizationId,
     required List<Map<String, dynamic>> stages,
     String createdBy = '',
+    String? academicYear, // A10: classes now get academicYear
   }) async {
     try {
+      // A4 part 2: Guard against empty organizationId at the service layer too.
+      if (organizationId.isEmpty) {
+        throw ArgumentError(
+          'organizationId cannot be empty — Hive box may not be hydrated yet.',
+        );
+      }
+
+      final keywordService = SearchKeywordService();
       final batch = _firestore.batch();
       for (final stage in stages) {
         final docRef = _firestore.collection(AppConstants.stagesCollection).doc();
+        final stageName = stage['name'] as String? ?? '';
         batch.set(docRef, {
           'organizationId': organizationId,
-          'name': stage['name'],
+          'name': stageName,
           'description': stage['description'] ?? '',
           'order': stage['order'] ?? 0,
           'createdBy': createdBy,
           'isArchived': false,
           'archivedAt': null,
           'archivedBy': null,
+          // A10: searchKeywords now written in batch path too (was missing).
+          'searchKeywords': keywordService.generateKeywords(stageName),
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -171,18 +204,24 @@ class StageService {
           final classes = stage['classes'] as List<Map<String, dynamic>>;
           for (final classData in classes) {
             final classRef = _firestore.collection(AppConstants.classesCollection).doc();
+            final className = classData['name'] as String? ?? '';
+            final classCode = classData['code'] as String? ?? '';
             batch.set(classRef, {
               'organizationId': organizationId,
               'stageId': docRef.id,
-              'name': classData['name'],
-              'code': classData['code'] ?? '',
+              'name': className,
+              'code': classCode,
               'capacity': classData['capacity'] ?? 0,
               'homeroomTeacherId': null,
+              // A10: academicYear now written in batch path (was missing).
+              'academicYear': academicYear,
               'studentCount': 0,
               'createdBy': createdBy,
               'isArchived': false,
               'archivedAt': null,
               'archivedBy': null,
+              // A10: searchKeywords now written in batch path (was missing).
+              'searchKeywords': keywordService.generateKeywords('$className $classCode'),
               'createdAt': FieldValue.serverTimestamp(),
               'updatedAt': FieldValue.serverTimestamp(),
             });

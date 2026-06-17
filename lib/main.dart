@@ -893,6 +893,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
+      // ─── A8 PATCH: Teacher Routes wrapped in ShellRoute ──────────────
+      // Previous code registered /teacher/** as a top-level GoRoute SIBLING
+      // of the ShellRoute, so navigating to /teacher/classes unmounted
+      // TeacherShell → bottom nav disappeared on 30+ call sites.
+      // Fix: wrap the entire /teacher subtree in its own ShellRoute with
+      // the same TeacherShell builder. URLs are preserved (ShellRoute does
+      // not add a path prefix), and the bottom nav now persists across all
+      // /teacher/** screens.
+      // NOTE: Navigating between /dashboard (original ShellRoute) and
+      // /teacher/** (this ShellRoute) will rebuild the shell once. This is
+      // acceptable — the bottom nav remains present, which is the fix.
+      ShellRoute(
+        builder: (context, state, child) => TeacherShell(child: child),
+        routes: [
       // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
       GoRoute(
         path: '/teacher',
@@ -1112,6 +1126,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+        ], // end of ShellRoute routes (A8 patch)
+      ), // end of ShellRoute (A8 patch)
 
       // ─── Student Shell Navigation ────────────────────────────────────
       ShellRoute(

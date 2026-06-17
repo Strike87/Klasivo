@@ -12,13 +12,14 @@
  *   - Caller must belong to the same organization as the room
  */
 
-import { onCall, CallableRequest } from 'firebase-functions/v2/https';
+import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/node';
 import { RoomServiceClient } from 'livekit-server-sdk';
 
 import { initSentry, withIsolatedScope } from '../config/sentry';
+import { STAFF_ROLES, verifyOrgBoundary, type KlasivoRole } from '../utils/rbac';
 
 // ─── Secrets ──────────────────────────────────────────────────
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -52,39 +53,45 @@ export const removeParticipant = onCall(
 
     // ── Auth check ───────────────────────────────────────────
     if (!request.auth) {
-      throw new Error('User must be authenticated.');
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
     const callerUid = request.auth.uid;
 
-    // ── Verify caller is a teacher/owner/admin ───────────────
+    // ── Verify caller is staff (D17 — full staff list, not just teacher/owner/admin) ──
     const callerDoc = await db.collection('users').doc(callerUid).get();
     if (!callerDoc.exists) {
-      throw new Error('User profile not found.');
+      throw new HttpsError('not-found', 'User profile not found.');
     }
 
     const callerRole = callerDoc.data()?.['role'] as string;
-    if (!['teacher', 'owner', 'admin'].includes(callerRole)) {
-      Sentry.captureMessage(`Non-teacher ${callerUid} attempted to remove participant`);
-      throw new Error('Only teachers can remove participants.');
+    if (!STAFF_ROLES.includes(callerRole as KlasivoRole)) {
+      Sentry.captureMessage(`Non-staff ${callerUid} (role=${callerRole}) attempted to remove participant`);
+      throw new HttpsError('permission-denied', 'Only staff can remove participants.');
     }
 
     const { roomName, participantIdentity, roomId } = request.data ?? {};
 
     if (!roomName || !participantIdentity || !roomId) {
-      throw new Error('roomName, participantIdentity, and roomId are required.');
+      throw new HttpsError('invalid-argument', 'roomName, participantIdentity, and roomId are required.');
     }
 
-    // ── Verify caller is in the same org as the room ─────────
+    // ── Verify caller is in the same org as the room (D5 PATCH — fail-closed) ──
+    // Previous rule: `roomOrgId !== callerOrgId` → `undefined !== undefined` = false = PASS.
+    // Any teacher could remove from any room in any org. Now we use verifyOrgBoundary
+    // which fails-closed on missing/empty org IDs.
     const roomDoc = await db.collection('livekit_rooms').doc(roomId).get();
     if (!roomDoc.exists) {
-      throw new Error('Room not found.');
+      throw new HttpsError('not-found', 'Room not found.');
     }
 
-    const roomOrgId = roomDoc.data()?.['organizationId'] as string;
-    const callerOrgId = callerDoc.data()?.['organizationId'] as string;
-    if (roomOrgId !== callerOrgId) {
-      throw new Error('You can only remove participants from rooms in your organization.');
+    const roomOrgId = (roomDoc.data()?.['organizationId'] as string) || '';
+    const callerOrgId = (callerDoc.data()?.['organizationId'] as string) || '';
+    if (!verifyOrgBoundary(callerOrgId, roomOrgId, callerRole)) {
+      throw new HttpsError(
+        'permission-denied',
+        'You can only remove participants from rooms in your organization.',
+      );
     }
 
     scope.setTag('room', roomName);

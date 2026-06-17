@@ -4564,3 +4564,112 @@ FOLLOW-UP IMPLICATION (Phase 3, not Phase 2):
   `enforceAppCheck: true` on createStudent (and ideally all 9 callables).
 - This is NOT a launch blocker — App Check is hardening, not correctness.
 - Tracked as: "App Check initialization follow-up" (comment at createStudent.ts:204).
+
+---
+Task ID: FORENSIC-15 through FORENSIC-24 (Phase 2 PATCH — all tracks)
+Agent: Main agent (direct code authoring, no subagents)
+Task: Apply predeploy hook + author all Phase 2 patch tracks per Section F fix order
+
+Work Log:
+- TRACK-0 (FORENSIC-15): Deploy Hygiene
+  - Added `predeploy: ["npm --prefix \"$RESOURCE_DIR\" run build"]` to firebase.json functions section
+  - Deleted stale v1 files: functions/index.js (618 lines), functions/services/emailService.js, functions/services/emailTemplates.js, functions/test-email.js
+  - Updated functions/.env.example: removed stale "RBAC callable functions: Gen1" claim, added SENTRY_DSN BLOCKER 1 status, documented App Check intentionally-disabled state
+  - Verified functions/package.json main = lib/index.js (compiled from src/ via tsc)
+  - Verified functions/tsconfig.json include = src/**/*, exclude = lib
+
+- TRACK-1 (FORENSIC-16): Rules Lockstep Core — D1, D8, D17, D20, D21
+  - Rewrote helpers section (lines 1-163 of firestore.rules)
+  - D8: Added callerHasValidOrgId() — requires non-empty string orgId. isInSameOrg() and isIncomingSameOrg() now fail-closed on null/empty orgId.
+  - D17: Replaced isTeacherOrOwner() with isStaff() covering all 9 management roles (super_admin, owner, admin, campus_manager, stage_manager, academic_supervisor, teacher, assistant_teacher, observer). Kept isTeacherOrOwner() as back-compat alias.
+  - D20: Added preservesOrgId(), preservesCreatedAt(), preservesCreatedBy(), preservesImmutableFields(), safeStaffUpdate(), safeOwnerUpdate() helpers.
+  - D21: Added preservesArchiveState() — only owner can flip isArchived.
+  - D1: Patched users/{uid} block — create restricts role to student/parent/teacher, update blocks self-mutation of role/organizationId/tenantId/isArchived/archivedAt/archivedBy/createdAt/createdBy.
+  - Removed dead helpers isAcademicManager(), isStageSupervisor(), isAssistantTeacher() (wrong role names).
+  - Patched analytics_daily/weekly/monthly to use isStaff() instead of dead isAcademicManager().
+
+- TRACK-2 (FORENSIC-17): Rules PII — D9, D10, D12, D13, D14, D15, D22
+  - D12: Patched submissions, answers, exam_instances, assignment_submissions create rules to require studentId == auth.uid for student-created docs.
+  - D9: Patched exam_instances create rule (same as D12).
+  - D13: Patched conversations (read restricted to participants + staff), messages (read restricted to sender/recipient/participants + staff), gradebook (read restricted to staff + student-own + parent-linked), gradebook_entries (same).
+  - D14: Patched notifications — update restricted to recipient, field-level guard on title/body/type/userId/organizationId.
+  - D15: Patched raised_hands — create/update/delete restricted to owner of the raised hand (userId == auth.uid).
+  - D10: Patched parent_links — read restricted to parent (own link), staff, and linked student. Helper parentHasAccessToStudent() uses deterministic ID `{parentId}_{studentId}` (client patch in TRACK-9).
+  - D22: Added new collection blocks: recordings (D11 fix), emailQueue (camelCase), emailLogs (camelCase), exam_attempts, analytics_events, _health.
+  - D7: Patched invite_codes — allow unauthenticated read of unused codes (isUsed == false) to close the catch-22.
+
+- TRACK-3 (FORENSIC-18): Function Lockstep Core — D2, D3, D4, D6 (LOCKSTEP)
+  - Added ROLE_HIERARCHY, roleRank(), isHigherRole(), isAtLeastRole() to functions/src/utils/rbac.ts.
+  - D8 hardening: verifyOrgBoundary() now fails-closed on empty org IDs.
+  - D3: Patched assignRole.ts — only super_admin can assign super_admin; self-targeting blocked (except super_admin); hierarchy enforcement (caller cannot assign higher role than own).
+  - D4: Patched assignScope.ts — scope array validation (max 500 items, non-empty strings); self-targeting blocked (except all-access roles); uses TARGET user's actual orgId from Firestore (not caller-supplied); verifies caller-supplied orgId matches target's actual org.
+  - D2: Patched syncClaims.ts — role must be valid KlasivoRole; organizationId must be non-empty string; caller cannot sync claims for equal/higher rank user (defense in depth).
+  - D6: Patched changeUserPassword.ts — caller must be strictly higher rank than target (isHigherRole); super_admin exempt; same-rank resets denied.
+
+- TRACK-4 (FORENSIC-19): Function Extras — D5, D7, A11
+  - D5: Patched removeParticipant.ts — replaced `roomOrgId !== callerOrgId` (fail-open on undefined) with verifyOrgBoundary() (fail-closed); expanded staff check from teacher/owner/admin to all STAFF_ROLES.
+  - D7: Created functions/src/functions/redeemInviteCode.ts — pre-auth callable that creates Auth + Firestore + claims atomically with A9 rollback; uses Firestore transaction for invite code flip; blocks super_admin/owner roles from invite redemption.
+  - A11: Patched createStudent.ts — added isArchived check on class doc; fail-closed on missing/empty classOrgId.
+  - Registered redeemInviteCode and deleteStudent in functions/src/index.ts barrel.
+
+- TRACK-5 (FORENSIC-20): Student Lifecycle Functions — A3, A6
+  - A3: Patched createStudent.ts — added setCustomUserClaims() call after Firestore user doc creation. Student tokens now have role+organizationId+scopeAccessLevel from first login.
+  - A6: Created functions/src/functions/deleteStudent.ts — callable that soft-deletes (isArchived=true) + disables Auth account + revokes refresh tokens + updates class studentCount + audit log. Hard-delete path (owner-only) deletes Auth account entirely (cascades via onUserDeleted).
+  - A6 client: Patched lib/core/services/student_service.dart deleteStudent() to call the new callable instead of client-side Firestore delete (which was blocked by rules:109 allow delete: if false).
+
+- TRACK-6 (FORENSIC-21): Client Auth — A1, A2, A9
+  - A1: Patched lib/core/services/auth_service.dart loginStudent() — added _deriveStudentAuthEmail() helper that mirrors createStudent.ts:generateAuthEmail(). New flow: derive authEmail → signInWithEmailAndPassword FIRST → fetch user doc (now allowed) → verify studentCode matches → check isActive + isArchived.
+  - A2: Removed the try/catch that swallowed ALL Auth errors and returned success. Now translates FirebaseAuthException codes to user-friendly messages and rethrows.
+  - A9: Added _rollbackOrphanedAuthAccount() helper. Applied to registerOwner, registerTeacherWithInvite, registerParent catch blocks — deletes the Auth account if any Firestore step fails.
+
+- TRACK-7 (FORENSIC-22): Client Nav + Wizard — A4, A8, A10
+  - A8: Patched lib/main.dart — wrapped the /teacher/** route block (18+ screens) in a ShellRoute with TeacherShell builder. Bottom nav now persists on all /teacher/** screens.
+  - A4 part 2: Patched lib/features/stages/pages/stage_list_screen.dart _createStructure() — guards against empty organizationId (Hive hydration bug). Aborts with user-friendly error if orgId is empty.
+  - A10: Patched lib/core/services/stage_service.dart createStagesBatch() — now writes searchKeywords for stages AND classes, academicYear for classes. Added organizationId empty guard. Applied same fix to lib/core/services/class_service.dart createClassesBatch() and the duplicate lib/features/classes/data/class_service.dart (G7 sync requirement).
+
+- TRACK-8 (FORENSIC-23): Indexes — A7
+  - Added two composite indexes to firestore.indexes.json for the `questions` collection: (examId ASC, order ASC) and (examId ASC, order DESC). These unblock the Question Builder queries at question_service.dart:157,198.
+
+- TRACK-9 (FORENSIC-24): Hygiene — deleteClass safety, restoreStage/restoreClass, parent_links deterministic ID
+  - Defanged lib/core/services/class_service.dart deleteClass() — redirected to archiveClass(). Original cascade logic (which deleted student Firestore docs but NOT Auth accounts, skipped 10+ related collections, had no audit log) is commented out for reference.
+  - Added restoreClass() to class_service.dart.
+  - Added restoreStage() to stage_service.dart.
+  - D10 client: Patched lib/core/services/parent_link_service.dart generateLinkingCode() to use deterministic doc ID `{generatedBy}_{studentId}`. Patched linkParentToStudent() to create a second doc with deterministic ID `{parentId}_{studentId}` so the rules helper can look it up.
+
+Stage Summary:
+
+ALL 10 TRACKS COMPLETE. Phase 2 patches authored across:
+  - 1 deploy config file (firebase.json)
+  - 4 stale files deleted (functions/index.js + 2 services + 1 test)
+  - 1 rules file (firestore.rules: 752 → 972 lines, helpers rewritten + 15 collection blocks patched + 6 new collection blocks)
+  - 1 indexes file (firestore.indexes.json: +2 questions indexes)
+  - 7 Cloud Functions files patched (assignRole, assignScope, syncClaims, changeUserPassword, removeParticipant, createStudent + rbac.ts utility)
+  - 2 new Cloud Functions created (redeemInviteCode, deleteStudent)
+  - 1 functions barrel updated (index.ts: +2 exports)
+  - 1 functions/.env.example updated (stale docs fixed)
+  - 5 client files patched (auth_service, student_service, parent_link_service, stage_service, class_service)
+  - 1 client file patched (stage_list_screen)
+  - 1 main.dart patched (ShellRoute wrapper for /teacher/**)
+  - 1 duplicate client file patched (features/classes/data/class_service.dart — G7 sync)
+
+TypeScript compile check: PASSED (functions/src/ — 0 errors)
+Dart compile check: not run (no flutter SDK in sandbox — user must run `flutter analyze`)
+
+CRITICAL DEPLOYMENT NOTE:
+  All function-side patches (D2, D3, D4, D5, D6, D7, A3, A6, A11) will NOT reach
+  production until BLOCKER 1 (SENTRY_DSN) is resolved. The patches are authored
+  and compile-clean, but `firebase deploy --only functions` will fail at the
+  secret-validation stage of Cloud Build until SENTRY_DSN exists in Google
+  Secret Manager.
+
+  Resolution options:
+    Option B (preferred): `firebase functions:secrets:set SENTRY_DSN`
+    Option C: hardcode the public DSN in src/config/sentry.ts and strip
+              'SENTRY_DSN' from every function's secrets array.
+
+LOCKSTEP REQUIREMENT (G1):
+  D1 (rules) + D3 (assignRole) + D4 (assignScope) + D6 (changeUserPassword)
+  MUST deploy together. Deploying any one without the others masks the bug
+  without fixing it. All four are now authored and compile-clean — they can
+  be deployed in a single `firebase deploy` once BLOCKER 1 is resolved.
+

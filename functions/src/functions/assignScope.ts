@@ -73,6 +73,42 @@ export const assignScope = onCall(
       throw new HttpsError('invalid-argument', 'targetUserId, scope, and organizationId are required.');
     }
 
+    // ─── D4 PATCH: Validate scope arrays ──────────────────────────────
+    // Previous rule did no validation on scope arrays → caller could inject
+    // arbitrary strings, non-array values, or huge arrays.
+    const MAX_SCOPE_ARRAY_LENGTH = 500;
+    const scopeKeys = ['campusIds', 'stageIds', 'classIds', 'subjectIds', 'academicYearIds', 'studentIds'] as const;
+    for (const key of scopeKeys) {
+      if (key in scope) {
+        const value = (scope as Record<string, unknown>)[key];
+        if (!Array.isArray(value)) {
+          throw new HttpsError('invalid-argument', `scope.${key} must be an array.`);
+        }
+        if (value.length > MAX_SCOPE_ARRAY_LENGTH) {
+          throw new HttpsError('invalid-argument', `scope.${key} exceeds max length of ${MAX_SCOPE_ARRAY_LENGTH}.`);
+        }
+        for (const item of value) {
+          if (typeof item !== 'string' || item.length === 0) {
+            throw new HttpsError('invalid-argument', `scope.${key} must contain only non-empty strings.`);
+          }
+        }
+      }
+    }
+
+    // ─── D4 PATCH: Self-targeting block ─────────────────────────────────
+    // Callers cannot assign scope to themselves via this function. Self-scope
+    // is a privilege escalation primitive (a campus_manager could grant
+    // themselves all campuses). Scope assignment must come from a HIGHER-
+    // privileged caller. Exception: super_admin/owner/admin can self-assign
+    // because they already have all-access scope (the call is effectively a no-op).
+    if (callerUid === targetUserId &&
+        !['super_admin', 'owner', 'admin'].includes(callerRole)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Cannot assign scope to yourself. Ask a higher-privileged admin.',
+      );
+    }
+
     // ─── Org Boundary ───────────────────────────────────────────────────
     const callerOrgId = (callerClaims.organizationId as string) || '';
     if (!verifyOrgBoundary(callerOrgId, organizationId, callerRole)) {
@@ -89,6 +125,29 @@ export const assignScope = onCall(
 
     const userData = userDoc.data()!;
     const targetRole = userData.role || 'student';
+
+    // ─── D4 PATCH: Use TARGET user's actual org, not caller-supplied org ──
+    // Previous rule used request.data.organizationId (caller-supplied) for the
+    // org boundary check AND for building custom claims. A caller could pass
+    // a different org's ID and the function would happily mint claims for
+    // that org. Now we read the target's actual org from Firestore and use
+    // THAT for both the boundary check and claim minting.
+    const targetOrgId = userData.organizationId || '';
+    if (!targetOrgId) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Target user ${targetUserId} has no organizationId. Cannot assign scope.`,
+      );
+    }
+    // Verify caller-supplied organizationId matches target's actual org.
+    // This catches the case where a caller passes a mismatched orgId either
+    // maliciously or by mistake.
+    if (organizationId !== targetOrgId) {
+      throw new HttpsError(
+        'permission-denied',
+        `organizationId mismatch: caller passed ${organizationId} but target user is in ${targetOrgId}.`,
+      );
+    }
 
     const oldScope = {
       campusIds: userData.campusIds || [],
@@ -117,15 +176,17 @@ export const assignScope = onCall(
     // Immediately update custom claims so the client doesn't have to wait
     // for the roleVersion listener → syncClaims round-trip. This eliminates
     // the window where claims are stale after a scope change.
-    const customClaims = buildCustomClaims(targetRole, organizationId);
+    // D4 PATCH: use targetOrgId (from Firestore), not caller-supplied organizationId.
+    const customClaims = buildCustomClaims(targetRole, targetOrgId);
     await admin.auth().setCustomUserClaims(targetUserId, customClaims);
 
     // ─── Audit Log ──────────────────────────────────────────────────────
+    // D4 PATCH: use targetOrgId (from Firestore), not caller-supplied organizationId.
     await db.collection('audit_logs').add({
-      organizationId: organizationId,
+      organizationId: targetOrgId,
       performedBy: callerUid,
       performedByRole: callerRole,
-      performedByOrgId: (callerClaims.organizationId as string) || organizationId,
+      performedByOrgId: (callerClaims.organizationId as string) || targetOrgId,
       userId: callerUid,
       action: 'assign_scope',
       targetType: 'user',

@@ -32,7 +32,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 
-import { verifyOrgBoundary, STAFF_ROLES, type KlasivoRole } from '../utils/rbac';
+import { verifyOrgBoundary, STAFF_ROLES, buildCustomClaims, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 import { queueEmail } from '../services/queueService';
 
@@ -449,8 +449,22 @@ export const createStudent = onCall(
           throw new HttpsError('not-found', `Class ${classId} not found.`);
         }
 
+        // ─── A11 PATCH: Reject archived classes ──────────────────────────
+        // Previous rule did NOT check isArchived — teachers could add students
+        // to archived classes. Now: if class.isArchived == true, reject.
+        const classIsArchived = classDoc.data()?.['isArchived'] === true;
+        if (classIsArchived) {
+          throw new HttpsError(
+            'failed-precondition',
+            `Class ${classId} is archived. Restore the class before adding students.`,
+          );
+        }
+
         const classOrgId = classDoc.data()?.['organizationId'] as string | undefined;
-        if (classOrgId !== organizationId) {
+        // ─── D8 PATCH: Fail-closed on missing/empty classOrgId ──────────
+        // Previous rule used strict `!==` which passed when both were undefined.
+        // Now we require classOrgId to be a non-empty string matching organizationId.
+        if (!classOrgId || typeof classOrgId !== 'string' || classOrgId !== organizationId) {
           throw new HttpsError(
             'permission-denied',
             'Class does not belong to the specified organization.',
@@ -543,6 +557,32 @@ export const createStudent = onCall(
             `Failed to create student document: ${msg}`,
             { code: 'student_creation_failed', step: 'user_doc_create' } as any,
           );
+        }
+
+        // ─── 8b. A3 PATCH: Set custom claims on student ───────────────────
+        // Previous rule did NOT call setCustomUserClaims() — student tokens
+        // had empty claims forever, causing callerRole=null in downstream
+        // callables and client-side permission checks to fail. syncClaims is
+        // the only other place claims get set, but it requires an authenticated
+        // caller — students couldn't self-provision. Now we set claims at
+        // creation time so the student's first ID token has role+org.
+        try {
+          const studentClaims = buildCustomClaims('student', organizationId);
+          await admin.auth().setCustomUserClaims(studentUid, studentClaims);
+          console.log(JSON.stringify({
+            message: 'student_claims_set',
+            organizationId,
+            studentUid,
+            scopeAccessLevel: studentClaims.scopeAccessLevel,
+          }));
+        } catch (claimsError: unknown) {
+          // Non-critical: claims will be set on first syncClaims call.
+          // Student can still log in — claims are checked lazily on the client.
+          const msg = claimsError instanceof Error ? claimsError.message : String(claimsError);
+          console.warn(`[createStudent] setCustomUserClaims failed (non-critical): ${msg}`);
+          Sentry.captureException(claimsError, {
+            tags: { function: 'createStudent', step: 'set_claims' },
+          });
         }
 
         // ─── 9. Send Welcome Email (if real email provided) ──────────────

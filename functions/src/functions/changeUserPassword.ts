@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 
-import { verifyOrgBoundary, PASSWORD_RESET_ROLES } from '../utils/rbac';
+import { verifyOrgBoundary, PASSWORD_RESET_ROLES, isHigherRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 
 interface ChangePasswordData {
@@ -78,6 +78,22 @@ export const changeUserPassword = onCall(
         throw new HttpsError(
           'permission-denied',
           'You can only reset passwords for users in your organization.',
+        );
+      }
+
+      // ─── D6 PATCH: Role hierarchy enforcement ──────────────────────────
+      // Previous rule had NO hierarchy check → campus_manager (scoped to 1
+      // campus) could reset owner/admin password → full org takeover from
+      // a scoped account. Now: caller must be STRICTLY higher rank than
+      // target. Same-rank resets are denied (admin cannot reset another
+      // admin's password). Exception: super_admin can reset anyone.
+      const targetRole = userData.role || 'student';
+      if (callerRole !== 'super_admin' && !isHigherRole(callerRole, targetRole)) {
+        throw new HttpsError(
+          'permission-denied',
+          `Cannot reset password of a user with equal or higher role ` +
+          `(caller=${callerRole}, target=${targetRole}). ` +
+          `Only a strictly higher-privileged user may reset this password.`,
         );
       }
     }

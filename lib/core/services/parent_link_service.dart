@@ -38,7 +38,22 @@ class ParentLinkService {
 
       final expiresAt = DateTime.now().add(const Duration(hours: 48));
 
-      await _firestore.collection(AppConstants.parentLinksCollection).add({
+      // D10 PATCH: Use deterministic doc ID `{generatedBy}_{studentId}` so the
+      // firestore.rules parentHasAccessToStudent() helper can look up the link
+      // by ID. Previous code used .add() (auto-ID) which made the helper always
+      // return false → parents could not read submissions/attendance.
+      // Note: this doc is created by a teacher/admin with parentId=null. When
+      // a parent redeems the code, the doc is updated with parentId. At that
+      // point we ALSO write a second doc with ID `{parentId}_{studentId}` OR
+      // we rename the doc — but Firestore doesn't support rename. So we use
+      // the studentId as part of the key, and the helper checks existence of
+      // `{parentId}_{studentId}`. The redemption flow (linkParentToStudent)
+      // must create a NEW doc with the deterministic ID.
+      final linkDocId = '${generatedBy}_${studentId}';
+      await _firestore
+          .collection(AppConstants.parentLinksCollection)
+          .doc(linkDocId)
+          .set({
         'code': code,
         'organizationId': organizationId,
         'studentId': studentId,
@@ -112,6 +127,27 @@ class ParentLinkService {
         flow: 'parent_link',
         step: 'UPDATE_LINK_DOC',
       );
+
+      // D10 PATCH: Also create a deterministic doc with ID `{parentId}_{studentId}`
+      // so the firestore.rules parentHasAccessToStudent() helper can look it up.
+      // The original code doc (auto-ID) is kept for audit; the deterministic doc
+      // is the one the rules helper queries. Both have the same data.
+      final deterministicId = '${parentId}_$studentId';
+      await _firestore
+          .collection(AppConstants.parentLinksCollection)
+          .doc(deterministicId)
+          .set({
+        'code': linkData['code'],
+        'organizationId': organizationId,
+        'studentId': studentId,
+        'generatedBy': linkData['generatedBy'],
+        'parentId': parentId,
+        'status': AppConstants.parentLinkApproved,
+        'expiresAt': linkData['expiresAt'],
+        'linkedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       // Add parentId field to the student's doc in usersCollection
       await SentryFirestoreHelper.docUpdate(

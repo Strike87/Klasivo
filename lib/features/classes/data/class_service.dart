@@ -200,28 +200,43 @@ class ClassService {
 
   /// Batch-create classes under a stage.
   /// Used by the Smart Setup Wizard.
+  /// A10 PATCH: Now writes the same fields as createClass (searchKeywords +
+  /// academicYear) to eliminate schema drift. Must stay in sync with
+  /// lib/core/services/class_service.dart (G7 — two byte-identical files).
   Future<void> createClassesBatch({
     required String organizationId,
     required String stageId,
     required List<Map<String, dynamic>> classes,
     String createdBy = '',
+    String? academicYear,
   }) async {
     try {
+      if (organizationId.isEmpty) {
+        throw ArgumentError(
+          'organizationId cannot be empty — Hive box may not be hydrated yet.',
+        );
+      }
+
+      final keywordService = SearchKeywordService();
       final batch = _firestore.batch();
       for (final classData in classes) {
         final docRef = _firestore.collection(AppConstants.classesCollection).doc();
+        final className = classData['name'] as String? ?? '';
+        final classCode = classData['code'] as String? ?? '';
         batch.set(docRef, {
           'organizationId': organizationId,
           'stageId': stageId,
-          'name': classData['name'],
-          'code': classData['code'] ?? '',
+          'name': className,
+          'code': classCode,
           'capacity': classData['capacity'] ?? 0,
           'homeroomTeacherId': null,
+          'academicYear': academicYear,
           'studentCount': 0,
           'createdBy': createdBy,
           'isArchived': false,
           'archivedAt': null,
           'archivedBy': null,
+          'searchKeywords': keywordService.generateKeywords('$className $classCode'),
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });

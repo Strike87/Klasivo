@@ -95,7 +95,29 @@ class ClassService {
 
   /// Hard-delete: removes the class and all its related data.
   /// Use only for cleanup / admin purposes. Prefer [archiveClass] for normal flow.
+  ///
+  /// SAFETY PATCH (Phase 2): Previous implementation cascade-deleted student
+  /// Firestore docs but NOT Auth accounts, skipped 10+ related collections,
+  /// had no audit log, and had zero UI callers — yet was still callable.
+  /// This is now DEFANGED to archive-only. True hard-delete should go through
+  /// a Cloud Function that can cascade Auth account deletion + audit log.
+  /// The original cascade logic is preserved below (commented) for reference
+  /// when the Cloud Function is built in a future phase.
   Future<void> deleteClass(String classId) async {
+    // SAFETY: Redirect to archiveClass. Hard-delete is too dangerous to leave
+    // as a client-side operation — it leaves orphaned Auth accounts and
+    // breaks referential integrity for submissions, answers, exam_instances,
+    // attendance, gradebook, parent_links, and more.
+    await archiveClass(classId);
+    // ignore: avoid_print
+    print('[class_service] deleteClass redirected to archiveClass for safety. '
+        'Hard-delete is disabled — use the deleteClass Cloud Function (future phase) '
+        'for true cascade deletion.');
+
+    /* Original cascade — DISABLED for safety. Too many collections missed,
+       no Auth account cleanup, no audit log. Preserve for reference when
+       building the Cloud Function equivalent.
+
     try {
       // Delete students in this class
       final studentsSnapshot = await _firestore
@@ -138,6 +160,26 @@ class ClassService {
       batch.delete(
           _firestore.collection(AppConstants.classesCollection).doc(classId));
       await batch.commit();
+    } catch (e) {
+      rethrow;
+    }
+    */
+  }
+
+  /// Restore: unarchive the class (A8 hygiene — archive was previously a one-way door).
+  Future<void> restoreClass(String classId, {String restoredBy = ''}) async {
+    try {
+      await _firestore
+          .collection(AppConstants.classesCollection)
+          .doc(classId)
+          .update({
+        'isArchived': false,
+        'archivedAt': null,
+        'archivedBy': null,
+        'restoredAt': FieldValue.serverTimestamp(),
+        'restoredBy': restoredBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       rethrow;
     }
@@ -200,28 +242,45 @@ class ClassService {
 
   /// Batch-create classes under a stage.
   /// Used by the Smart Setup Wizard.
+  /// A10 PATCH: Now writes the same fields as createClass (searchKeywords +
+  /// academicYear) to eliminate schema drift between wizard and manual paths.
   Future<void> createClassesBatch({
     required String organizationId,
     required String stageId,
     required List<Map<String, dynamic>> classes,
     String createdBy = '',
+    String? academicYear, // A10: now accepted and written
   }) async {
     try {
+      // A4 part 2: Guard against empty organizationId at the service layer too.
+      if (organizationId.isEmpty) {
+        throw ArgumentError(
+          'organizationId cannot be empty — Hive box may not be hydrated yet.',
+        );
+      }
+
+      final keywordService = SearchKeywordService();
       final batch = _firestore.batch();
       for (final classData in classes) {
         final docRef = _firestore.collection(AppConstants.classesCollection).doc();
+        final className = classData['name'] as String? ?? '';
+        final classCode = classData['code'] as String? ?? '';
         batch.set(docRef, {
           'organizationId': organizationId,
           'stageId': stageId,
-          'name': classData['name'],
-          'code': classData['code'] ?? '',
+          'name': className,
+          'code': classCode,
           'capacity': classData['capacity'] ?? 0,
           'homeroomTeacherId': null,
+          // A10: academicYear now written in batch path (was missing).
+          'academicYear': academicYear,
           'studentCount': 0,
           'createdBy': createdBy,
           'isArchived': false,
           'archivedAt': null,
           'archivedBy': null,
+          // A10: searchKeywords now written in batch path (was missing).
+          'searchKeywords': keywordService.generateKeywords('$className $classCode'),
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });

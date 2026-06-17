@@ -111,7 +111,61 @@ export function verifyOrgBoundary(
   callerRole: string,
 ): boolean {
   if (callerRole === 'super_admin') return true;
+  // D8 PARTIAL FAIL-CLOSED: empty org IDs cannot match anything.
+  if (!callerOrgId || !targetOrgId) return false;
   return callerOrgId === targetOrgId;
+}
+
+// ─── Role Hierarchy (Phase 2 D6) ───────────────────────────────────────────
+//
+// Ordinal rank for role comparison. Higher number = higher privilege.
+// Used by changeUserPassword to prevent scoped accounts from resetting
+// passwords of higher-privileged accounts (org takeover prevention).
+//
+// Must stay in sync with lib/core/rbac/role_hierarchy.dart.
+
+export const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 90,
+  owner: 80,
+  admin: 70,
+  campus_manager: 60,
+  stage_manager: 50,
+  academic_supervisor: 45,
+  teacher: 40,
+  assistant_teacher: 35,
+  observer: 30,
+  student: 20,
+  parent: 10,
+};
+
+/**
+ * Get the hierarchy ordinal for a role. Unknown roles default to 0
+ * (lower than any known role — fail-closed for privilege checks).
+ */
+export function roleRank(role: string): number {
+  return ROLE_HIERARCHY[role] ?? 0;
+}
+
+/**
+ * Returns true if the caller's role is strictly higher than the target's role.
+ * Equal roles do NOT count as "higher" — this prevents same-rank password resets.
+ *
+ * Examples:
+ *   isHigherRole('owner', 'admin') → true
+ *   isHigherRole('admin', 'admin') → false  (same rank — denied)
+ *   isHigherRole('campus_manager', 'owner') → false  (caller LOWER — denied)
+ *   isHigherRole('super_admin', 'owner') → true
+ */
+export function isHigherRole(callerRole: string, targetRole: string): boolean {
+  return roleRank(callerRole) > roleRank(targetRole);
+}
+
+/**
+ * Returns true if the caller's role is at least as high as the target's role.
+ * Used for actions where same-rank is allowed (e.g., viewing).
+ */
+export function isAtLeastRole(callerRole: string, targetRole: string): boolean {
+  return roleRank(callerRole) >= roleRank(targetRole);
 }
 
 // ─── Capability-Based Access Constants ────────────────────────────────────
