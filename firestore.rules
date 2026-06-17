@@ -127,7 +127,7 @@ service cloud.firestore {
       return isAuth() &&
         resource.data.studentId == request.auth.uid &&
         // Block modification of grading fields
-        !request.resource.data.diffKeys(resource).hasAny(['score', 'grade', 'totalScore', 'percentage', 'status', 'gradedBy', 'gradedAt', 'isGraded']);
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'grade', 'totalScore', 'percentage', 'status', 'gradedBy', 'gradedAt', 'isGraded']);
     }
 
     // ─── D20: Immutable-field preservation helpers ─────────────────────────
@@ -185,9 +185,9 @@ service cloud.firestore {
         request.resource.data.organizationId is string;
       allow update: if isAuth() && request.auth.uid == userId &&
         // D1: Block self-mutation of privilege fields.
-        !request.resource.data.diffKeys(resource).hasAny(['role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy']) &&
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy']) &&
         // D20: Audit fields immutable from client.
-        !request.resource.data.diffKeys(resource).hasAny(['createdAt', 'createdBy']);
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['createdAt', 'createdBy']);
       allow delete: if false;
     }
 
@@ -282,7 +282,7 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diffKeys(resource).hasAny(['isCorrect', 'score', 'gradedBy', 'gradedAt'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['isCorrect', 'score', 'gradedBy', 'gradedAt'])));
       allow delete: if false;
     }
 
@@ -302,7 +302,7 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diffKeys(resource).hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
       allow delete: if false;
     }
 
@@ -334,7 +334,7 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         resource.data.userId == request.auth.uid &&
         // Recipient can only flip read-state fields, not title/body/type.
-        !request.resource.data.diffKeys(resource).hasAny(['title', 'body', 'type', 'userId', 'organizationId', 'createdAt', 'createdBy']);
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['title', 'body', 'type', 'userId', 'organizationId', 'createdAt', 'createdBy']);
       allow delete: if false;
     }
 
@@ -406,7 +406,7 @@ service cloud.firestore {
         (safeStaffUpdate() ||
          (resource.data.participants.hasAny([request.auth.uid]) &&
           // Participants can only update non-PII fields like lastReadAt.
-          !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'createdAt', 'createdBy', 'participants'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'createdAt', 'createdBy', 'participants'])));
       allow delete: if false;
     }
 
@@ -422,7 +422,7 @@ service cloud.firestore {
         request.resource.data.senderId == request.auth.uid;
       allow update: if isAuth() && isInSameOrg() &&
         resource.data.senderId == request.auth.uid &&
-        !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'createdAt', 'senderId', 'recipientId']);
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'createdAt', 'senderId', 'recipientId']);
       allow delete: if false; // Messages are never truly deleted — use soft delete
     }
 
@@ -496,7 +496,7 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diffKeys(resource).hasAny(['score', 'grade', 'status', 'gradedBy', 'gradedAt'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'grade', 'status', 'gradedBy', 'gradedAt'])));
       allow delete: if isStaffInSameOrg();
     }
 
@@ -562,7 +562,7 @@ service cloud.firestore {
          // Parent can update only the status/linkedAt fields on their own link
          // (used during parent-link redemption flow).
          (resource.data.parentId == request.auth.uid &&
-          !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'studentId', 'generatedBy', 'code', 'createdAt', 'createdBy'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'studentId', 'generatedBy', 'code', 'createdAt', 'createdBy'])));
       allow delete: if isStaffInSameOrg();
     }
 
@@ -724,13 +724,6 @@ service cloud.firestore {
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
-    // Helper: Check if user is a campus manager
-    function isCampusManager() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'campus_manager';
-    }
-
     // D19 PATCH: Removed dead helpers isAcademicManager() (wrong role name —
     // checked 'academic_manager' but actual role is 'academic_supervisor'),
     // isStageSupervisor() (wrong role name — checked 'stage_supervisor' but
@@ -838,7 +831,7 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid;
       allow update: if isAuth() && isInSameOrg() &&
         resource.data.userId == request.auth.uid &&
-        !request.resource.data.diffKeys(resource).hasAny(['organizationId', 'roomId', 'userId', 'createdAt']);
+        !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'roomId', 'userId', 'createdAt']);
       allow delete: if isAuth() && isInSameOrg() &&
         (isStaff() || resource.data.userId == request.auth.uid);
     }
@@ -945,7 +938,7 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diffKeys(resource).hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
       allow delete: if false;
     }
 
