@@ -4673,3 +4673,67 @@ LOCKSTEP REQUIREMENT (G1):
   without fixing it. All four are now authored and compile-clean — they can
   be deployed in a single `firebase deploy` once BLOCKER 1 is resolved.
 
+
+---
+Task ID: day2-patches
+Agent: main (continuation)
+Task: Generate Day 2 patch script (C-04 + C-01), human-readable diff, and verification script for Klasivo security closure
+
+Work Log:
+- Cloned/verified the Klasivo repo at /home/z/my-project (commit 1f7b278)
+- Read functions/src/functions/setPermissionOverrides.ts to confirm C-04 vulnerable code:
+  - Line 41: const WILDCARD = '*';
+  - Line 44: if (key === WILDCARD) return true;
+  - Line 104: error message hinting at '*' as valid
+  - No self-target block exists
+- Grep'd functions/src for enforceAppCheck — found 13 files with commented-out enforceAppCheck
+  in 3 different comment formats (A: multi-line block, B: inline block, C: createStudent
+  uses "TEMPORARILY DISABLED" wording). Plus sentryTestEvent.ts (format D) has no
+  enforceAppCheck line at all.
+- Confirmed 14 total onCall functions via grep onCall(
+- Verified lib/core/services/permission_service.dart line 483 has '*' as super_admin
+  default permission (legitimate — stays), and line 88-89 honors category:* wildcards
+  (also legitimate)
+- Verified lib/main.dart has no firebase_app_check import or activation call
+- Verified pubspec.yaml already has firebase_app_check: ^0.3.2 (no insertion needed)
+- Wrote apply-day2-patches.py with:
+  - In-memory file cache (fixes dry-run bug where sequential patches on the same file
+    couldn't see each other's mutations)
+  - 3 C-04 hunks (remove WILDCARD, update error msg, add self-target block)
+  - C-01 callable patcher handling all 4 formats (A/B/C/D)
+  - C-01.client.1 main.dart patches (import + activation block)
+  - C-01.client.2 pubspec.yaml insertion (skipped if already present)
+  - --dry-run, --no-push, --no-build, --skip-client, --force flags
+  - UTF-8 no-BOM encoding safety checks (same as Day 1)
+  - git commit -F temp-file pattern (avoids Windows quoting issues)
+- Wrote day2-changes.diff with before/after for every hunk, why explanations,
+  risk assessment, required tests, rollback procedure, and Day 3 preview
+- Wrote verify-day2-patches.sh with source-code verification (16 checks) +
+  interactive runtime verification (C-04 wildcard/self-target tests, C-01
+  App Check enforcement tests, client activation tests)
+- Fixed verification script C-01 check: original used `grep -v '//'` which
+  incorrectly filtered patched lines (they have inline `// C-01 PATCH` comments).
+  Replaced with `grep -E 'enforceAppCheck:\s*true,'` which matches only the
+  active form (trailing comma) — commented forms use em-dash, no comma.
+- Smoke-tested all 20 patch patterns against the actual repo files — ALL MATCH
+- Ran full dry-run of apply-day2-patches.py --dry-run --no-build --force — ALL
+  5 patch groups apply cleanly (C-04.1/.2/.3 + 14/14 callables + main.dart)
+- Applied patches for real (with --skip-client first, then manually applied
+  main.dart) and ran verification — all 16 source-code checks PASS
+- Reverted test commit (git reset --hard 1f7b278) and deleted backup branch
+- Confirmed verification script correctly reports all FAILs against the
+  unpatched state (no false positives)
+
+Stage Summary:
+- 3 deliverables in /home/z/my-project/download/patches-revised/day2/:
+  - apply-day2-patches.py (~800 lines, Windows-compatible Python)
+  - day2-changes.diff (~470 lines, human-readable review doc)
+  - verify-day2-patches.sh (~280 lines, post-deploy verification)
+- All 20 patch patterns verified against repo commit 1f7b278
+- Full dry-run applies cleanly: C-04.1 + C-04.2 + C-04.3 + 14/14 callables + main.dart
+- Verification script tested bidirectionally (fails on unpatched, passes on patched)
+- Repo left clean at commit 1f7b278 (test commit reverted, backup branch deleted)
+- CRITICAL deployment ordering documented: client update MUST ship before server-side
+  enforceAppCheck: true deploy, with 24-48h adoption window
+- Next: Day 3 (C-02 bcrypt password hashing, C-05 rate limiting, C-06 SENTRY_DSN,
+  C-07 studentCode enumeration)
