@@ -8,7 +8,8 @@ import { initSentry, withIsolatedScope } from '../config/sentry';
 import { verifyOrgBoundary, ANNOUNCEMENT_ROLES } from '../utils/rbac';
 
 export const sendSchoolAnnouncement = onCall(
-  { secrets: ['SENTRY_DSN'], /* enforceAppCheck: true — DISABLED: no client AppCheck init */ region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
+  { secrets: ['SENTRY_DSN'], enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
+    region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
   async (request) => {
     initSentry();
     return withIsolatedScope(async (scope) => {

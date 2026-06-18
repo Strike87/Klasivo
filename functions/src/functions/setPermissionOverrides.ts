@@ -38,17 +38,20 @@ interface SetPermissionOverridesData {
 
 // Basic validation: permission strings must match "category:action" pattern
 const PERMISSION_RE = /^[a-z_]+:[a-z_]+$/;
-const WILDCARD = '*';
 
+// C-04 PATCH: Wildcard '*' permission keys are no longer accepted.
+// Previous behavior allowed an admin to set { '*': true } and gain
+// every permission in the system. Wildcards are still honored in the
+// client-side role-default map (permission_service.dart) for super_admin,
+// but user-settable overrides must be scoped to specific category:action.
 function isValidPermissionKey(key: string): boolean {
-  if (key === WILDCARD) return true;
   return PERMISSION_RE.test(key);
 }
 
 export const setPermissionOverrides = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    // enforceAppCheck: true — DISABLED: client has no FirebaseAppCheck init
+    enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
@@ -101,9 +104,19 @@ export const setPermissionOverrides = onCall(
       if (!isValidPermissionKey(key)) {
         throw new HttpsError(
           'invalid-argument',
-          `Invalid permission key: "${key}". Must match "category:action" pattern or be "*".`,
+          `Invalid permission key: "${key}". Must match "category:action" pattern (e.g., "exam:publish").`,
         );
       }
+    }
+
+    // C-04 PATCH: Self-target block. A caller must not be able to set
+    // permission overrides on themselves — this would let any admin grant
+    // themselves arbitrary permissions and escalate within their own account.
+    if (callerUid === targetUserId) {
+      throw new HttpsError(
+        'permission-denied',
+        'Cannot set permission overrides on your own account. Ask another admin.',
+      );
     }
 
     // ─── Org Boundary ───────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { initSentry, withIsolatedScope } from '../config/sentry';
  *   });
  */
 export const sentryTestEvent = onCall(
-  { secrets: ['SENTRY_DSN'], region: 'us-central1', memory: '256MiB', timeoutSeconds: 15, minInstances: 0, maxInstances: 3, concurrency: 10 },
+  { secrets: ['SENTRY_DSN'], enforceAppCheck: true, region: 'us-central1', memory: '256MiB', timeoutSeconds: 15, minInstances: 0, maxInstances: 3, concurrency: 10 },
   async (request) => {
     initSentry();
     return withIsolatedScope(async (scope) => {

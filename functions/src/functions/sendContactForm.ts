@@ -9,7 +9,8 @@ import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 
 export const sendContactForm = onCall(
-  { secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], /* enforceAppCheck: true — DISABLED: no client AppCheck init */ region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
+  { secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
+    region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, minInstances: 0, maxInstances: 10, concurrency: 80 },
   async (request) => {
     initSentry();
     return withIsolatedScope(async (scope) => {

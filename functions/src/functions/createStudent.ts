@@ -198,7 +198,7 @@ async function notifyTeachers(
 export const createStudent = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    // enforceAppCheck: true — TEMPORARILY DISABLED
+    enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
     // Client does not initialize FirebaseAppCheck. Re-enable after adding
     // FirebaseAppCheck.instance.activate() in Flutter main.dart.
     // Tracked as: App Check initialization follow-up

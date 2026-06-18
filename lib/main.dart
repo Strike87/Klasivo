@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';  // C-01 PATCH
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
@@ -169,6 +170,15 @@ Future<void> main() async {
       try {
         await Firebase.initializeApp(
           options: DefaultFirebaseOptions.currentPlatform,
+        );
+
+        // ── C-01 PATCH: Activate Firebase App Check ──────────────────────
+        // Required for callable functions with enforceAppCheck: true.
+        // On Android, uses Play Integrity. On iOS, uses App Attest.
+        // Register your apps in Firebase Console → App Check before deploying.
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.playIntegrity,
+          appleProvider: AppleProvider.appAttest,
         );
 
         // ── Flutter Framework Errors → BOTH Crashlytics + Sentry ──────────

@@ -53,7 +53,7 @@ interface RedeemInviteCodeData {
 export const redeemInviteCode = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    // enforceAppCheck: true — DISABLED: client has no FirebaseAppCheck init
+    enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 30,
