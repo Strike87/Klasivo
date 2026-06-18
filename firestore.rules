@@ -53,11 +53,23 @@ service cloud.firestore {
         request.resource.data.organizationId == getUserOrgId();
     }
 
-    // ─── D17: Complete staff role coverage ─────────────────────────────────
-    // Previous isTeacherOrOwner() only covered teacher/owner/admin — silently
-    // denied writes to campus_manager, stage_manager, academic_supervisor,
-    // assistant_teacher, observer (privilege DE-escalation).
+    // ─── D17 / C-14 PATCH: Staff role coverage ────────────────────────────
+    // isStaff() is the WRITE-PATH helper: it intentionally EXCLUDES 'observer'
+    // because observer is a read-only role. Previous behavior allowed observer
+    // to write to any collection gated by isStaffInSameOrg() / isTeacherOrOwnerInSameOrg()
+    // — a privilege escalation for a role that should never write.
+    // For read rules that should include observer, use isStaffIncludingObserver().
     function isStaff() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserRole() in ['super_admin', 'owner', 'admin', 'campus_manager',
+                           'stage_manager', 'academic_supervisor', 'teacher',
+                           'assistant_teacher']);
+    }
+
+    // C-14 PATCH: Read-path helper — includes observer. Use this in READ rules
+    // where observer should have visibility (announcements, calendar, etc.).
+    function isStaffIncludingObserver() {
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (getUserRole() in ['super_admin', 'owner', 'admin', 'campus_manager',
@@ -626,9 +638,13 @@ service cloud.firestore {
     }
 
     // ====== Audit Logs Collection ======
+    // C-16 PATCH: audit_logs MUST be written exclusively by Cloud Functions
+    // (Admin SDK bypasses these rules). Previous rule let any authenticated
+    // same-org user forge audit log entries — framing other users for actions
+    // they didn't take, or polluting the log to hide their own actions.
     match /audit_logs/{logId} {
       allow read: if isTeacherOrOwner() && isInSameOrg();
-      allow create: if isAuth() && isIncomingSameOrg();
+      allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
