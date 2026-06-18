@@ -173,7 +173,11 @@ service cloud.firestore {
     // isArchived can only be changed via Cloud Functions (assignRole, assignScope,
     // syncClaims) using Admin SDK which bypasses these rules.
     match /users/{userId} {
-      allow read: if isAuth();
+      // C-03/C-11 PATCH: Restrict reads to self OR same-org.
+      // Previous rule (allow read: if isAuth()) let any authed user in any
+      // org read any user doc by ID -> cross-tenant PII + passwordHash leak.
+      allow read: if isAuth() &&
+        (request.auth.uid == userId || isInSameOrg());
       allow create: if isAuth() && request.auth.uid == userId &&
         // New user doc must NOT self-assign a privileged role.
         // Allowed roles on self-create: student, parent, teacher (pending approval).
@@ -302,7 +306,12 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny([
+            'score', 'percentage', 'totalScore', 'status',
+            'gradedBy', 'gradedAt', 'isGraded', 'passed',
+            'startedAt', 'submittedAt', 'endedAt', 'timeSpent',
+            'attemptCount', 'answers'
+          ])));
       allow delete: if false;
     }
 
@@ -340,9 +349,14 @@ service cloud.firestore {
 
     // ====== Organizations Collection ======
     match /organizations/{orgId} {
-      // Any authenticated user can read org details (needed for invite code lookup)
-      allow read: if isAuth();
-      allow create: if isAuth();
+      // C-12 PATCH: Restrict reads to same-org members.
+      // Previous rule (allow read: if isAuth()) let any authed user enumerate
+      // every org's metadata (ownerId, name, slug, plan, billing).
+      // Invite code lookup should go through invite_codes collection, not here.
+      allow read: if isAuth() && isInSameOrg();
+      // C-12 PATCH: Only self-owner can create. Prevents spam org creation.
+      allow create: if isAuth() &&
+        request.resource.data.ownerId == request.auth.uid;
       // Only members of the org who are teacher/owner can update, OR org owner
       allow update: if isAuth() && isInSameOrg() &&
         (isTeacherOrOwner() || resource.data.ownerId == request.auth.uid);
@@ -694,8 +708,12 @@ service cloud.firestore {
 
     // Helper: Check if user is in the same tenant as the resource
     function isInSameTenant() {
+      // C-13 PATCH: Add null-safety (same pattern as D8 patch on org path).
+      // Previous rule let null==null pass -> cross-tenant leak when tenant IDs missing.
       return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        resource.data.tenantId is string &&
+        resource.data.tenantId.size() > 0 &&
         resource.data.tenantId == getUserTenantId();
     }
 
@@ -938,7 +956,12 @@ service cloud.firestore {
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'percentage', 'totalScore', 'status', 'gradedBy', 'gradedAt', 'isGraded', 'passed'])));
+          !request.resource.data.diff(resource).affectedKeys().hasAny([
+            'score', 'percentage', 'totalScore', 'status',
+            'gradedBy', 'gradedAt', 'isGraded', 'passed',
+            'startedAt', 'submittedAt', 'endedAt', 'timeSpent',
+            'attemptCount', 'answers'
+          ])));
       allow delete: if false;
     }
 

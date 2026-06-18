@@ -846,9 +846,9 @@ app.get(
     scope?.setTag('service', 'admin');
     scope?.setTag('endpoint', '/v1/admin/schools');
 
-    // Only owners/admins can list schools
-    if (!['owner', 'admin'].includes(req.userRole ?? '')) {
-      res.status(403).json({ error: 'Only owners can list organizations.' });
+    // C-09 PATCH: Allow owner, admin, AND super_admin. Previous rule blocked super_admin.
+    if (!['owner', 'admin', 'super_admin'].includes(req.userRole ?? '')) {
+      res.status(403).json({ error: 'Only owners, admins, or super_admin can list organizations.' });
       return;
     }
 
@@ -858,8 +858,9 @@ app.get(
 
       let query = db.collection('organizations').orderBy('createdAt', 'desc').limit(limit);
 
-      // Non-super-admin users see only their own org
-      if (req.userRole !== 'admin') {
+      // C-09 PATCH: Only super_admin sees all orgs. Owners and admins see only their own.
+      // Previous rule checked !== 'admin' (let admin see all, blocked super_admin) - inverted.
+      if (req.userRole !== 'super_admin') {
         query = query.where('ownerId', '==', req.user!.uid);
       }
 
