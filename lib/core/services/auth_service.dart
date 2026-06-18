@@ -25,7 +25,17 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Hash a password using SHA-256
+  /// Hash a password using SHA-256.
+  ///
+  /// C-02 PATCH (DEPRECATED): Server-side password storage now uses scrypt
+  /// (see functions/src/utils/passwordHash.ts). This client-side SHA-256
+  /// helper is kept ONLY for backward compatibility with the legacy student
+  /// login flow (lib/features/auth/data/auth_service.dart:233) which
+  /// compares against the stored `passwordHash` field directly.
+  ///
+  /// Once the `studentLogin` Cloud Function is implemented (per FORENSIC-9
+  /// recommended architecture), this helper should be removed entirely and
+  /// the client should never see or compute a password hash.
   static String hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);

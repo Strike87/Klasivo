@@ -7,6 +7,7 @@ import { SENDER } from '../types/email';
 import { isValidEmail, missingField } from '../utils/validators';
 import { sanitizeText, sanitizeEmail } from '../utils/sanitizer';
 import { initSentry, withIsolatedScope } from '../config/sentry';
+import { checkRateLimit, rateLimitKey } from '../utils/rateLimiter';  // C-05 PATCH
 
 export const sendContactForm = onCall(
   { secrets: ['RESEND_API_KEY', 'SENTRY_DSN'], enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
@@ -16,6 +17,19 @@ export const sendContactForm = onCall(
     return withIsolatedScope(async (scope) => {
     scope.setTag('service', 'email');
     scope.setTag('function', 'sendContactForm');
+
+    // ─── C-05 PATCH: Per-IP rate limit (5 submissions per hour) ───────────
+    // Public callable — anyone (including bots) can call. Without a limit,
+    // a bot could spam the support inbox via Resend and burn email quota or
+    // trigger bounce-rate penalties. 5/hour/IP is generous for legitimate
+    // users but blocks script abuse. Bump to 10 if you see false positives.
+    const clientIp = request.rawRequest?.ip || 'unknown';
+    await checkRateLimit({
+      key: rateLimitKey('contact_form', clientIp),
+      limit: 5,
+      windowMs: 60 * 60 * 1000,  // 1 hour
+      label: 'contact form submissions',
+    });
 
     const data = request.data;
     const missing = missingField(data ?? {}, ['name', 'email', 'subject', 'message']);

@@ -21,7 +21,11 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Hash a password using SHA-256
+  /// Hash a password using SHA-256.
+  ///
+  /// C-02 PATCH (DEPRECATED): See lib/core/services/auth_service.dart
+  /// for details. Server now uses scrypt. This helper is kept only for
+  /// the legacy student-login-by-code flow at line ~233 of this file.
   static String hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);

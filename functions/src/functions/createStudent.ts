@@ -29,12 +29,13 @@
 
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
-import * as crypto from 'crypto';
+// crypto import removed — scrypt is in ../utils/passwordHash.ts
 import * as Sentry from '@sentry/node';
 
 import { verifyOrgBoundary, STAFF_ROLES, buildCustomClaims, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 import { queueEmail } from '../services/queueService';
+import { hashPassword } from '../utils/passwordHash';  // C-02 PATCH: scrypt
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -64,9 +65,8 @@ const STUDENT_CREATION_ROLES: KlasivoRole[] = [
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
+// C-02 PATCH: hashPassword is now imported from ../utils/passwordHash.ts
+// (scrypt + salt). The local SHA-256 implementation has been removed.
 
 /**
  * Generate a unique student code (STU-XXXXXX format).

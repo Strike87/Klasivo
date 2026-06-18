@@ -195,6 +195,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ====== Rate Limits Collection (C-05 PATCH) ============================
+    // Server-side rate limiter counters. NEVER expose to clients — Admin SDK
+    // writes from Cloud Functions bypass these rules. Block ALL client access
+    // defensively in case a future rule refactor accidentally loosens this.
+    match /rate_limits/{key} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // ====== Classes Collection ======
     match /classes/{classId} {
       allow read: if isAuth() && isInSameOrg();

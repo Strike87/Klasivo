@@ -1,10 +1,11 @@
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
-import * as crypto from 'crypto';
+// crypto import removed — scrypt is in ../utils/passwordHash.ts
 import * as Sentry from '@sentry/node';
 
 import { verifyOrgBoundary, PASSWORD_RESET_ROLES, isHigherRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
+import { hashPassword, needsRehash } from '../utils/passwordHash';  // C-02 PATCH
 
 interface ChangePasswordData {
   currentPassword?: string;
@@ -12,9 +13,8 @@ interface ChangePasswordData {
   targetUserId?: string;  // Only for admin resetting another user's password
 }
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
+// C-02 PATCH: hashPassword is now imported from ../utils/passwordHash.ts.
+// needsRehash() is used to migrate legacy SHA-256 hashes to scrypt on next change.
 
 export const changeUserPassword = onCall(
   {
