@@ -204,7 +204,10 @@ service cloud.firestore {
         !request.resource.data.diff(resource).affectedKeys().hasAny(['role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy']) &&
         // D20: Audit fields immutable from client.
         !request.resource.data.diff(resource).affectedKeys().hasAny(['createdAt', 'createdBy']);
-      allow delete: if false;
+      allow delete: if false;  // C-08: NEVER allow client deletes on users
+      // (deleting an owner orphans the org; deleting a teacher orphans
+      // their classes. All user archival must go through Cloud Functions
+      // which cascade-archive related docs.)
     }
 
     // ====== Rate Limits Collection (C-05 PATCH) ============================
@@ -378,10 +381,17 @@ service cloud.firestore {
       // C-12 PATCH: Only self-owner can create. Prevents spam org creation.
       allow create: if isAuth() &&
         request.resource.data.ownerId == request.auth.uid;
-      // Only members of the org who are teacher/owner can update, OR org owner
+      // C-08 PATCH: Only the org owner (or super_admin via Cloud Function)
+      // can update. Teacher/owner is no longer enough — teachers shouldn't
+      // be able to mutate org metadata. Additionally, the `shutdownRequested`
+      // field can ONLY be set by the owner (enforced here) — the 24h cooldown
+      // is checked by the deleteOrganization Cloud Function before archival.
       allow update: if isAuth() && isInSameOrg() &&
-        (isTeacherOrOwner() || resource.data.ownerId == request.auth.uid);
-      allow delete: if false;
+        isOwner() &&
+        // C-08: Block client mutation of audit fields
+        !request.resource.data.diff(resource).affectedKeys()
+          .hasAny(['createdAt', 'createdBy', 'archivedAt', 'archivedBy']);
+      allow delete: if false;  // C-08: NEVER allow client deletes — use CF
     }
 
     // ====== Invite Codes Collection ======

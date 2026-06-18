@@ -74,6 +74,7 @@ export { assignScope } from './functions/assignScope';
 export { syncClaims } from './functions/syncClaims';
 export { changeUserPassword } from './functions/changeUserPassword';
 export { setPermissionOverrides } from './functions/setPermissionOverrides';
+export { deleteOrganization } from './functions/deleteOrganization';  // C-08 PATCH
 
 // ─── Diagnostic Functions (v2) ──────────────────────────────────
 export { sentryTestEvent } from './functions/sentryTestEvent';
