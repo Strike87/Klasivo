@@ -77,9 +77,13 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       });
 
       // Update local state
+      // 1. Persist to Hive (disk) — read on next app start by rbacProvider.
+      // 2. Update in-memory rbacProvider state (PermissionState.mustChangePassword).
+      //    rbacProvider is the canonical state holder; there is no separate
+      //    mustChangePasswordProvider (the previous reference was dead code
+      //    that broke the release build).
       final box = Hive.box(AppConstants.authBox);
       await box.put('mustChangePassword', false);
-      ref.read(mustChangePasswordProvider.notifier).state = false;
       ref.read(rbacProvider.notifier).updateState(
         ref.read(rbacProvider).copyWith(mustChangePassword: false),
       );
