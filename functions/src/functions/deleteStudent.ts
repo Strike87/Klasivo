@@ -188,6 +188,19 @@ export const deleteStudent = onCall(
       // Auth account entirely. This triggers onUserDeleted which cascades
       // cleanup of all related collections. Use with caution — irreversible.
       if (hardDelete === true && isHigherRole(callerRole, 'admin')) {
+        // C-08 PATCH: Block hardDelete on owner targets entirely.
+        // Without this block, a super_admin calling deleteStudent on an
+        // owner triggers onUserDeleted → deleteOrganizationData which
+        // cascades through classes, students, staff, exam_attempts,
+        // submissions, audit_logs — destroying the entire org in one call.
+        // Org deletion MUST go through deleteOrganization (24h cooldown +
+        // confirmName + audit log) instead.
+        if (targetRole === 'owner') {
+          throw new HttpsError(
+            'failed-precondition',
+            'Cannot hard-delete an org owner. Use deleteOrganization (requires 24h cooldown + confirmName) or demote the owner first.',
+          );
+        }
         try {
           await admin.auth().deleteUser(targetUserId);
           console.log(`[deleteStudent] Hard-deleted Auth account ${targetUserId} (cascades via onUserDeleted).`);

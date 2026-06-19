@@ -27,8 +27,31 @@ export const onUserDeleted = functions
         const orgDoc = orgSnapshot.docs[0];
         if (orgDoc) {
           const orgId = orgDoc.id;
-          console.log(`Owner deleted — cascade deleting organization: ${orgId}`);
-          await deleteOrganizationData(orgId);
+          const orgData = orgDoc.data();
+          // C-08 DEFENSE-IN-DEPTH: Require explicit cascadeDeleteConfirmed flag
+          // before cascading org data destruction. This prevents the scenario
+          // where a super_admin (or compromised account) deletes an owner's
+          // Auth account directly via Firebase Console or Admin SDK, which
+          // would otherwise cascade through ~40 collections and destroy the
+          // entire org irreversibly.
+          //
+          // The flag is NOT set by deleteOrganization.ts (which soft-archives
+          // only and never deletes the owner Auth). It must be set explicitly
+          // by a separate admin action — e.g., a future "confirm org cascade"
+          // callable that requires 2FA + audit log. For now, the absence of
+          // the flag means the org is PRESERVED and a Sentry warning is fired
+          // so an operator can investigate.
+          if (orgData?.['cascadeDeleteConfirmed'] === true) {
+            console.log(`Owner deleted with confirmation — cascade deleting: ${orgId}`);
+            await orgDoc.ref.update({ cascadeDeleteConfirmed: false });
+            await deleteOrganizationData(orgId);
+          } else {
+            console.log(`Owner deleted WITHOUT confirmation — NOT cascading. Org ${orgId} preserved.`);
+            await Sentry.captureMessage(
+              `Owner Auth deleted without cascade confirmation. Org ${orgId} preserved. Owner: ${uid}.`,
+              { level: 'warning' }
+            );
+          }
         }
       } else {
         await cleanupUserReferences(uid);
