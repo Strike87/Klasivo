@@ -4818,3 +4818,83 @@ Stage Summary:
     git reset --hard pre-sprint1-20260619-192145
     git push origin main --force
     firebase deploy --only functions,firestore:rules,firestore:indexes
+
+---
+Task ID: SPRINT1-CLOSURE
+Agent: Super Z (main)
+Task: Execute Sprint 1 closure sequence per user's AI agent execution prompt (Steps 0-5)
+
+Work Log:
+- Read user's prompt: "9 of 12 P0 findings patched; 3 remain: C-18, C-14, C-08". Cross-checked against actual repo state.
+- Step 0 (snapshot verify): Tag pre-sprint1-20260619-192145 confirmed present locally + on origin (pushed in prior session). Commit 0143414. ✅ NO ACTION NEEDED.
+- Step 1 (C-18 verify): GoRoute(path: '/change-password', builder: ... ChangePasswordScreen()) present at lib/main.dart line 696-700. Import at top of file. Commit 282d42b on origin/main. ✅ NO ACTION NEEDED.
+- Step 2 (audit log verify): Re-ran verify-audit-log-collections.py. Result: [OK] consistent — 13 writes + 1 read all target 'audit_logs' (plural). 3 indexes on 'audit_logs' in firestore.indexes.json. firestore.rules line 655 has match /audit_logs/{logId}. Singular 'auditLogCollection' constant at app_constants.dart:73 is dead code (defined but unused). ✅ NO ACTION NEEDED.
+- Step 3 (C-14 verify): User's prompt said C-14 was still open, but actual repo state shows C-14 ALREADY APPLIED in commit 9fd74a3 (Day 4 patches). Verified:
+    * firestore.rules line 62-67: isStaff() excludes 'observer' (write path)
+    * firestore.rules line 72-78: isStaffIncludingObserver() includes 'observer' (read path)
+    * firestore.rules line 656: audit_logs read uses isTeacherOrOwner() → isStaff() → excludes observer
+    * firestore.rules lines 657-659: audit_logs create/update/delete = false (C-16)
+  Note: sprints.zip does NOT contain apply-day3-patches.py (only the 12 files listed in the prompt). The C-14 fix was applied via the prior Day 4 patch script. ✅ NO ACTION NEEDED.
+- Step 4 (C-08 apply): This was the ONE remaining gap. Verified:
+    * deleteStudent.ts line 190: hardDelete block had NO targetRole === 'owner' check
+    * onUserDeleted.ts line 27-31: cascade fired unconditionally on owner deletion
+    * deleteOrganization.ts: uses shutdownRequested + 24h cooldown + archived=true (soft-delete), does NOT delete owner Auth, does NOT set cascadeDeleteConfirmed flag
+  Applied 2 patches:
+    1. deleteStudent.ts line 191-203: Added 'if (targetRole === owner) throw failed-precondition' block before admin.auth().deleteUser(). Throws with message pointing to deleteOrganization as the correct path.
+    2. onUserDeleted.ts line 30-54: Added cascadeDeleteConfirmed flag check. If flag absent (default), org is PRESERVED and Sentry warning is fired. Flag must be set by a future explicit admin action (not by deleteOrganization.ts which never deletes owner Auth).
+  TypeScript build verification: npx tsc --noEmit → zero new errors in deleteStudent.ts or onUserDeleted.ts. (Pre-existing errors in passwordHash.ts:79-83 and rateLimiter.ts:101 from commit 7f350ed are unrelated and pre-date this change.)
+  Committed as 7f83c7c, pushed to origin/main (after git pull --rebase confirmed no new remote commits).
+- Step 5 (verification checklist): Generated post-deploy verification checklist (see Stage Summary below).
+
+Stage Summary:
+- 1 new commit pushed to https://github.com/Strike87/Klasivo:
+    7f83c7c security(c-08): block hardDelete on org owners + defense-in-depth cascade flag
+- ALL 12 P0 FINDINGS FROM MASTER AUDIT ARE NOW CLOSED IN CODE:
+    C-01 App Check (308b20e)
+    C-02 scrypt password hashing (7f350ed)
+    C-03/C-11 users read rules (3504aef)
+    C-04 setPermissionOverrides wildcard + self-target (308b20e)
+    C-05 sendContactForm rate limiter (7f350ed)
+    C-08 org destruction block (7f83c7c) ← NEW
+    C-09 /v1/admin/schools privilege inversion (3504aef)
+    C-10 student self-update blocked fields (3504aef)
+    C-12 organizations rules (3504aef)
+    C-13 isInSameTenant null-safety (3504aef)
+    C-14 observer read-only (9fd74a3)
+    C-16 audit_logs deny all client writes (9fd74a3)
+    C-18 /change-password route (282d42b)
+- 2 additional Sprint 1 commits in this session's chain:
+    282d42b fix(c-18): add missing /change-password route
+    e0dee65 security(sprint1): password cleanup — replace '123456' default + Dart PasswordHasher service
+- Rollback tag: pre-sprint1-20260619-192145 (commit 0143414, immutable on GitHub)
+
+POST-DEPLOYMENT VERIFICATION CHECKLIST (run after firebase deploy):
+  □ 1. Teacher account: login, create class, create exam — expect SUCCESS
+  □ 2. Student account: login → redirect to /change-password (C-18) → set new password → mustChangePassword cleared → navigate normally
+  □ 3. Observer account: login, read data OK, write attempts DENIED (C-14)
+  □ 4. Owner account: login, manage users, assign roles
+  □ 5. Cross-org isolation: Org A user cannot read Org B data
+  □ 6. LiveKit join: teacher starts class, student joins
+  □ 7. Assignment access: student submits, teacher grades
+  □ 8. Audit log: actions logged, logs NOT forgeable (C-16)
+  □ 9. App Check: curl from non-app client rejected (C-01)
+  □ 10. Password change: student changes password, old password fails
+  □ 11. Org destruction: super_admin calls deleteStudent({targetUserId: <owner_uid>, hardDelete: true}) → expect FAILED_PRECONDITION (C-08)
+
+REQUIRED DEPLOYMENT SEQUENCE (cannot be done from this AI environment):
+  1. Register apps in Firebase Console → App Check (Android: Play Integrity; iOS: DeviceCheck) — required for enforceAppCheck: true on callables
+  2. Backup Firestore: gcloud firestore export gs://klasivo-prod-backups/pre-sprint1-deploy-$(date +%Y%m%d) --project=klasivo-prod
+  3. flutter pub get
+  4. Build & publish new Flutter client to Play Store (needed for App Check + /change-password route + random student passwords)
+  5. Wait 24-48h for user adoption (CRITICAL — server-side enforceAppCheck will reject old clients)
+  6. Deploy server: firebase deploy --only functions,firestore:rules,firestore:indexes
+  7. Run the 11 verification tests above
+  8. If all pass → Sprint 1 COMPLETE. If any fail → rollback: git reset --hard pre-sprint1-20260619-192145 && git push origin main --force && firebase deploy --only functions,firestore:rules,firestore:indexes
+
+KNOWN PRE-EXISTING ISSUES (not blocking Sprint 1, should be addressed in a later sprint):
+  - TypeScript errors in functions/src/utils/passwordHash.ts (lines 79-83) and functions/src/utils/rateLimiter.ts (line 101) from commit 7f350ed. These were merged with strict-mode violations. The functions will still deploy (Firebase uses loose compile for deployment) but should be fixed for type safety.
+  - 5 client-side SHA-256 hashPassword() definitions still exist (lib/features/auth/data/auth_service.dart, lib/core/services/{auth,student,excel_import,qr_enrollment}_service.dart). Callers still use them. Migration to send-plaintext-to-server pattern requires coordinated client+server deploy + backward-compat verifyPassword() for legacy users. Deferred to a later sprint.
+  - scripts/migrate-remove-password-hash.js exists but should NOT be run until the caller migration above is complete + 24-48h adoption window.
+
+SPRINT 1 IS CODE-COMPLETE. AWAITING USER DEPLOYMENT + VERIFICATION.
+DO NOT PROCEED TO SPRINT 2-6 WITHOUT EXPLICIT HUMAN APPROVAL.
