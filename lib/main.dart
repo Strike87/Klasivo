@@ -107,6 +107,7 @@ import 'core/services/feature_flag_service.dart';
 import 'core/services/permission_service.dart';
 import 'core/services/event_bus.dart';
 import 'firebase_options.dart';
+import 'features/auth/pages/change_password_screen.dart';
 
 Future<void> main() async {
   // ── ZONE FIX: All initialization + runApp in the SAME zone ──────────
@@ -692,6 +693,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       // ─── Splash ──────────────────────────────────────────────────────
+// C-18 FIX: /change-password route — was missing, caused hard lockout
+        // for any user with mustChangePassword: true
+        GoRoute(
+          path: '/change-password',
+          builder: (context, state) => const ChangePasswordScreen(),
+        ),
       GoRoute(
         path: '/',
         builder: (context, state) => const SplashScreen(),
