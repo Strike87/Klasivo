@@ -8,16 +8,18 @@ plugins {
 
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
+
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
+    }
+}
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-}
-    }
 }
 
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
@@ -48,14 +50,16 @@ android {
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
-signingConfigs {
-    release {
-        keyAlias keystoreProperties['keyAlias']
-        keyPassword keystoreProperties['keyPassword']
-        storeFile file(keystoreProperties['storeFile'])
-        storePassword keystoreProperties['storePassword']
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+        }
     }
-}
+
     defaultConfig {
         applicationId "com.klasivo.app"
         minSdk 23
@@ -68,9 +72,13 @@ signingConfigs {
     buildTypes {
         release {
             signingConfig signingConfigs.release
+
             minifyEnabled false
             shrinkResources false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            proguardFiles getDefaultProguardFile(
+                    'proguard-android-optimize.txt'
+            ), 'proguard-rules.pro'
         }
     }
 }
@@ -82,17 +90,17 @@ flutter {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.21"
 
-    // Import the Firebase BoM
+    // Firebase BoM
     implementation platform('com.google.firebase:firebase-bom:34.14.0')
 
-    // Firebase SDKs (versions managed by BoM — no version numbers needed)
+    // Firebase SDKs
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-messaging'
 
-    // MultiDex support
+    // MultiDex
     implementation 'androidx.multidex:multidex:2.0.1'
 
-    // Core library desugaring (required by flutter_local_notifications)
+    // Desugaring
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
