@@ -2,7 +2,7 @@ name: klasivo
 description: Klasivo — A production-ready Android exam management application for teachers and students.
 publish_to: 'none'
 
-version: 2.0.0+7
+version: 2.0.0+8
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
