@@ -403,7 +403,13 @@ class AppConstants {
 
   static const int autoSaveInterval = 5;
   static const int violationThreshold = 3;
-  static const String defaultStudentPassword = '123456';
+  // C-18/C-02 FIX: Removed hardcoded '123456' default password.
+  // Use PasswordHasher.instance.generateTemporaryPassword() instead.
+  // This constant is kept for backward compatibility but should NOT be
+  // used for new student creation. Existing callers will get a sentinel
+  // value that will fail password validation if mistakenly stored.
+  @deprecated
+  static const String defaultStudentPassword = 'CHANGED_USE_HASHER';
   static const int maxMessageLength = 2000;
   static const int analyticsCacheDurationHours = 1;
   static const int inviteCodeLength = 8;

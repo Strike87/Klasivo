@@ -9,6 +9,7 @@ import '../../../providers/organization_provider.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
 import '../../../widgets/klasivo_toast.dart';
+import 'package:klasivo/core/services/password_hasher.dart';
 
 class StudentFormScreen extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -43,7 +44,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
     }
     // Default password for new students
     if (!widget.isEditing) {
-      _passwordController.text = '123456';
+      _passwordController.text = PasswordHasher.instance.generateTemporaryPassword();  // C-18: random per-student
     }
   }
 

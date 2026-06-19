@@ -1,0 +1,104 @@
+rules_version = '2';
+service firebase.storage {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Helper Functions
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Helper: Check if user is authenticated
+  function isAuth() {
+    return request.auth != null;
+  }
+
+  // Helper: Get user's organization ID from Firestore
+  function getUserOrgId() {
+    return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+  }
+
+  // Helper: Get user's role from Firestore
+  function getUserRole() {
+    return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+  }
+
+  // Helper: Check if user is a teacher, owner, or admin
+  function isTeacherOrOwner() {
+    return isAuth() &&
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      (getUserRole() == 'teacher' || getUserRole() == 'owner' || getUserRole() == 'admin');
+  }
+
+  // Helper: Check if the orgId in the storage path matches the user's org
+  function isOrgMember(orgId) {
+    return isAuth() &&
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      getUserOrgId() == orgId;
+  }
+
+  // Helper: Validate file size (max 50 MB)
+  function isFileSizeValid() {
+    return request.resource.size < 50 * 1024 * 1024;
+  }
+
+  // Helper: Validate image content type
+  function isImageType() {
+    return request.resource.contentType.matches('image/.*');
+  }
+
+  // Helper: Validate document content type
+  function isDocumentType() {
+    return request.resource.contentType.matches('application/(pdf|vnd.*|msword.*)') ||
+           request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.*') ||
+           request.resource.contentType.matches('text/.*');
+  }
+
+  // Helper: Validate video content type
+  function isVideoType() {
+    return request.resource.contentType.matches('video/.*');
+  }
+
+  // Helper: Validate allowed content types for org resources
+  function isAllowedResourceType() {
+    return isImageType() || isDocumentType() || isVideoType();
+  }
+
+  match /b/{bucket}/o {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Organization-scoped resources
+    // Path: organizations/{orgId}/{resourceType}/{resourceId}/{filename}
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /organizations/{orgId}/{allPaths=**} {
+      // Read: Any authenticated member of the same org can read
+      allow read: if isAuth() && isOrgMember(orgId);
+
+      // Write: Only teachers/owners/admins in the same org can write
+      // File size and type validation enforced
+      allow write: if isAuth() && isOrgMember(orgId) && isTeacherOrOwner()
+        && isFileSizeValid() && isAllowedResourceType();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // User profile photos
+    // Path: users/{userId}/profile_photos/{filename}
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /users/{userId}/profile_photos/{filename} {
+      // Read: Any authenticated user can view profile photos
+      allow read: if isAuth();
+
+      // Write: Only the user themselves can upload/update their profile photo
+      // Must be an image and under 10 MB
+      allow write: if isAuth() && request.auth.uid == userId
+        && isImageType() && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Deny all other paths — no wildcard access
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
