@@ -6565,3 +6565,61 @@ Stage Summary:
     4. **ASSIGNMENT SUBMISSION CF**: apply-exam-flow-fixes.py P1-4 flagged — assignment submission has same client-side grading issue. Needs new `gradeAssignmentSubmission` CF (same pattern as gradeSubmission). NOT in this commit's scope.
     5. **TESTS**: 410 Flutter tests have 40 known failures including stale assertions + 2 compilation errors (worklog from patches author). Tests use FakeFirebaseFirestore (no rules enforcement). Sprint 5 S5-02 covers rules-unit-testing harness. NOT in this commit's scope.
     6. **DEAD FILE CLEANUP**: lib/features/submissions/data/submission_service.dart has 0 importers — patches modified it harmlessly but it should be deleted in a future cleanup sweep.
+
+---
+Task ID: phase5plus-step3
+Agent: main (continuation)
+Task: Apply the missing 7th patch set (apply-7-more-fixes.py) and reword the prior
+      commit messages from "5 patch sets" → "6 patch sets applied / 8 patch files
+      imported" so the audit trail reflects reality.
+
+Work Log:
+- Inspected download/patches/ — confirmed 8 files (7 .py apply-* + 1 .md analysis).
+- Compared local HEAD vs origin/main — discovered apply-7-more-fixes.py (LiveKit,
+  uploads, scope, notifs, email — 7 P1/P2 issues) had been imported but NEVER
+  APPLIED. Prior commit bbd1a3c message claimed "5 patch sets" applied, which
+  undercounted both the import (8 files) and what should have been applied (6 sets).
+- Ran download/patches/apply-7-more-fixes.py — 6 of 7 fixes applied (P1-4
+  createStudent teacher-scope was a pattern-drift skip; verified the check already
+  exists in createStudent.ts from an earlier patch set).
+- Patch script's `npm run build` step failed due to a shell-quoting bug; built
+  manually and hit 2 real compile errors caused by the patch:
+    1. onLiveKitRoomEvents.ts:67 referenced `roomData` (undefined) — fixed to
+       `data['classId']`.
+    2. emailWorker.ts:86 used `queueId` before its declaration — moved
+       `const queueId`/`docRef` above the P2-2 backoff check.
+- Rebuilt functions: tsc returns 0.
+- Re-ran scripts/verify-security-patches.py: 47/47 checks pass.
+- Amended the compile fixes into the patch commit (4445d02 → c5933fc).
+- Reworded 3 commit messages via `git rebase -i 16a98f0` + custom editor:
+    226b6b4 ← 3b2a00d  "docs(patches): import 8 security patch files from upstream"
+    0c9b669 ← bbd1a3c  "security(patches): apply 6 patch sets — 36 P1/P2 fixes
+                        across auth, data-exposure, exam-flow, RBAC, LiveKit/uploads/notifs"
+    c5933fc ← 4445d02  "security(p1-p2): 7 more issues — LiveKit, uploads, scope,
+                        notifications, email" (added patch-bug-fix section)
+- git push --force-with-lease origin main — successful.
+
+Stage Summary:
+- 6 P1/P2 fixes that were MISSING from production code are now applied and verified:
+    P1-1 LiveKit roomName verification (auth bypass via mismatched IDs)
+    P1-2 LiveKit /mute org-boundary check (was wide open — C-06)
+    P1-3 Upload URL scoping (unscoped exams/, materials/, submissions/ removed)
+    P2-1 Notifications create staff-only
+    P2-2 Email retry exponential backoff
+    P2-3 Class-start notifications scoped to class (was sent to ALL org students)
+- Audit trail now matches reality:
+    - "8 patch files imported" (was "5")
+    - "6 patch sets applied" (was "5")
+    - 36 total P1/P2 fixes (was claimed "30")
+- Outstanding (Step 2 — post-deploy migration, NOT YET RUN):
+    scripts/migrate-remove-password-hash.js
+      Pre-reqs:
+        1. Generate Firebase service-account JSON, save as functions/service-account.json
+           (add to .gitignore — it's a secret).
+        2. Take Firestore backup (gcloud firestore export ...).
+      Run:
+        cd functions && npm install firebase-admin && node ../scripts/migrate-remove-password-hash.js
+      Verify:
+        Firebase Console → Firestore → query users where passwordHash != null → expect 0 docs.
+- Outstanding (Step 1 — deploy):
+    firebase deploy --only functions,firestore:rules,firestore:indexes,storage
