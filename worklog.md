@@ -5477,3 +5477,741 @@ KNOWN REMAINING ITEMS (not in scope of this patch):
   - syncClaims.ts: add roleVersion increment (Day 2 followup)
   - owner_register_screen.dart / parent_register_screen.dart: switch to registerOwnerViaCF / registerParentViaCF
   - Convert ShellRoute → StatefulShellRoute.indexedStack (deferred Issue 2)
+
+---
+Task ID: bucket-c-investigation
+Agent: bucket-c-investigator
+Task: Investigate 4 same-named provider file pairs (scaffold lib/features/<feature>/providers/<X>_provider.dart vs live lib/providers/<X>_provider.dart) — determine dead / partially-live / needs-wiring.
+
+Work Log:
+- Ran `diff -u lib/providers/<X>_provider.dart lib/features/<feature>/providers/<X>_provider.dart` for all 4 pairs (auth, classes, exams, students).
+- Ran `grep -rn "features/<feature>/providers/<X>_provider\.dart" lib test --include="*.dart"` (exact filename, no substring false-positives) for scaffold-import evidence.
+- Ran `grep -rln "providers/<X>_provider" lib --include="*.dart" | wc -l` for live importer counts; listed top importers.
+- Ran `git log --format="%h %ad %s" --date=short -1 -- <path>` for last commit date of each file.
+- Confirmed with `git show --stat 637d998` that commit 637d998 (the latest) only added +13 lines total to 5 files (rbacInitProvider wiring) — it did NOT propagate Sentry breadcrumbs, the `defaultValue: false` cold-start fix, or `skipLoadingOnReload: true` to the scaffold copies.
+
+Findings (all 4 pairs follow the SAME pattern):
+- Scaffold version is a frozen OLDER snapshot of the live file.
+- The ONLY scaffold-only change vs live is the import-path rewrite (`organization_provider.dart` → `../../../providers/organization_provider.dart`), which is just a relocation adaptation — not new functionality.
+- Live version has fixes that scaffold LACKS:
+    * auth_provider:    Sentry/Crashlytics telemetry (breadcrumb + userContext) + `hasCompletedSetupProvider` `defaultValue: false` cold-start bug fix (scaffold still has buggy `defaultValue: true`).
+    * class_provider:   `skipLoadingOnReload: true` on 2 `.when()` calls (P0-9 dashboard flicker fix).
+    * exam_provider:    `skipLoadingOnReload: true` on 1 `.when()` call (P0-9 fix).
+    * student_provider: `skipLoadingOnReload: true` on 2 `.when()` calls (P0-9 fix).
+- Scaffold is NEVER actually imported — every grep "match" is a code comment in `auth_notifier_provider.dart` / `exam_notifier_provider.dart` referring to the file by path (e.g. `// at lib/features/auth/providers/auth_provider.dart).`), not an `import` statement.
+- Live version is widely imported: auth=71, class=28, exam=18, student=15 importer files.
+
+VERDICT (all 4): DELETE-scaffold (live is strictly better — scaffold has zero unique code, only missing fixes).
+- Safe to delete all 4 scaffold files in one pass.
+- After deletion, also clean up the misleading comment references in `lib/features/auth/providers/auth_notifier_provider.dart:3-4` and `lib/features/exams/providers/exam_notifier_provider.dart:3-4` (they reference the scaffold path as if it's a live duplicate — it isn't anymore after deletion).
+
+Stage Summary:
+- 4 files identified as safe-delete candidates (1724 total lines, 840 scaffold+live combined; deleting scaffold removes ~840 lines).
+- No MERGE-NEEDED, no KEEP-SCAFFOLD-AND-WIRE — all 4 are strictly redundant older copies.
+- Next action: delete the 4 scaffold files, update the 2 notifier_provider.dart comment headers, run `flutter analyze` to verify.
+
+---
+Task ID: bucket-d-livekit
+Agent: bucket-d-livekit-investigator
+Task: Investigate lib/features/livekit/ scaffold files (8 domain/data files + 1 providers file) to determine whether they are abandoned clean-architecture scaffold or actively wired.
+
+HEADLINE FINDING (read this first):
+- The premise that lib/features/livekit/ is "abandoned clean-architecture scaffold" is INCORRECT for this cluster.
+- All 9 target files are FULLY WIRED into the app: 4 Cloud Functions, 7 Firestore rules blocks, 12 Firestore indexes, 2 GoRouter routes, 1 feature flag, 4 page files (1763 LOC) that consume the providers, and a pubspec dependency (`livekit_client: ^2.3.0`).
+- There is NO alternative "live" implementation in lib/core/services/ or lib/providers/ — the lib/features/livekit/ tree IS the canonical LiveKit implementation.
+- The feature is gated behind `FeatureFlags.livekit` (router.dart:143) so it is dark-launched, not abandoned.
+- DEVELOPMENT_ROADMAP.md lines 165, 447-460 explicitly list all 13 livekit files (9 target + 4 pages) as "✅ Coded" for Sprint 1.
+
+Investigation method:
+- Read all 9 target files in full (1377 LOC).
+- Grepped lib/ and test/ for `features/livekit/` import paths → only router.dart + intra-cluster imports.
+- Grepped for all 9 provider names → all consumed by 4 page files.
+- Grepped for all 9 class names → no duplicates outside lib/features/livekit/.
+- Grepped functions/src/ for `livekit` → 10 files match (4 LiveKit CFs + rbac.ts + sentry.ts + index.ts + api/index.ts + onUserDeleted.ts + package-lock.json).
+- Grepped firestore.rules for the 6 collection names → all 6 present (livekit_rooms, messages sub, raised_hands sub, attendance sub, scheduled_classes, session_analytics, recordings) with security patches (D11/D12/D15/D22).
+- Grepped firestore.indexes.json → 12 indexes across livekit_rooms/recordings/scheduled_classes/session_analytics.
+- Grepped pubspec.yaml → `livekit_client: ^2.3.0` present.
+- Grepped DEVELOPMENT_ROADMAP.md, FUTURE_IDEAS.md, worklog.md → all mention LiveKit extensively.
+- Git log --follow on each of the 9 files: on `main` HEAD, all 9 share a single last-touch commit `83a427f` (2026-06-18 "docs: add complete audit + Phase 2 deploy archive" — appears to be a squash/archive). `git log --all` reveals 4 prior granular feat commits on other refs: a626411 (Jun 12 23:50 initial), fa86c83 (Jun 13 00:33 chat/hand/attendance/recording), f2d55d5 (Jun 13 00:44 production hardening), 93ac016 (Jun 13 20:51 scope auth + RoomType). So the cluster had active multi-commit development before being archived.
+- Only TODO in the entire cluster: `live_class_lobby_screen.dart:276 // TODO: populate from subject selection` (in a page file, not in the 9 target files). The 9 target files contain ZERO TODO/FIXME/HACK markers.
+
+Per-file findings:
+
+### lib/features/livekit/data/livekit_repository.dart (625 lines)
+- Referenced anywhere? YES. liveKitRepositoryProvider defined in livekit_providers.dart:19; read 11× across 4 page files (live_class_screen.dart ×6, live_class_lobby_screen.dart ×3, scheduled_classes_screen.dart ×2).
+- Live equivalent? NO-LIVE-EQUIVALENT. No livekit_service.dart in lib/core/services/ (verified via LS). No livekit_provider.dart in lib/providers/ (verified via LS). The repository IS the canonical data layer.
+- Wiring signals found? STRONG. (a) 4 CFs reference the same collections: generateLiveKitToken.ts:83 reads livekit_rooms; removeParticipant.ts:83 reads livekit_rooms; onLiveKitRoomEvents.ts:25,176,236,260,268,340 reads/writes livekit_rooms + writes session_analytics:292; scheduledClassReminder.ts:41 reads scheduled_classes. (b) Firestore rules lines 863-916 cover livekit_rooms + 3 sub-collections + scheduled_classes + session_analytics; recordings at 968-970 with explicit comment "D11/D22 PATCH: livekit_repository.dart reads recordings at lines 480,493". (c) firestore.indexes.json: 12 indexes across the 4 top-level collections. (d) Routes /live-classes and /live-classes/analytics in router.dart:398-403, gated by FeatureFlags.livekit at line 143.
+- Completeness: FINISHED. Full Sentry instrumentation (every method wrapped in transaction + breadcrumb + captureException + KlasivoCrashlytics). No TODOs. Last commit on main: 83a427f (2026-06-18 squash). Cross-branch: 4 prior feat commits (a626411 → 93ac016, Jun 12-13).
+- Recommendation: KEEP.
+- One-line reasoning: Sole LiveKit data layer; fully wired to 4 pages and 4 CFs with production-grade observability.
+
+### lib/features/livekit/domain/livekit_room_model.dart (168 lines, includes RoomType enum + LiveKitRoom class)
+- Referenced anywhere? YES. LiveKitRoom + RoomType imported by scheduled_class_model.dart:8 and session_analytics_model.dart:7 (intra-cluster); transitively used by all 4 page files (LiveClassScreen takes `final LiveKitRoom room`).
+- Live equivalent? NO-LIVE-EQUIVALENT.
+- Wiring signals found? YES. Firestore rules /livekit_rooms/{roomId} (line 863). rbac.ts exports LIVEKIT_ADMIN_ROLES. generateLiveKitToken.ts:83 reads room doc; ScopeValidator applies roomType-based rules referenced in model doc comment.
+- Completeness: FINISHED. Enum with 3 values (classroom/meeting/webinar), from/to Firestore, copyWith, derived getters (livekitUrl, requiresScopeAuthorization). Last commit: 83a427f (squash); original a626411.
+- Recommendation: KEEP.
+- One-line reasoning: Core domain model transitively used by every page and provider; RoomType enum mirrors server-side scope auth rules.
+
+### lib/features/livekit/domain/livekit_attendance.dart (61 lines)
+- Referenced anywhere? YES. Used by livekit_repository.dart (markAttendance, markLeft, watchAttendance — 3 methods). Provider `attendanceProvider` defined at livekit_providers.dart:98. Consumed by live_class_screen.dart:520.
+- Live equivalent? NO-LIVE-EQUIVALENT. lib/core/services/attendance_service.dart is for student class attendance (different domain — verified via grep, no LiveKit/raised/chat_message matches). The two attendance systems are distinct.
+- Wiring signals found? YES. Firestore rules /livekit_rooms/{roomId}/attendance/{attendanceId} (line 894, "D12 PATCH: userId == auth.uid enforced on create").
+- Completeness: FINISHED. Plain Dart class with from/toFirestore, isPresent/duration getters.
+- Recommendation: KEEP.
+- One-line reasoning: LiveKit in-room attendance is a distinct domain from class attendance; fully wired repository→provider→page.
+
+### lib/features/livekit/domain/livekit_chat_message.dart (44 lines)
+- Referenced anywhere? YES. Used by repository (sendChatMessage, watchChatMessages). Provider `chatMessagesProvider` at livekit_providers.dart:80. Consumed by live_class_screen.dart:413.
+- Live equivalent? NO-LIVE-EQUIVALENT. messaging_service.dart is for school announcements, not in-class chat.
+- Wiring signals found? YES. Firestore rules /livekit_rooms/{roomId}/messages/{messageId} (line 871).
+- Completeness: FINISHED.
+- Recommendation: KEEP.
+- One-line reasoning: In-class chat model fully wired to chat UI panel in live_class_screen.
+
+### lib/features/livekit/domain/livekit_raised_hand.dart (43 lines)
+- Referenced anywhere? YES. Used by repository (toggleRaisedHand, lowerHand, lowerAllHands, watchRaisedHands — 4 methods). Provider `raisedHandsProvider` at livekit_providers.dart:89. Consumed by live_class_screen.dart:207.
+- Live equivalent? NO-LIVE-EQUIVALENT.
+- Wiring signals found? YES. Firestore rules /livekit_rooms/{roomId}/raised_hands/{handId} (line 881, "D15 PATCH: owner-only update/delete" — security-hardened).
+- Completeness: FINISHED.
+- Recommendation: KEEP.
+- One-line reasoning: Raise-hand feature unique to live classes; fully wired end-to-end with security patches.
+
+### lib/features/livekit/domain/recording_model.dart (90 lines)
+- Referenced anywhere? YES. Used by repository (watchRecordings, watchRoomRecordings — 2 methods). Providers `orgRecordingsProvider` (line 107) and `roomRecordingsProvider` (line 112). NOTE: no page file currently consumes these 2 providers — grep for orgRecordingsProvider/roomRecordingsProvider returns only the definition file. Recordings playback/list UI not yet built.
+- Live equivalent? NO-LIVE-EQUIVALENT.
+- Wiring signals found? YES. Firestore rules /recordings/{recordingId} (line 968-970, with explicit comment "D11/D22 PATCH: livekit_repository.dart reads recordings at lines 480,493"). firestore.indexes.json: 2 indexes for recordings. onLiveKitRoomEvents.ts likely writes recording docs on room end (writes session_analytics at L292, recordings logic nearby).
+- Completeness: Model + provider + rules + indexes + CF all in place. Only the FRONTEND recordings list/playback screen is missing.
+- Recommendation: KEEP-AND-WIRE-UP (recordings list screen is the only gap).
+- One-line reasoning: Backend pipeline complete; only a recordings list/playback page is missing to close the loop.
+
+### lib/features/livekit/domain/scheduled_class_model.dart (110 lines)
+- Referenced anywhere? YES. Used by repository (createScheduledClass, updateScheduledClass, deleteScheduledClass, watchUpcomingClasses, watchTeacherClasses — 5 methods). Providers `upcomingClassesProvider` (line 121) and `teacherClassesProvider` (line 126). Consumed by scheduled_classes_screen.dart:26.
+- Live equivalent? NO-LIVE-EQUIVALENT.
+- Wiring signals found? YES. Firestore rules /scheduled_classes/{classId} (line 903). CF scheduledClassReminder.ts:41 reads scheduled_classes. firestore.indexes.json: 3 indexes.
+- Completeness: FINISHED. Includes helper methods startsWithin(), hasPassed, timeUntilStart.
+- Recommendation: KEEP.
+- One-line reasoning: Scheduled-class feature is the entry point for the /live-classes route; fully wired.
+
+### lib/features/livekit/domain/session_analytics_model.dart (88 lines)
+- Referenced anywhere? YES. Used by repository (watchRoomAnalytics, watchOrgAnalytics, watchTeacherAnalytics — 3 methods). Providers `roomAnalyticsProvider` (line 135), `orgAnalyticsProvider` (line 140), `teacherAnalyticsProvider` (line 145). Consumed by session_analytics_dashboard.dart:22-23.
+- Live equivalent? NO-LIVE-EQUIVALENT. lib/providers/analytics_provider.dart + lib/core/services/analytics_service.dart are for exam/assignment analytics (verified via grep — no LiveKit/session_analytics matches). Totally different domain.
+- Wiring signals found? YES. Firestore rules /session_analytics/{analyticsId} (line 911). CF onLiveKitRoomEvents.ts:292 writes session_analytics docs on room end. firestore.indexes.json: 3 indexes.
+- Completeness: FINISHED. Read-only model (intentionally no toFirestore — clients have read-only access per doc comment). Matches CF-written shape.
+- Recommendation: KEEP.
+- One-line reasoning: Analytics dashboard fully wired; CF auto-writes analytics on room end.
+
+### lib/features/livekit/providers/livekit_providers.dart (148 lines)
+- Referenced anywhere? YES. liveKitRepositoryProvider + 11 stream/StateNotifier providers all consumed by the 4 page files (11× liveKitRepositoryProvider reads, plus chatMessagesProvider, raisedHandsProvider, attendanceProvider, activeLiveKitRoomsProvider, upcomingClassesProvider, orgAnalyticsProvider, teacherAnalyticsProvider).
+- Live equivalent? NO-LIVE-EQUIVALENT. No livekit_provider.dart in lib/providers/ (verified via LS).
+- Wiring signals found? YES. Repository provider instantiates LiveKitRepository (which talks to CFs + Firestore). 9 StreamProviders + 1 StateNotifierProvider all delegate to repository methods that hit wired CFs/collections.
+- Completeness: FINISHED.
+- Recommendation: KEEP.
+- One-line reasoning: Sole Riverpod wiring layer for LiveKit; all 11 providers actively consumed by pages.
+
+SUMMARY TABLE:
+| # | File | Lines | Recommendation | One-line |
+|---|------|-------|----------------|----------|
+| 1 | data/livekit_repository.dart | 625 | KEEP | Sole data layer, wired to 4 pages + 4 CFs |
+| 2 | domain/livekit_room_model.dart | 168 | KEEP | Core model + RoomType enum, transitively used everywhere |
+| 3 | domain/livekit_attendance.dart | 61 | KEEP | LiveKit-attendance ≠ class attendance; fully wired |
+| 4 | domain/livekit_chat_message.dart | 44 | KEEP | In-class chat model, wired to chat UI |
+| 5 | domain/livekit_raised_hand.dart | 43 | KEEP | Raise-hand feature, security-patched rules |
+| 6 | domain/recording_model.dart | 90 | KEEP-AND-WIRE-UP | Backend complete; only recordings list UI missing |
+| 7 | domain/scheduled_class_model.dart | 110 | KEEP | Entry point for /live-classes route |
+| 8 | domain/session_analytics_model.dart | 88 | KEEP | Read-only model, CF auto-writes on room end |
+| 9 | providers/livekit_providers.dart | 148 | KEEP | Sole Riverpod layer, 11 providers all consumed |
+
+ACTION ITEMS FOR HUMAN (if any):
+- None of the 9 target files should be deleted.
+- The only gap in the entire cluster is a missing recordings list/playback page (orgRecordingsProvider + roomRecordingsProvider have no consumer). If recordings UI is in scope, build it; otherwise leave the providers as future-ready scaffolding.
+- The feature is currently dark-launched behind FeatureFlags.livekit. To go live, enable the flag in feature_flag_service.dart (or via remote config).
+- Note for future scaffold-investigation tasks: the user's premise ("abandoned clean-architecture scaffold") did NOT hold for this cluster. Verify the premise before recommending deletions.
+
+---
+Task ID: bucket-b-stubs-and-small-files
+Agent: bucket-b-stubs-investigator
+
+Scope: Sweep lib/features/<feature>/{domain,data,application,providers}/ stubs (Bucket B, 48 files) + 9 small unique files not covered by other agents.
+
+Key Findings:
+
+Part 1 — Stub barrel sweep (48 files):
+- 31 are TRUE STUBS (header-only "Klasivo v2.0" or "KLASIVO X — Barrel Export" comments + optional TODOs, zero exports, ≤17 lines): all of academic/, analytics/, attendance/, messaging/, parent/, staff_approval/domain/, all of assignments/, exams/application.dart, all of lms/ (4 files). Safe to delete.
+- 14 are MINI REAL-BARRELS (2–6 lines with actual `export 'X.dart';` lines) but ALL have ZERO importers in lib/test — they are dead barrels pointing to either missing files or dead scaffold files:
+  * auth/data/data.dart (exports auth_service.dart — MISSING file)
+  * auth/domain/domain.dart, auth/providers/providers.dart
+  * classes/data/data.dart (exports class_service.dart — MISSING file), classes/domain/, classes/providers/
+  * exams/data/, exams/domain/, exams/providers/
+  * students/domain/, students/providers/
+  * submissions/data/, submissions/domain/, submissions/providers/
+  All safe to delete (no live code references them).
+- 3 are SURPRISE files with REAL code (not stubs) but still DEAD (zero importers):
+  * lib/features/auth/domain/auth_providers.dart (9 lines) — declares class AuthProviders (password/google/studentCode constants). DUPLICATE — the live AuthProviders is in lib/core/services/auth_service.dart (used ~10× in auth_service.dart and referenced by test/core/services/auth_service_test.dart). Safe to delete.
+  * lib/features/exams/providers/exam_generated_providers.dart (12 lines) — declares examServiceProvider + examRepositoryProvider. BOTH ARE DUPLICATES. examServiceProvider is also declared in lib/core/services/service_providers.dart (live, used by 5+ screens) AND in features/exams/providers/exam_provider.dart AND in lib/providers/exam_provider.dart. examRepositoryProvider has ZERO external references. exam_generated_providers.dart and exam_providers.dart are byte-identical duplicates of each other. Safe to delete.
+  * lib/features/exams/providers/exam_providers.dart (12 lines) — duplicate of exam_generated_providers.dart. Safe to delete.
+- Borderline lib/features/submissions/providers/submission_providers.dart (31 lines) moved to Part 2 (see below).
+
+Part 2 — Small unique files (9 files):
+
+1. lib/features/auth/domain/auth_model.dart (80 lines)
+   - Imported anywhere? NO. Only referenced by its own dead barrel (auth/domain/domain.dart).
+   - Live equivalent? DUPLICATE-BY-DIFFERENT-NAME. Declares AuthProviders class (dup of lib/core/services/auth_service.dart:17 — the LIVE one) AND AuthState class (dup of features/auth/providers/auth_notifier_provider.dart:37 — also dead, but separate). The live AuthState is the Riverpod-generated one in auth_notifier_provider.dart.
+   - Recommendation: DELETE
+   - Reason: Pure duplicate of live AuthProviders in core/services/auth_service.dart; AuthState here is a plain-old class version superseded by the sealed @freezed-equivalent in auth_notifier_provider.dart (which is what production uses).
+
+2. lib/features/auth/domain/auth_state.dart (28 lines)
+   - Imported anywhere? NO. Zero references anywhere in lib or test.
+   - Live equivalent? PARTIAL-OVERLAP. Sealed-class AuthState pattern (AuthInitial/AuthLoading/AuthAuthenticated/AuthUnauthenticated/AuthError) is conceptually similar to the live auth_notifier_provider.dart AuthState but with different shape (live uses different fields).
+   - Recommendation: DELETE
+   - Reason: Completely unreferenced sealed-class scaffold; live auth uses Riverpod Notifier-based AuthState in features/auth/providers/auth_notifier_provider.dart. Also depends on user_model.dart (Part 2 file #3) which itself is dead-by-association.
+
+3. lib/features/auth/domain/user_model.dart (98 lines)
+   - Imported anywhere? YES (transitively). Referenced by:
+     * lib/features/auth/domain/auth_state.dart (dead — see #2)
+     * lib/features/auth/data/auth_repository.dart (also dead — 0 importers)
+     * lib/features/auth/providers/auth_providers.dart (PLURAL, dead-by-name) — and THIS file IS imported by lib/features/organizations/providers/organization_providers.dart (live production code).
+   - Live equivalent? NO-LIVE-EQUIVALENT. There is no other `UserModel` class anywhere in the codebase. The production app currently uses Map<String,dynamic> + ad-hoc field access in auth_provider.dart (lib/providers/) and core/services/auth_service.dart; it has never adopted a structured UserModel.
+   - Recommendation: NEEDS-HUMAN-DECISION
+   - Reason: It IS transitively wired into live code via the scaffold `auth_providers.dart` → `organization_providers.dart` chain (likely `currentUserProvider` StreamProvider<UserModel?>). Deleting it would break compilation of organization_providers.dart. Either (a) finish the migration: make UserModel the canonical user shape and rewire live auth_provider to use it; or (b) rip out the entire scaffold chain including organization_providers.dart's dependency on auth_providers.dart.
+
+4. lib/features/classes/domain/class_model.dart (117 lines)
+   - Imported anywhere? NO. Only its own dead barrel (classes/domain/domain.dart) references it.
+   - Live equivalent? DUPLICATE-BY-DIFFERENT-NAME. Identical-shape ClassData class is also declared in:
+     * lib/providers/class_provider.dart:81 (LIVE — referenced by many screens)
+     * lib/features/classes/providers/class_provider.dart:79 (also a scaffold dup)
+   - Recommendation: DELETE
+   - Reason: Triple-declared ClassData; the live canonical is lib/providers/class_provider.dart. Scaffold copy adds zero value and is unreferenced.
+
+5. lib/features/students/domain/student_model.dart (67 lines)
+   - Imported anywhere? NO. Only its own dead barrel (students/domain/domain.dart) references it.
+   - Live equivalent? DUPLICATE-BY-DIFFERENT-NAME. Identical-shape StudentData class also declared in:
+     * lib/providers/student_provider.dart:54 (LIVE)
+     * lib/features/students/providers/student_provider.dart:52 (also a scaffold dup)
+   - Recommendation: DELETE
+   - Reason: Triple-declared StudentData; live canonical is lib/providers/student_provider.dart.
+
+6. lib/features/submissions/data/submission_repository.dart (92 lines)
+   - Imported anywhere? NO. Only referenced by features/submissions/providers/submission_providers.dart (which itself has 0 importers).
+   - Live equivalent? PARTIAL-OVERLAP. The live code uses SubmissionService (lib/features/submissions/data/submission_service.dart, 456 lines) accessed via lib/providers/submission_provider.dart (live, 8 production importers). No "SubmissionRepository" class exists in live code.
+   - Recommendation: DELETE
+   - Reason: Dead, never-wired repository layer. Also references non-existent `SubmissionModel` class (see #7) — file would not compile if actually imported.
+
+7. lib/features/submissions/domain/submission_model.dart (102 lines)
+   - Imported anywhere? NO (only its dead barrel + the dead submission_repository.dart + dead submission_providers.dart reference it).
+   - Live equivalent? DUPLICATE-BY-DIFFERENT-NAME. The SubmissionData class is also declared in:
+     * lib/providers/submission_provider.dart:114 (LIVE)
+     * lib/features/submissions/providers/submission_provider.dart:114 (scaffold dup, also dead)
+     The StudentExamStats class is duplicated similarly.
+   - Recommendation: DELETE
+   - Reason: Triple-declared SubmissionData + StudentExamStats; live canonical is lib/providers/submission_provider.dart. NOTE: the consumers (submission_repository.dart, submission_providers.dart) reference a non-existent `SubmissionModel` class — so the scaffold submission layer is internally broken (would not compile if wired up).
+
+8. lib/features/submissions/providers/submission_providers.dart (31 lines)
+   - Imported anywhere? NO. Zero importers in lib or test.
+   - Live equivalent? PARTIAL-OVERLAP. Defines `submissionRepositoryProvider` and `submissionListForExamProvider` — neither has any equivalent in live code (live uses lib/providers/submission_provider.dart which defines `submissionsProvider`, `classSubmissionsProvider`, etc., via the SubmissionService).
+   - Recommendation: DELETE
+   - Reason: Dead riverpod providers; references undefined `SubmissionModel` symbol (file defines SubmissionData, not SubmissionModel). Would not compile if imported.
+
+9. lib/features/exams/data/exam_repository.dart (36 lines)
+   - Imported anywhere? NO. Only referenced by the two dead scaffold providers (exam_providers.dart and exam_generated_providers.dart — both have 0 importers, both byte-identical dupes of each other).
+   - Live equivalent? PARTIAL-OVERLAP. A second, separate "ExamRepository"-like abstraction exists at lib/infrastructure/repositories/exam_repository.dart (FirestoreExamRepository extends FirebaseRepository<ExamDocument> implements IExamRepository). However that infrastructure file is ALSO dead (its barrel infrastructure/repositories/repositories.dart has 0 importers). The actual live exam access is via lib/core/services/exam_service.dart (ExamService implements IExamService), accessed through examServiceProvider in lib/core/services/service_providers.dart — used by 5+ exam screens.
+   - Recommendation: DELETE
+   - Reason: ExamRepository here is a thin pass-through wrapper over IExamService (adds nothing) and is doubly dead — both its own scaffold consumers are dead, AND the parallel infrastructure/repositories abstraction is also dead. Live code calls ExamService directly.
+
+Summary table:
+| File | Imported? | Live equivalent? | Recommendation |
+|------|-----------|-------------------|----------------|
+| auth/domain/auth_model.dart | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE |
+| auth/domain/auth_state.dart | NO | PARTIAL-OVERLAP | DELETE |
+| auth/domain/user_model.dart | YES (via scaffold auth_providers.dart → organization_providers.dart) | NO-LIVE-EQUIVALENT | NEEDS-HUMAN-DECISION |
+| classes/domain/class_model.dart | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE |
+| students/domain/student_model.dart | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE |
+| submissions/data/submission_repository.dart | NO | PARTIAL-OVERLAP | DELETE |
+| submissions/domain/submission_model.dart | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE |
+| submissions/providers/submission_providers.dart | NO | PARTIAL-OVERLAP | DELETE |
+| exams/data/exam_repository.dart | NO | PARTIAL-OVERLAP | DELETE |
+
+Files untouched in Part 1 (49 listed): All 48 verified + borderline submission_providers.dart (counted in Part 2). One file from the original list — lib/features/submissions/providers/submission_providers.dart — appears in BOTH lists (Part 1 borderline + Part 2 explicit), counted once in Part 2.
+
+Git history note: ALL 9 Part 2 files were added in a single commit (83a427f "docs: add complete audit + Phase 2 deploy archive", 2026-06-18) and never touched since — confirming they are part of the abandoned clean-architecture scaffold.
+
+Cross-feature finding: The scaffold has a SUBTLE broken-link chain:
+  submission_providers.dart → submission_repository.dart → submission_model.dart
+  All three reference `SubmissionModel` (a class that DOES NOT EXIST anywhere in the codebase). The scaffold model file actually declares `SubmissionData`. This means the entire scaffold submission layer would fail to compile if anyone tried to wire it up. Safe to delete as a group.
+
+Recommended batch-deletions (safe — zero impact on compile or runtime):
+1. All 31 header-only stubs (Part 1 STUBs).
+2. All 14 mini-barrels (Part 1, real-barrels-but-dead).
+3. 3 surprise provider files: auth/domain/auth_providers.dart, exams/providers/exam_generated_providers.dart, exams/providers/exam_providers.dart.
+4. 8 of 9 Part 2 files (all except auth/domain/user_model.dart).
+
+For human decision: auth/domain/user_model.dart + the scaffold auth_providers.dart (features/auth/providers/auth_providers.dart, plural) it depends on + the dependency from lib/features/organizations/providers/organization_providers.dart. Either complete the UserModel migration or rip the chain out together.
+
+
+---
+Task ID: bucket-d-auth-exams
+Agent: bucket-d-auth-exams-investigator
+Task: Investigate the auth + exams feature scaffold clusters — `lib/features/auth/{data,domain,providers}/` and `lib/features/exams/{data,domain,providers,application}/` — excluding the same-named `auth_provider.dart` / `exam_provider.dart` pairs (handled by bucket-c) and excluding the 5 byte-identical exams service duplicates (handled separately). For each substantial file: determine referenced-ness, live-equivalent, wiring signals, completeness, and a DELETE/KEEP/REFERENCE/DECISION recommendation.
+
+Work Log:
+- Read all 7 substantial auth scaffold files (auth_repository.dart, auth_model.dart, auth_state.dart, user_model.dart, auth_providers.dart, auth_notifier_provider.dart, auth_providers.dart) and all 7 substantial exams scaffold files (exam_repository.dart, exam_model.dart, exam_instance_model.dart, exam_stats_model.dart, exam_template_model.dart, exam_notifier_provider.dart, exam_generated_providers.dart, exam_providers.dart).
+- Read live equivalents for comparison: `lib/core/services/auth_service.dart` (1907 lines), `lib/core/services/exam_service.dart` (648 lines), `lib/providers/auth_provider.dart` (385 lines), `lib/providers/exam_provider.dart` (199 lines).
+- Read live interfaces: `lib/core/services/interfaces/i_auth_service.dart` (70 lines), `lib/core/services/interfaces/i_exam_service.dart` (41 lines).
+- Ran ripgrep for external import references of every scaffold path.
+- Ran ripgrep for class-name collisions (`class AuthRepository`, `class AuthState`, `class UserModel`, `class ExamData`, etc.) across lib/.
+- Checked `firestore.rules` for `exams`, `exam_instances`, `exam_templates`, `exam_stats`, `users` match blocks.
+- Checked `lib/core/config/app_constants.dart` for collection-name constants.
+- Checked `lib/main.dart` + `lib/app/router.dart` + `lib/core/routing/routes.dart` + `route_names.dart` for `/auth/`, `/exams`, `/exam/` route wiring.
+- Checked `functions/src/` for `exam`/`Exam` mentions.
+- Ran `git log --follow` on every substantial file — all share the SAME single commit `83a427f docs: add complete audit + Phase 2 deploy archive` (2026-06-18 01:19:29 +0000). No prior history.
+- Ran `git show --stat 83a427f` to confirm commit context (bulk archive commit, not a feature implementation).
+- Confirmed `.g.dart` parts do NOT exist for either `auth_notifier_provider.g.dart` or `exam_notifier_provider.g.dart` — meaning the Riverpod Generator codegen was never run; the `@Riverpod`/`@riverpod` annotations would not actually produce providers without codegen.
+- Re-confirmed bucket-c finding (worklog lines ~5490+) that the same-named scaffold `<feature>_provider.dart` copies in `features/auth/providers/` and `features/exams/providers/` are dead older snapshots — out of scope for this agent.
+- Read `lib/features/organizations/providers/organization_providers.dart` to verify the ONE external import of `auth_providers.dart` (scaffold) and what it actually consumes.
+
+KEY CROSS-CUTTING FINDINGS:
+1. **Single bulk-import commit.** Every substantial scaffold file landed in one commit (`83a427f`, 2026-06-18) titled "docs: add complete audit + Phase 2 deploy archive" — i.e. these files were dropped in as a reference architecture alongside the audit archive, NOT as the result of an incremental migration. There is no evolutionary git history to consult.
+2. **Codegen never ran.** Both `auth_notifier_provider.dart` and `exam_notifier_provider.dart` declare `part '..._provider.g.dart';` and use `@Riverpod`/`@riverpod` annotations, but the `.g.dart` files do not exist. The Riverpod Generator build was never executed, so even if someone tried to `watch(authNotifierProvider)` or `watch(examListNotifierProvider)`, the symbols wouldn't resolve at compile time. This is strong corroborating evidence that these notifiers were never wired up.
+3. **`AuthState` class is defined in THREE places.** `lib/features/auth/domain/auth_state.dart` (sealed class hierarchy: AuthInitial/AuthLoading/AuthAuthenticated/AuthUnauthenticated/AuthError), `lib/features/auth/domain/auth_model.dart` (regular class with isLoggedIn/userRole/… fields), and `lib/features/auth/providers/auth_notifier_provider.dart` (regular class with copyWith + Hive factory). All three are unreferenced outside the scaffold.
+4. **`ExamData` class is defined in THREE places.** `lib/providers/exam_provider.dart:100` (LIVE — used by all UI), `lib/features/exams/domain/exam_model.dart` (scaffold — unreferenced), and `lib/features/exams/providers/exam_notifier_provider.dart:38` (scaffold — explicitly noted as duplicated inline, see comment at line 32). The scaffold's `exam_model.dart` is NOT used by the scaffold's `exam_notifier_provider.dart` (which has its own copy because of an `IFirebaseService` Map-vs-DocumentSnapshot impedance mismatch).
+5. **`AuthProviders` (string constants) is defined in THREE places.** `lib/core/services/auth_service.dart:17` (LIVE), `lib/features/auth/domain/auth_model.dart:5` (scaffold), `lib/features/auth/domain/auth_providers.dart:2` (scaffold stub).
+6. **`auth_providers.dart` (scaffold, 176 lines) IS partially live.** It's imported by `lib/features/organizations/providers/organization_providers.dart:4`, which `ref.watch(currentOrgIdProvider)` to drive `currentOrganizationProvider` (a StreamProvider for the current user's org doc). So the scaffold's `currentOrgIdProvider`, `currentUserProvider`, and `authServiceProvider` (returning `IAuthService`) ARE reachable from the live widget tree. But the scaffold's `authRepositoryProvider`, `UserModel`, `firebaseAuthProvider`, `isLoggedInProvider`, `currentUserRoleProvider` are dead. There is ALSO a live `currentOrgIdProvider` in `lib/providers/permission_provider.dart:30` — a SHADOWING HAZARD if both are ever imported in the same library.
+7. **No exam scaffold file is reachable from the live widget tree.** Zero external imports of any `lib/features/exams/...` path outside the scaffold's own barrel files (which are themselves unreferenced).
+8. **No Cloud Functions for exams.** `rg -ln "exam|Exam" functions/src/` returns 7 files but they all match the *substring* (e.g. `onUserDeleted.ts` mentions "exam_results" in cleanup, `rbac.ts` references exam permissions). There is NO `functions/src/functions/*Exam*.ts` callable. Exam lifecycle is 100% client-driven via the live `lib/core/services/exam_service.dart`.
+9. **Firestore rules DO cover the exam collections** that the scaffold models reference: `exams` (line 255), `exam_instances` (line 321), `exam_stats` (line 343), `exam_templates` (line 615). But these rules were written for the LIVE services — their existence does not signal scaffold wiring.
+10. **Routes.** `lib/main.dart` and `lib/app/router.dart` import from `features/auth/pages/` (live screens — splash, role_selection, teacher_login, etc.) and `features/exams/pages/` (live screens — exam_list, exam_form, question_builder, exam_detail). Route names like `/auth/teacher-login`, `/student/exams`, `/teacher/exams` exist. NONE of these route paths reference any scaffold file from `data/`, `domain/`, or `providers/` (other than `pages/`).
+11. **No mentions in DEVELOPMENT_ROADMAP.md or FUTURE_IDEAS.md.** `rg -in "exam_notifier|auth_notifier|exam_model|user_model" DEVELOPMENT_ROADMAP.md FUTURE_IDEAS.md` returned ZERO matches. The scaffold is not on any documented roadmap.
+12. **Worklog already documents the scaffold as suspect.** Line 603: "lib/features/auth/data/auth_service.dart (DEAD file — verified zero imports across lib/)"; line 672: "delete the dead `lib/features/auth/data/auth_service.dart` (780 lines, zero imports)"; line 1379: "STALE: lib/features/auth/data/auth_service.dart:210 ← not wired into the screen; legacy/duplicate"; line 1686-1687: "Delete or update the stale duplicate loginStudent in lib/features/auth/data/auth_service.dart:210-284 … Fix or delete the same broken pattern in lib/infrastructure/repositories/auth_repository.dart:175-196". Note: the prior worklog refers to `lib/features/auth/data/auth_service.dart` — that file is NOT in the current tree (already deleted). The current `lib/features/auth/data/` folder contains only `auth_repository.dart` and `data.dart` (broken barrel).
+13. **Bucket-c (prior agent) already determined** that the feature-first `lib/features/auth/providers/auth_provider.dart` and `lib/features/exams/providers/exam_provider.dart` are SAFE-DELETE older snapshots of the live `lib/providers/{auth,exam}_provider.dart`. My findings are consistent with that.
+
+FINDINGS — AUTH SCAFFOLD (per-file):
+
+### lib/features/auth/data/auth_repository.dart (112 lines)
+- **Referenced anywhere?** NO. `rg "features/auth/data/auth_repository"` returns zero hits in lib/ and test/. The class `AuthRepository` IS imported by `lib/features/auth/providers/auth_providers.dart:7` (which exposes `authRepositoryProvider`), but `authRepositoryProvider` itself has zero consumers.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. Wraps `IAuthService` and returns `UserModel`. The live `lib/core/services/auth_service.dart` (1907 lines, concrete `AuthService` class) is the production implementation. Also `lib/infrastructure/repositories/auth_repository.dart` provides a third AuthRepository-style class (`AuthUser` model + `FirebaseAuthRepository`). Three layers all doing the same job. Adds no value over the live `auth_service.dart` — it's a thin pass-through that converts `Map<String,dynamic>` → `UserModel` via `UserModel.fromFirestore`.
+- **Wiring signals found?** None.
+- **Completeness:** finished (no TODOs); last commit 2026-06-18 (83a427f, "docs: add complete audit + Phase 2 deploy archive").
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Dead wrapper around an interface (`IAuthService`) that the live `AuthService` already implements directly; the UserModel it returns has no consumers.
+
+### lib/features/auth/domain/auth_model.dart (80 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/auth/domain/domain.dart` (itself unreferenced). The `AuthProviders` class defined here is a duplicate of the live one in `auth_service.dart:17`. The `AuthState` class defined here collides with two other `AuthState` definitions (see auth_state.dart and auth_notifier_provider.dart).
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. `AuthProviders` constants live in `auth_service.dart:17` (authoritative). `AuthState` is a clean-architecture ideal never adopted by the live `auth_provider.dart` (which uses raw `StateProvider<bool>` / `StateProvider<String?>` per field).
+- **Wiring signals found?** None.
+- **Completeness:** finished; last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Barrel-orphaned; defines two classes that are either duplicated elsewhere (`AuthProviders`) or never adopted (`AuthState`); creates a 3-way naming collision.
+
+### lib/features/auth/domain/auth_state.dart (28 lines)
+- **Referenced anywhere?** NO. Not even exported by `lib/features/auth/domain/domain.dart` (which only exports `auth_model.dart`). Totally orphaned.
+- **Live equivalent?** NO-LIVE-EQUIVALENT. Defines a sealed-class hierarchy (`AuthInitial` / `AuthLoading` / `AuthAuthenticated(user)` / `AuthUnauthenticated` / `AuthError(message)`) — a clean-architecture state pattern. The live `auth_provider.dart` uses ~12 separate `StateProvider`s instead and never adopted a sealed-state approach. The scaffold's own `auth_notifier_provider.dart` ALSO defines a different `class AuthState` (non-sealed, with copyWith + Hive factory) — so even within the scaffold there are TWO conflicting AuthState designs.
+- **Wiring signals found?** None.
+- **Completeness:** finished (28 lines, pure class defs); last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Orphaned sealed-state experiment that the scaffold's own notifier doesn't even use (it has its own AuthState), and the live code never adopted.
+
+### lib/features/auth/domain/user_model.dart (98 lines)
+- **Referenced anywhere?** INDIRECT-ONLY. Imported by `lib/features/auth/data/auth_repository.dart` (dead) and `lib/features/auth/providers/auth_providers.dart:8` (partially live). `auth_providers.dart` uses `UserModel` only inside `currentUserProvider` (a StreamProvider) and the Hive cache helpers; but `currentUserProvider` itself is only `ref.watch`-ed by `currentOrgIdProvider`/`currentUserRoleProvider`/`isLoggedInProvider` (also in auth_providers.dart), and the ONLY external consumer of those is `organization_providers.dart` which `ref.watch(currentOrgIdProvider)` for the org id string. So `UserModel` as a *type* is never used by any live widget — only its `organizationId` field is read internally to produce the org id string.
+- **Live equivalent?** NO-LIVE-EQUIVALENT for a typed user model. The live `auth_provider.dart` stores user data as raw Hive box gets (`box.get('userRole')`, etc.) and exposes them via individual `StateProvider<String?>`s. A typed `UserModel` would be a real improvement, but the live code doesn't have one. (`lib/infrastructure/repositories/auth_repository.dart` defines a separate `AuthUser` class — also unused.)
+- **Wiring signals found?** Indirect: `auth_providers.dart` → `currentUserProvider` → `currentOrgIdProvider` → live `organization_providers.dart:34`. So UserModel IS loaded into memory and its fields are read, but no widget ever holds a `UserModel` reference.
+- **Completeness:** finished (98 lines, `fromFirestore`/`toFirestore`/`copyWith`/role getters); last commit 2026-06-18 (83a427f).
+- **Recommendation:** NEEDS-HUMAN-DECISION.
+- **One-line reasoning:** The typed `UserModel` is good design and IS transitively loaded via `currentUserProvider`, but no widget consumes the type; deleting it requires refactoring `auth_providers.dart`'s `currentUserProvider` to return raw Maps (or migrating the live code to actually use `UserModel`).
+
+### lib/features/auth/domain/auth_providers.dart (9 lines — STUB)
+- **Referenced anywhere?** NO (zero external imports). Defined as a 9-line stub containing only the `AuthProviders` string-constants class with a private constructor.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME — byte-identical (minus the private constructor) to the live `class AuthProviders` in `lib/core/services/auth_service.dart:17`. Also duplicates the same class in `lib/features/auth/domain/auth_model.dart:5`.
+- **Wiring signals found?** None.
+- **Completeness:** stub (9 lines, no logic); last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Pure stub duplicating a class that already lives in the authoritative `auth_service.dart`.
+
+### lib/features/auth/providers/auth_notifier_provider.dart (522 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/auth/providers/providers.dart` (an unreferenced barrel). The `part 'auth_notifier_provider.g.dart';` directive references a file that DOES NOT EXIST — Riverpod codegen was never run, so the `@Riverpod(keepAlive: true) class AuthNotifier` symbol cannot resolve at compile time.
+- **Live equivalent?** PARTIAL-OVERLAP. Self-described in its header comment as "the NEW Riverpod Generator–based reference implementation … The old providers remain for backward compatibility until all consumers are migrated." Provides an `AuthState` class with `copyWith` + `fromHive` factory, and an `AuthNotifier` class with `loginWithEmail`/`loginWithGoogle`/`loginStudent`/`registerOwner`/`registerOwnerWithGoogle`/`registerTeacher`/`registerParent`/`completeOwnerSetup`/`updateProfile`/`logout`/`sendPasswordReset`. The live `lib/providers/auth_provider.dart` (385 lines) uses ~12 separate `StateProvider`s + free helper functions (`saveTeacherAuthData`, `saveStudentAuthData`, `saveParentAuthData`, `clearAuthData`, `setOrganizationId`). The scaffold is more cohesive (single state object) but LACKS the live version's Sentry/Crashlytics instrumentation (KlasivoSentry.breadcrumb, FirebaseCrashlytics.setCustomKey, Sentry.captureMessage) added in the Phase 1 Sentry audit (worklog Task ID 1). The scaffold also lacks `rbacInitProvider` claims-sync triggering (the "ISSUE 5" fix in the live code at lines 168, 233, 294).
+- **Wiring signals found?** Uses `AppConstants.authBox` (Hive), `KlasivoEventBus`, `NotificationService.subscribeUserToTopics`, `authServiceProvider` (from `abstraction_providers.dart`) — same primitives as live. But NO router, NO screen, NO test references it.
+- **Completeness:** finished (no TODOs, full login/register/logout flows); last commit 2026-06-18 (83a427f). But UNUSABLE as-is because the `.g.dart` part file is missing.
+- **Recommendation:** KEEP-AS-REFERENCE.
+- **One-line reasoning:** Well-structured reference for a future Riverpod Generator migration, but missing Sentry/Crashlytics instrumentation, missing the codegen output, and migration would touch 70+ importer files — not actionable today.
+
+### lib/features/auth/providers/auth_providers.dart (176 lines)
+- **Referenced anywhere?** YES — `lib/features/organizations/providers/organization_providers.dart:4` imports it. That file `ref.watch(currentOrgIdProvider)` to drive `currentOrganizationProvider`. So `currentOrgIdProvider`, `currentUserProvider`, `authServiceProvider`, and `firebaseAuthProvider` ARE reachable from the live widget tree through this one path.
+- **Live equivalent?** PARTIAL-OVERLAP / NAMING-HAZARD. (a) `authServiceProvider` here returns `Provider<IAuthService>` (the abstraction), but the live `lib/providers/auth_provider.dart:19` defines `authServiceProvider` as `Provider<AuthService>` (concrete) — DIFFERENT TYPES, same name. (b) `isLoggedInProvider` here is `Provider<bool>` (derived), but live `lib/providers/auth_provider.dart:39` defines `isLoggedInProvider` as `StateProvider<bool>` — DIFFERENT TYPES, same name; live is used by `route_guards.dart:8`. (c) `currentOrgIdProvider` here is `Provider<String?>` (derived from `currentUserProvider`), but live `lib/providers/permission_provider.dart:30` ALSO defines `currentOrgIdProvider` as `Provider<String?>` (derived from Hive box) — same type, same name, DIFFERENT provider object; `feature_flag_provider.dart:6` explicitly imports the live one via `show currentOrgIdProvider`. (d) `currentUserRoleProvider` here duplicates live `permission_provider.dart:18`. If a single library ever imports both `auth_providers.dart` (scaffold) AND `permission_provider.dart` (live) without `show`/`hide`, it's a compile error. The scaffold also defines `authRepositoryProvider` (dead — depends on the dead `AuthRepository`) and `UserModel`-based `currentUserProvider` (live only insofar as org id is extracted from it).
+- **Wiring signals found?** Firestore: uses `FirebaseFirestore.instance.collection('users').doc(uid).snapshots()` directly (bypasses the abstraction it claims to use elsewhere). Routes: none.
+- **Completeness:** finished (176 lines, full Hive cache helpers + 6 providers); last commit 2026-06-18 (83a427f).
+- **Recommendation:** NEEDS-HUMAN-DECISION.
+- **One-line reasoning:** Partially live via `organization_providers.dart`, but its `currentOrgIdProvider`/`isLoggedInProvider`/`authServiceProvider`/`currentUserRoleProvider` shadow identically-named live providers with different types — deleting it requires refactoring `organization_providers.dart` to import `permission_provider.dart` instead; keeping it requires renaming the colliding symbols.
+
+FINDINGS — EXAMS SCAFFOLD (per-file):
+
+### lib/features/exams/data/exam_repository.dart (36 lines)
+- **Referenced anywhere?** YES — by `lib/features/exams/providers/exam_providers.dart:2` and `lib/features/exams/providers/exam_generated_providers.dart:2` (both 12-line stubs that expose `examRepositoryProvider`). But `examRepositoryProvider` itself has ZERO external consumers.
+- **Live equivalent?** PARTIAL-OVERLAP. Thin wrapper around `IExamService` (the interface) that converts `Map<String,dynamic>` → `ExamModel` for `getExam()`. The live `lib/core/services/exam_service.dart` (648 lines, concrete `ExamService`) already implements all these methods (`createExam`, `updateExam`, `publishExam`, `unpublishExam`, `archiveExam`, `deleteExam`, `getExam`, `recalculateTotalMarks`). The scaffold adds zero logic — every method is a one-line delegation. Also `lib/infrastructure/repositories/exam_repository.dart` provides a third ExamRepository-style class with its own `ExamDocument` model.
+- **Wiring signals found?** None.
+- **Completeness:** finished (36 lines, pure delegation); last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Zero-value pass-through wrapper around an interface; live `ExamService` already does everything and is what every UI screen actually uses.
+
+### lib/features/exams/domain/exam_model.dart (103 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/exams/domain/domain.dart` (unreferenced barrel). Notably, the scaffold's own `exam_notifier_provider.dart` does NOT use it — that file has its own inline `ExamData` class (with an explicit NOTE at line 32 explaining the duplication due to a Map-vs-DocumentSnapshot impedance mismatch).
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. The LIVE `lib/providers/exam_provider.dart:100-199` defines `class ExamData` with the SAME fields, SAME `fromFirestore(DocumentSnapshot)` factory, SAME `toMap()`, SAME `isActive`/`canStart`/`isEnded` getters. The scaffold's only difference: it omits the live `getClassName(List<ClassData> classes)` helper (with a `// Note: getClassName requires ClassData` comment) and the `organizationId` field default differs trivially. Three `ExamData` classes exist total: live exam_provider.dart, scaffold exam_model.dart, scaffold exam_notifier_provider.dart.
+- **Wiring signals found?** None.
+- **Completeness:** finished; last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Byte-equivalent (modulo one helper method) duplicate of the live `ExamData` in `lib/providers/exam_provider.dart:100`; not even used by the scaffold's own notifier.
+
+### lib/features/exams/domain/exam_instance_model.dart (55 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/exams/domain/domain.dart` (unreferenced barrel).
+- **Live equivalent?** NO-LIVE-EQUIVALENT for a typed model. The live `lib/providers/exam_instance_provider.dart` and `lib/core/services/exam_instance_service.dart` work with raw `Map<String,dynamic>` and `DocumentSnapshot`. The scaffold's `ExamInstanceData` (with `fromFirestore`, `isCompleted`/`hasSubmission` getters) would be a real improvement, but no live code uses a typed instance model.
+- **Wiring signals found?** None.
+- **Completeness:** finished (55 lines); last commit 2026-06-18 (83a427f).
+- **Recommendation:** KEEP-AS-REFERENCE.
+- **One-line reasoning:** Substantive typed model the live code lacks; not wired today, but useful as a reference for a future exams-domain refactor.
+
+### lib/features/exams/domain/exam_stats_model.dart (207 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/exams/domain/domain.dart` (unreferenced barrel).
+- **Live equivalent?** NO-LIVE-EQUIVALENT. Defines FIVE classes: `ExamStatsData` (with `gradeDistributionList` derived getter), `QuestionStatsData`, `PerformanceTrendPoint`, `StudentPerformancePoint`, `TeacherAnalyticsSummary` (with `.empty()` factory). The live `lib/providers/exam_stats_provider.dart` and `lib/core/services/exam_stats_service.dart` work with raw Maps. This is the richest domain model in the entire scaffold.
+- **Wiring signals found?** None.
+- **Completeness:** finished (207 lines, full fromFirestore + getters); last commit 2026-06-18 (83a427f).
+- **Recommendation:** KEEP-AS-REFERENCE.
+- **One-line reasoning:** Substantial multi-class domain model (5 classes, 207 lines) that the live code lacks; high reuse potential for a future analytics refactor.
+
+### lib/features/exams/domain/exam_template_model.dart (71 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/exams/domain/domain.dart` (unreferenced barrel).
+- **Live equivalent?** NO-LIVE-EQUIVALENT. Defines `ExamTemplateData` with `fromFirestore`/`toMap`. The live `lib/providers/exam_template_provider.dart` and `lib/core/services/exam_template_service.dart` work with raw Maps.
+- **Wiring signals found?** None.
+- **Completeness:** finished (71 lines); last commit 2026-06-18 (83a427f).
+- **Recommendation:** KEEP-AS-REFERENCE.
+- **One-line reasoning:** Typed template model the live code lacks; small enough to be a low-risk extraction target if templates ever get refactored.
+
+### lib/features/exams/providers/exam_notifier_provider.dart (598 lines)
+- **Referenced anywhere?** NO. Only exported by `lib/features/exams/providers/providers.dart` (unreferenced barrel). The `part 'exam_notifier_provider.g.dart';` directive references a file that DOES NOT EXIST — Riverpod codegen was never run, so `@riverpod class ExamListNotifier` cannot resolve at compile time. The worklog at line 817 mentions `exam_notifier_provider.dart:571` as a "call site for queries" in the context of a Firestore index audit — but that was an investigation reading the file's source, not a runtime reference.
+- **Live equivalent?** PARTIAL-OVERLAP. Self-described in its header as "the NEW Riverpod Generator–based reference implementation." Provides `ExamListNotifier` with `watchExams(teacherId)`, `watchClassExams(classId)`, `addExam`, `updateExam`, `publishExam`, `unpublishExam`, `deleteExam`, `recalculateTotalMarks`, plus an `ExamListState` (exams + isLoading + error + derived `upcoming`/`completed`/`draft`/`stats`). The live `lib/providers/exam_provider.dart` (199 lines) uses `StreamProvider<QuerySnapshot>` + derived `Provider<List<ExamData>>` + separate `upcomingExamsProvider`/`completedExamsProvider`/`draftExamsProvider`/`examStatsProvider`. The scaffold is more cohesive (single state object with mutations) and adds `deleteExam` + `recalculateTotalMarks` (which the live provider doesn't expose — those go through `ExamService` directly). But it lacks the live `skipLoadingOnReload: true` P0-9 dashboard-flicker fix, and it has a known limitation noted at line 543: "A full implementation would also delete related questions, submissions, answers, instances, and stats. For now we delete just the exam doc."
+- **Wiring signals found?** Uses `AppConstants.examsCollection`, `AppConstants.questionsCollection`, `firebaseServiceProvider` (from `abstraction_providers.dart`), `IFirebaseService.collectionStream/addDocument/updateDocument/deleteDocument`. NO router, NO screen, NO test references.
+- **Completeness:** mostly finished (full CRUD), but `deleteExam` is explicitly partial (line 543 NOTE: only deletes the exam doc, not sub-collections); last commit 2026-06-18 (83a427f). UNUSABLE as-is because `.g.dart` part file is missing.
+- **Recommendation:** KEEP-AS-REFERENCE.
+- **One-line reasoning:** Substantial reference implementation (598 lines) for a Riverpod Generator migration, but missing codegen output, missing the P0-9 flicker fix, has a known incomplete `deleteExam`, and migration would touch ~18 importer files — not actionable today.
+
+### lib/features/exams/providers/exam_generated_providers.dart (12 lines — STUB)
+- **Referenced anywhere?** NO. Byte-identical to `lib/features/exams/providers/exam_providers.dart` (confirmed via `diff`). Just exposes `examServiceProvider` + `examRepositoryProvider`.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. (a) `examServiceProvider` here is `Provider<IExamService>` (abstraction), but live `lib/providers/exam_provider.dart:11` defines `examServiceProvider` as `Provider<ExamService>` (concrete) — DIFFERENT TYPES, same name; live is used by 18 importer files. (b) `examRepositoryProvider` here is dead (depends on the dead `ExamRepository`).
+- **Wiring signals found?** None.
+- **Completeness:** stub (12 lines, two provider defs); last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Byte-identical duplicate of `exam_providers.dart` next to it; both are stubs that shadow the live `examServiceProvider` with a different type.
+
+### lib/features/exams/providers/exam_providers.dart (12 lines — STUB)
+- **Referenced anywhere?** NO. (Same content as `exam_generated_providers.dart` above.)
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. Same analysis as `exam_generated_providers.dart`: shadows live `examServiceProvider` with `Provider<IExamService>` vs `Provider<ExamService>`.
+- **Wiring signals found?** None.
+- **Completeness:** stub (12 lines); last commit 2026-06-18 (83a427f).
+- **Recommendation:** DELETE.
+- **One-line reasoning:** Stub that shadows the live `examServiceProvider` with a different type; byte-identical twin of `exam_generated_providers.dart`.
+
+STUBS (dismissed in single lines):
+
+- `lib/features/auth/data/data.dart` (3 lines): BROKEN barrel — `export 'auth_service.dart';` references a file that DOES NOT EXIST (already deleted per worklog Task 7). Safe to delete.
+- `lib/features/auth/domain/domain.dart` (3 lines): INCOMPLETE barrel — exports only `auth_model.dart`, ignoring the 3 sibling domain files. Safe to delete.
+- `lib/features/auth/providers/providers.dart` (5 lines): barrel exporting the dead feature-first `auth_provider.dart` (bucket-c) + the never-compiled `auth_notifier_provider.dart`. Safe to delete.
+- `lib/features/exams/data/data.dart` (7 lines): barrel exporting the 5 byte-identical duplicate services (handled separately). Safe to delete.
+- `lib/features/exams/domain/domain.dart` (6 lines): barrel exporting 4 unreferenced domain models. Safe to delete.
+- `lib/features/exams/providers/providers.dart` (7 lines): barrel exporting the dead feature-first `exam_provider.dart` (bucket-c) + 4 other dead provider files. Safe to delete.
+- `lib/features/exams/application/application.dart` (14 lines): use-case stubs (`// TODO: Implement exam use cases`) — zero implementation. Safe to delete.
+
+SUMMARY TABLE — SUBSTANTIAL FILES:
+
+| File | Lines | Referenced? | Live Equivalent | Recommendation | One-line reason |
+|------|------:|-------------|-----------------|----------------|-----------------|
+| auth/data/auth_repository.dart | 112 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Dead wrapper around `IAuthService`; live `AuthService` already implements everything. |
+| auth/domain/auth_model.dart | 80 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Barrel-orphaned; duplicates `AuthProviders` + creates 3rd `AuthState` collision. |
+| auth/domain/auth_state.dart | 28 | NO | NO-LIVE-EQUIVALENT | DELETE | Orphaned sealed-state experiment; scaffold's own notifier uses a different AuthState. |
+| auth/domain/user_model.dart | 98 | INDIRECT (via auth_providers.dart) | NO-LIVE-EQUIVALENT | NEEDS-HUMAN-DECISION | Typed user model is good design; transitively loaded via `currentUserProvider`, but no widget consumes the type. |
+| auth/domain/auth_providers.dart (stub) | 9 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Stub duplicating `class AuthProviders` from `auth_service.dart:17`. |
+| auth/providers/auth_notifier_provider.dart | 522 | NO (missing .g.dart) | PARTIAL-OVERLAP | KEEP-AS-REFERENCE | Substantial Riverpod-generator reference, but missing codegen + Sentry/Crashlytics + rbacInit wiring. |
+| auth/providers/auth_providers.dart | 176 | YES (via organization_providers.dart) | PARTIAL-OVERLAP / NAMING-HAZARD | NEEDS-HUMAN-DECISION | Partially live; `currentOrgIdProvider`/`isLoggedInProvider`/`authServiceProvider`/`currentUserRoleProvider` shadow identically-named live providers with different types. |
+| exams/data/exam_repository.dart | 36 | NO (only by 2 dead stubs) | PARTIAL-OVERLAP | DELETE | Zero-value pass-through around `IExamService`; live `ExamService` already does everything. |
+| exams/domain/exam_model.dart | 103 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Byte-equivalent duplicate of live `ExamData` in `lib/providers/exam_provider.dart:100`; not even used by the scaffold's own notifier. |
+| exams/domain/exam_instance_model.dart | 55 | NO | NO-LIVE-EQUIVALENT | KEEP-AS-REFERENCE | Substantive typed model the live code lacks; low-risk extraction target. |
+| exams/domain/exam_stats_model.dart | 207 | NO | NO-LIVE-EQUIVALENT | KEEP-AS-REFERENCE | Richest scaffold model (5 classes); high reuse potential for analytics refactor. |
+| exams/domain/exam_template_model.dart | 71 | NO | NO-LIVE-EQUIVALENT | KEEP-AS-REFERENCE | Typed template model the live code lacks. |
+| exams/providers/exam_notifier_provider.dart | 598 | NO (missing .g.dart) | PARTIAL-OVERLAP | KEEP-AS-REFERENCE | Substantial Riverpod-generator reference, but missing codegen + P0-9 flicker fix + has incomplete `deleteExam`. |
+| exams/providers/exam_generated_providers.dart (stub) | 12 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Byte-identical twin of `exam_providers.dart`; shadows live `examServiceProvider` with wrong type. |
+| exams/providers/exam_providers.dart (stub) | 12 | NO | DUPLICATE-BY-DIFFERENT-NAME | DELETE | Byte-identical twin of `exam_generated_providers.dart`; shadows live `examServiceProvider` with wrong type. |
+
+COUNTS: 15 substantial files — 9 DELETE, 4 KEEP-AS-REFERENCE, 2 NEEDS-HUMAN-DECISION. Plus 7 stubs (all DELETE).
+
+NEXT ACTIONS (for main agent / human):
+1. **DELETE 9 substantial files + 7 stubs in one pass** (16 files total). None of the DELETEs have any external importer; safe to remove without refactoring.
+   - auth: `data/auth_repository.dart`, `domain/auth_model.dart`, `domain/auth_state.dart`, `domain/auth_providers.dart`, `data/data.dart`, `domain/domain.dart`, `providers/providers.dart`
+   - exams: `data/exam_repository.dart`, `domain/exam_model.dart`, `providers/exam_generated_providers.dart`, `providers/exam_providers.dart`, `data/data.dart`, `domain/domain.dart`, `providers/providers.dart`, `application/application.dart`
+2. **NEEDS-HUMAN-DECISION on `auth/providers/auth_providers.dart` (176 lines).** Two paths:
+   - **Path A (delete + refactor):** Delete `auth_providers.dart`. Refactor `lib/features/organizations/providers/organization_providers.dart:4` to import `lib/providers/permission_provider.dart` (for `currentOrgIdProvider`) and `lib/providers/auth_provider.dart` (for `authServiceProvider`) instead. This collapses the dual-provider hazard and removes the UserModel type from the live tree. Verify `currentOrganizationProvider` still resolves correctly (it watches `currentOrgIdProvider` — both the scaffold and live versions return `String?`, so behavior should be identical, but the live one is Hive-backed while the scaffold's is Firestore-stream-backed, so timing semantics differ — TEST THIS).
+   - **Path B (keep + rename):** Keep `auth_providers.dart` but rename its colliding symbols: `currentOrgIdProvider` → `currentOrgIdFromUserStreamProvider`, `isLoggedInProvider` → `isLoggedInFromUserStreamProvider`, `currentUserRoleProvider` → `currentUserRoleFromUserStreamProvider`, `authServiceProvider` → `authServiceInterfaceProvider`. This preserves the Firestore-stream-backed org id (which is arguably better than the Hive-cached one) but requires touching every importer.
+   - **Recommendation: Path A** — simpler, fewer files touched, eliminates the shadowing hazard. The Firestore-stream vs Hive-cache difference is small (the scaffold's `currentOrgIdProvider` falls back to Hive on loading/error anyway).
+3. **NEEDS-HUMAN-DECISION on `auth/domain/user_model.dart` (98 lines).** Bound to decision 2 — if Path A, UserModel becomes fully dead and can be deleted. If Path B, UserModel stays alive (transitively) and the file should stay.
+4. **KEEP-AS-REFERENCE for 4 files** (auth_notifier_provider.dart, exam_notifier_provider.dart, exam_instance_model.dart, exam_stats_model.dart, exam_template_model.dart — 5 files actually). No action needed; these are inert reference code. Optionally mark with a header comment like `// ARCHIVE: Riverpod Generator reference implementation — not compiled, not wired. See lib/providers/ for live equivalents.` to prevent future confusion.
+5. **Run `flutter analyze` after every delete batch** (flutter not installed in this environment — user must run locally). The `part '..._provider.g.dart';` directives in `auth_notifier_provider.dart` and `exam_notifier_provider.dart` are currently silently broken (the .g.dart files don't exist) — if these files are kept, the user should ALSO run `dart run build_runner build --delete-conflicting-outputs` to generate the missing parts, OR delete the `part` directive and the `@riverpod` annotations to make them pure-reference (non-compiling) files.
+6. **After cleanup, also delete the misleading header comments** in `lib/features/auth/providers/auth_notifier_provider.dart:3-4` and `lib/features/exams/providers/exam_notifier_provider.dart:3-4` (per bucket-c's recommendation) — they reference the scaffold `auth_provider.dart` / `exam_provider.dart` paths as if they're live duplicates, but bucket-c is deleting those.
+
+Stage Summary:
+- 15 substantial files investigated + 7 stubs dismissed = 22 files total in the auth+exams scaffold clusters.
+- Single git commit (83a427f, 2026-06-18) introduced ALL of them — no evolutionary history.
+- 9 substantial files + 7 stubs = 16 files safe-delete candidates (zero external importers).
+- 2 substantial files (`auth_providers.dart`, `user_model.dart` transitively) require human decision because `auth_providers.dart` is partially live via `organization_providers.dart` and shadows 4 identically-named live providers with different types.
+- 5 substantial files (`auth_notifier_provider.dart`, `exam_notifier_provider.dart`, `exam_instance_model.dart`, `exam_stats_model.dart`, `exam_template_model.dart`) are inert reference code — keep, but optionally annotate as archive.
+- Cross-cutting: Riverpod Generator codegen was NEVER run for the scaffold (both `*_notifier_provider.g.dart` files missing) — strong evidence the "migration" was started but never completed.
+- No Cloud Functions exist for exam lifecycle; no roadmap/IDEAS doc mentions any of these scaffold files.
+- Worklog already documents the broader scaffold-cleanup effort (bucket-c handled 4 same-named provider copies; this agent handles 22 more files in the auth+exams scaffold clusters).
+
+---
+Task ID: bucket-d-usermgmt-assignments
+Agent: bucket-d-usermgmt-assignments-investigator
+Task: Investigate lib/features/user_management/ + lib/features/assignments/ scaffold files (2 user_management substantial files + 3 assignments substantial files + 4 assignments stubs) — verify whether they are abandoned clean-architecture scaffold or live code.
+
+Work Log:
+- Read all 6 substantial files in full + all 4 stub files + the user_management barrel file (user_management.dart) + the assignments presentation.dart barrel.
+- Verified references via Grep across lib/ and test/ for: `features/user_management/`, `features/assignments/`, and every class/identifier defined in the 6 substantial files (`UserManagementRepository`, `UserListItem`, `UserRbacProfile`, `ScopeTreeNode`, `userManagementRepoProvider`, `allOrgUsersProvider`, `orgStudentsProvider`, `orgTeachersProvider`, `orgParentsProvider`, `orgStaffProvider`, `peopleSearchQueryProvider`, `filterUsersByQuery`, `scopeTreeProvider`, `campusesProvider`, `stagesProvider`, `classesProvider`, `userRbacProfileProvider`, `userAuditHistoryProvider`, `AssignmentRepository`, `AssignmentModel`, `assignmentRepositoryProvider`, `assignmentListForClassProvider`).
+- Listed lib/providers/ and lib/core/services/ in full to look for live equivalents. Confirmed: no `user_management_service.dart`/`people_hub_service.dart`/`user_service.dart` in core/services; no `user_management_provider.dart`/`people_hub_provider.dart` in providers. Confirmed: `assignment_service.dart` (329 lines) + `teacher_assignment_service.dart` (122 lines) + `assignment_provider.dart` (120 lines) + `teacher_assignment_provider.dart` (87 lines) ARE the live assignment stack.
+- Inspected the import lines of every page file in lib/features/user_management/pages/ (8 pages) and lib/features/assignments/pages/ (3 pages). Confirmed: 5 of 8 user_management pages import the data + providers files; 0 of 3 assignment pages import the scaffold files (they all import `lib/providers/assignment_provider.dart` + `lib/core/services/assignment_service.dart` instead).
+- Checked firestore.rules for every collection referenced in the 6 substantial files (`users`, `campuses`, `stages`, `classes`, `audit_logs`, `assignments`): all have rules.
+- Checked firestore.indexes.json for the same collections: indexes exist for `users` (5 composite), `audit_logs` (3 composite), `assignments` (3 composite), `teacher_assignments` (5 composite).
+- Verified the 4 Cloud Functions called by UserManagementRepository (`assignRole`, `assignScope`, `syncClaims`, `setPermissionOverrides`) all exist in functions/src/functions/ and are exported in functions/src/index.ts (lines 78-82).
+- Checked routes in lib/app/router.dart and lib/main.dart: `/people`, `/people/users/:userId`, `/people/roles` are wired (router.dart:281-296); `/parent/assignments` and child `assignments` routes exist (main.dart:1080, 1215). The `/people/*` routes resolve to People Hub / User Detail / Role Matrix screens that import the user_management data + providers files.
+- Checked DEVELOPMENT_ROADMAP.md: lines 480-490 explicitly list all 10 user_management files (including `user_management_repository.dart` and `user_management_providers.dart`) with `[x]` checkboxes as part of completed Sprint 3B "Flutter — User Management (10 files) ✅". Line 169 shows the Sprint 3B row marked 🟡 Partial (but the User Management UI portion is fully checked). Line 510 confirms the routes are wired.
+- FUTURE_IDEAS.md has no mentions of `user_management`, `assignments`, `UserManagementRepository`, or `AssignmentRepository`.
+- git log --follow on all 9 files shows the most recent commit as `83a427f docs: add complete audit + Phase 2 deploy archive` (2026-06-18) — a docs-only touch. git log --all reveals the original functional commits: `7cca756 feat(rbac): Sprint 3B — User Management UI` (2026-06-13) for the 2 user_management files (also touched by `883f69c fix: resolve batch 2 of Dart compilation errors (34 files)` on 2026-06-14), and `ac43255 feat: add exam & assignment feature modules` (2026-06-12) for the 7 assignments files (scaffold + pages added together, but pages were wired to legacy lib/providers + lib/core/services, not to the scaffold).
+
+KEY SURPRISE FINDING:
+- The user_management "scaffold" is NOT scaffold. Both files (data/user_management_repository.dart + providers/user_management_providers.dart) are LIVE code: actively consumed by 5 of 8 page files in lib/features/user_management/pages/, backed by 4 real Cloud Functions, backed by Firestore rules + indexes on all 5 collections they touch, wired into 3 GoRouter routes, and explicitly listed as completed in DEVELOPMENT_ROADMAP.md Sprint 3B.
+- The assignments "scaffold" IS scaffold. All 3 substantial files + 4 stubs are pure orphans: 0 references outside their own directory; direct functional duplicates of the live `lib/core/services/assignment_service.dart` + `lib/providers/assignment_provider.dart` (which defines `AssignmentData`, NOT `AssignmentModel`); subtle schema drift (scaffold uses literal 'draft'/'published'/'closed' status strings and 'archived' for archive, while live uses AppConstants.* enum values; scaffold `dueDate` is nullable while live `AssignmentData.dueDate` is non-nullable).
+- Code-smell finding (not blocking): `user_management_providers.dart` defines `classesProvider`/`stagesProvider` as `FutureProvider<List<ScopeTreeNode>>`, which shadow the unrelated `classesProvider` (Provider<List<ClassData>>) in `lib/providers/class_provider.dart` and `stagesProvider` (Provider<List<StageData>>) in `lib/providers/stage_provider.dart`. Not a compile error (per-file imports), but a foot-gun. Recommend renaming the user_management versions to `scopeCampusesProvider`/`scopeStagesProvider`/`scopeClassesProvider` in a follow-up.
+- Minor dead-code finding: the barrel file `lib/features/user_management/user_management.dart` exists and exports all 8 user_management files, but is never imported anywhere in lib/ (each page imports data/providers directly). It's a dead barrel. Could be deleted or actually used.
+
+Recommendations:
+- user_management (2 substantial files): KEEP-AND-WIRE-UP. Already wired, already live. Do NOT delete.
+- assignments (3 substantial files + 4 stubs = 7 files total, ~234 lines): DELETE ALL 7. Pure orphan scaffold with no consumers and schema drift vs. the live stack. Safe delete — no page or non-scaffold provider references any of them.
+- Cross-cutting: the entire `lib/features/assignments/{data,domain,providers,application}/` subdirectories are abandoned scaffold. Only `lib/features/assignments/pages/` is live (wired to the legacy lib/core/services + lib/providers architecture like every other feature). Matches the codebase-wide "abandoned clean-architecture scaffold" pattern.
+
+Note for future scaffold-investigation tasks: the user's premise ("abandoned clean-architecture scaffold") did NOT hold for the user_management cluster — these files are LIVE Sprint 3B deliverables. Same pattern as the live_classes cluster. Always verify the premise before recommending deletions.
+
+Per-file findings block:
+
+### lib/features/user_management/data/user_management_repository.dart
+- **Referenced anywhere?** YES — live. Imported by 4 page files (user_detail_screen.dart, role_assignment_sheet.dart, scope_assignment_screen.dart, people_hub_screen.dart) + the user_management.dart barrel. `UserListItem` used in people_hub_screen.dart:231 + user_detail_screen.dart:848. `UserRbacProfile` and `ScopeTreeNode` used throughout user_detail_screen.dart (lines 140, 162, 335, 456, 553, 936, 1003, 1071). `userManagementRepoProvider` invoked from 3 pages (permission_override_screen.dart:332, role_assignment_sheet.dart:191, scope_assignment_screen.dart:285).
+- **Live equivalent?** NO-LIVE-EQUIVALENT. No `user_management_service.dart`/`people_hub_service.dart`/`user_service.dart` in lib/core/services/. No `user_management_provider.dart`/`people_hub_provider.dart` in lib/providers/. This repository IS the single source of truth for People Hub data access.
+- **Wiring signals found?** All 4 CFs called exist and are exported in functions/src/index.ts (assignRole line 78, assignScope line 79, syncClaims line 80, setPermissionOverrides line 82). Firestore rules cover all 5 collections used (users line 187, campuses line 772, stages line 231, classes line 223, audit_logs line 655). Firestore indexes exist for users (5 composite, lines 3332+) and audit_logs (3 composite, lines 430, 449, 472). Routes `/people`, `/people/users/:userId`, `/people/roles` wired in lib/app/router.dart:281-296. DEVELOPMENT_ROADMAP.md lines 480-490 explicitly list this file with [x] as completed Sprint 3B.
+- **Completeness:** finished (408 lines, all methods have bodies, no TODOs). Last functional commit `7cca756 feat(rbac): Sprint 3B — User Management UI` (2026-06-13); compile-fix `883f69c` (2026-06-14); docs-only touch `83a427f` (2026-06-18).
+- **Recommendation:** KEEP-AND-WIRE-UP
+- **One-line reasoning:** Live, fully-wired Sprint 3B implementation with 4 page consumers, 4 backing Cloud Functions, 5 firestore collections with rules+indexes, 3 routes, and explicit roadmap confirmation — not scaffold.
+
+### lib/features/user_management/providers/user_management_providers.dart
+- **Referenced anywhere?** YES — live. Imported by 5 page files (people_hub_screen.dart, user_detail_screen.dart, role_assignment_sheet.dart, scope_assignment_screen.dart, permission_override_screen.dart) + the user_management.dart barrel. All 11 defined providers/state-holders consumed: `allOrgUsersProvider`/`orgStudentsProvider`/`orgTeachersProvider`/`orgParentsProvider`/`orgStaffProvider` (people_hub_screen.dart:184-188), `peopleSearchQueryProvider` + `filterUsersByQuery` (people_hub_screen.dart:67, 84, 127, 149, 198), `userRbacProfileProvider` (user_detail_screen.dart:80), `scopeTreeProvider` (user_detail_screen.dart:854, scope_assignment_screen.dart:356), `campusesProvider` (scope_assignment_screen.dart:478), `stagesProvider` (scope_assignment_screen.dart:427), `userAuditHistoryProvider` (user_detail_screen.dart:579), `userManagementRepoProvider` (3 pages). Depends on live `organizationIdProvider` from lib/providers/auth_provider.dart.
+- **Live equivalent?** NO-LIVE-EQUIVALENT. No competing user-management provider file in lib/providers/. This is the only wiring between the user_management pages and UserManagementRepository.
+- **Wiring signals found?** Same as the repository file: routes wired in router.dart:281-296; DEVELOPMENT_ROADMAP.md line 489 lists with [x]; same commit history.
+- **Completeness:** finished (146 lines, all providers return real streams/futures, no TODOs/stubs).
+- **Recommendation:** KEEP-AND-WIRE-UP
+- **One-line reasoning:** Live, fully-consumed Riverpod wiring layer for the People Hub; deleting it would break 5 page files and the entire RBAC admin UI.
+
+### lib/features/assignments/data/assignment_repository.dart
+- **Referenced anywhere?** NO — orphan. `AssignmentRepository` referenced only by itself + assignment_providers.dart (itself an orphan). The 3 live assignment pages import `lib/providers/assignment_provider.dart` (live) and `lib/core/services/assignment_service.dart` (live) — never the scaffold.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. lib/core/services/assignment_service.dart (329 lines) defines `class AssignmentService` with parallel methods: createAssignment, updateAssignment, archiveAssignment, deleteAssignment, getAssignmentsByClassStream, getAssignmentsByOrganizationStream. Scaffold has getAssignmentsForClass, createAssignment, updateAssignment, archiveAssignment, getAssignmentsForStudent. Subtle INCONSISTENCIES: scaffold `AssignmentModel.status` uses literal 'draft'/'published'/'closed' while live uses AppConstants.assignmentStatusDraft/Published; scaffold `archiveAssignment()` writes `'status': 'archived'` (not in live enum); scaffold `dueDate` is `DateTime?` while live `AssignmentData.dueDate` is `DateTime` (non-nullable).
+- **Wiring signals found?** Firestore rules for `assignments` collection exist (line 522-530), indexes exist (lines 192, 215, 238) — but these back the LIVE AssignmentService, not the scaffold. No Cloud Functions reference the scaffold. No routes reference it. DEVELOPMENT_ROADMAP.md mentions "assignments" feature broadly but never `AssignmentRepository` or this file path.
+- **Completeness:** finished-looking but unused (96 lines, all methods have bodies, no TODOs). Original commit `ac43255 feat: add exam & assignment feature modules` (2026-06-12); docs-only touch `83a427f` (2026-06-18).
+- **Recommendation:** DELETE
+- **One-line reasoning:** Pure orphan scaffold — never imported by any page or provider outside its own directory; full functional duplicate of the live AssignmentService with subtle schema drift.
+
+### lib/features/assignments/domain/assignment_model.dart
+- **Referenced anywhere?** NO — orphan. `AssignmentModel` referenced only by itself + assignment_repository.dart + assignment_providers.dart (all orphans). Live pages use `AssignmentData` from lib/providers/assignment_provider.dart instead.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. `AssignmentData` in lib/providers/assignment_provider.dart:48-120 is the live model. Both wrap the same `assignments` Firestore collection, but `AssignmentData` has additional fields (`groupId`, `attachments`, `createdBy`, `isArchived`, `updatedAt`) and uses AppConstants.* for status enum.
+- **Wiring signals found?** None specific to this file. Same firestore rules/indexes back both models (same collection).
+- **Completeness:** finished-looking but unused (49 lines). Same commit history as assignment_repository.dart.
+- **Recommendation:** DELETE
+- **One-line reasoning:** Pure orphan domain model — superseded by the richer live AssignmentData model that pages actually consume.
+
+### lib/features/assignments/providers/assignment_providers.dart
+- **Referenced anywhere?** NO — orphan. `assignmentRepositoryProvider` and `assignmentListForClassProvider` defined here, never referenced outside this file. The 3 live assignment pages use `assignmentsByClassProvider`/`assignmentsByOrgProvider`/`assignmentsProvider`/`assignmentsByClassListProvider` from lib/providers/assignment_provider.dart instead.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME. lib/providers/assignment_provider.dart (120 lines) provides 4 parallel providers that actually wire pages to AssignmentService. The scaffold's `assignmentListForClassProvider` is a functional duplicate of the live `assignmentsByClassProvider`.
+- **Wiring signals found?** None specific.
+- **Completeness:** finished-looking but unused (37 lines). Same commit history.
+- **Recommendation:** DELETE
+- **One-line reasoning:** Pure orphan provider file — the 3 live assignment pages import lib/providers/assignment_provider.dart instead; no consumer references this file's providers.
+
+### Stubs (4 files)
+- `lib/features/assignments/data/data.dart` — STUB (15 lines, only `library;` doc + `// TODO: Create assignment data layer`). DELETE.
+- `lib/features/assignments/domain/domain.dart` — STUB (12 lines, only `library;` doc + `// TODO: Create assignment domain models`). DELETE.
+- `lib/features/assignments/providers/providers.dart` — STUB (14 lines, only `library;` doc + `// TODO: Create assignment providers`). DELETE.
+- `lib/features/assignments/application/application.dart` — STUB (11 lines, only `library;` doc + `// TODO: Implement assignment use cases`). DELETE.
+
+Summary table:
+
+| # | File | LOC | Referenced? | Live equivalent | Wiring signals | Status | Recommendation | Last commit |
+|---|------|-----|-------------|-----------------|----------------|--------|----------------|-------------|
+| 1 | lib/features/user_management/data/user_management_repository.dart | 408 | YES (5 pages, barrel, roadmap [x]) | NO-LIVE-EQUIVALENT | 4 CFs exported, 5 collections w/ rules+indexes, 3 routes wired | finished | KEEP-AND-WIRE-UP | 83a427f (docs touch, 2026-06-18); original 7cca756 (2026-06-13) |
+| 2 | lib/features/user_management/providers/user_management_providers.dart | 146 | YES (5 pages, barrel, roadmap [x]) | NO-LIVE-EQUIVALENT | routes wired, depends on live organizationIdProvider | finished | KEEP-AND-WIRE-UP | 83a427f (docs touch); original 7cca756 (2026-06-13) |
+| 3 | lib/features/assignments/data/assignment_repository.dart | 96 | NO (orphan) | DUPLICATE-BY-DIFFERENT-NAME (AssignmentService) | none specific; firestore rules+indexes back the LIVE service | finished-looking but unused | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 4 | lib/features/assignments/domain/assignment_model.dart | 49 | NO (orphan) | DUPLICATE-BY-DIFFERENT-NAME (AssignmentData) | none specific | finished-looking but unused | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 5 | lib/features/assignments/providers/assignment_providers.dart | 37 | NO (orphan) | DUPLICATE-BY-DIFFERENT-NAME (4 providers in lib/providers/assignment_provider.dart) | none specific | finished-looking but unused | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 6 | lib/features/assignments/data/data.dart | 15 | NO (orphan stub) | n/a | none | stub | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 7 | lib/features/assignments/domain/domain.dart | 12 | NO (orphan stub) | n/a | none | stub | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 8 | lib/features/assignments/providers/providers.dart | 14 | NO (orphan stub) | n/a | none | stub | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+| 9 | lib/features/assignments/application/application.dart | 11 | NO (orphan stub) | n/a | none | stub | DELETE | 83a427f (docs touch); original ac43255 (2026-06-12) |
+
+Stage Summary:
+- 9 files investigated (2 user_management substantial + 3 assignments substantial + 4 assignments stubs).
+- user_management (2 files, 554 lines): KEEP — LIVE Sprint 3B code, not scaffold.
+- assignments (7 files, 234 lines): DELETE — pure orphan scaffold, full duplicates of live AssignmentService/AssignmentData with schema drift, 0 external references.
+- 1 cross-cutting code-smell flagged: `classesProvider`/`stagesProvider` name collision between user_management_providers.dart and lib/providers/class_provider.dart + lib/providers/stage_provider.dart. Suggest renaming user_management versions to `scopeClassesProvider`/`scopeStagesProvider`/`scopeCampusesProvider` in a future cleanup PR.
+- 1 minor dead-barrel flagged: lib/features/user_management/user_management.dart is never imported. Either start using it or delete it.
+- No code changes made — investigation only. Findings appended to worklog.md.
+
+---
+Task ID: bucket-d-staff-orgs
+Agent: bucket-d-staff-orgs-investigator
+
+Task: Investigate the staff_approval + organizations scaffold clusters in lib/features/. Determine for each of 10 files: referenced anywhere? live equivalent? wiring signals? completeness + git history? recommendation (DELETE / KEEP-AND-WIRE-UP / KEEP-AS-REFERENCE / NEEDS-HUMAN-DECISION)?
+
+Work Log:
+- Read all 10 target files (5 in staff_approval/domain/, 5 in organizations/{data,domain,providers}/). Also read the 2 barrels (staff_approval/staff_approval.dart, staff_approval/domain/domain.dart), the orphan campus pages (campus_list_screen.dart, campus_form_screen.dart), and the orphan campus_service.dart.
+- Read live equivalents: lib/providers/organization_provider.dart (LIVE, OrganizationData class + currentOrganizationProvider), lib/core/services/organization_service.dart (LIVE, 444-line service returning Map<String,dynamic>), lib/shared/models/organization_model.dart (DEAD BaseModel subclass), lib/shared/models/campus_model.dart (DEAD BaseModel subclass), lib/core/models/tenant_model.dart + lib/shared/models/tenant_model.dart (both consume StaffApprovalPolicy but TenantData is itself never used outside its own file).
+- Cross-referenced: lib/core/config/app_constants.dart lines 441-475 (staffApplicationsCollection + 7 staff status constants + 3 policy constants + 3 staff type constants — the untyped mirror of the staff_approval enums).
+- grepped lib + test for every class name (StaffApplication, StaffApprovalPolicy, StaffApprovalStatus, StaffType, StaffApplicationSource, StaffApprovalTransition, OrganizationModel, CampusModel, OrganizationRepository, CampusService) and for every provider name (campusServiceProvider, campusListProvider, campusListByOrgProvider, campusCurrentOrgIdProvider, currentOrganizationProvider, organizationRepositoryProvider).
+- Verified wiring: firestore.rules has `match /organizations/{orgId}` (line 375) and `match /campuses/{campusId}` (line 772), but NO `staff_applications` match anywhere. firestore.indexes.json has a `campuses` composite index (organizationId + isActive + createdAt) at line 533 that matches `CampusService.getCampuses()` exactly. No Cloud Functions named submitStaffApplication / reviewStaffApplication / acceptStaffInvitation / revokeStaffAccess exist (functions/src/ has zero `staff_application`/`StaffApplication` matches).
+- Routes: lib/app/router.dart and lib/main.dart have ZERO /staff-approval or /campus routes. CampusListScreen and CampusFormScreen are defined but never referenced from any router.
+- Roadmap: DEVELOPMENT_ROADMAP.md v2.2 section (lines 583-607) describes "Teacher Approval Workflow" with `staff_applications` collection implied, but the roadmap's master Collections list (lines 2264-2336) does NOT include `staff_applications` — naming inconsistency. The roadmap uses `schools` / `school_members` / `school_profiles` (NOT `organizations` / `users` / `campuses`). FUTURE_IDEAS.md has no matches for staff/campus/organization.
+- Git history: all 11 files (5 staff_approval + 6 organizations) appeared in a SINGLE commit `83a427f` (2026-06-18 01:19:29Z) "docs: add complete audit + Phase 2 deploy archive" — a 291+-file audit-archive commit. No prior history on any branch. No subsequent edits.
+- No TODO/FIXME/HACK markers in any of the 10 target files (clean code).
+
+Findings (per-file):
+
+### lib/features/staff_approval/domain/domain.dart (8 lines — barrel)
+- **Referenced anywhere?** NO. Zero imports of `staff_approval/domain/domain.dart` anywhere in lib/ or test/.
+- **Live equivalent?** NO-LIVE-EQUIVALENT — it's a barrel re-exporting 4 files; 1 of those 4 (`staff_approval_policy.dart`) is independently imported by 3 live files via direct path (NOT through this barrel).
+- **Wiring signals found?** None (barrel only).
+- **Completeness:** stub barrel (8 lines), finished-looking. Last commit 2026-06-18 (audit commit 83a427f). No TODOs.
+- **Recommendation:** DELETE
+- **One-line reasoning:** Dead barrel — no one imports it; the one live file in this folder is imported by direct path, bypassing the barrel.
+
+### lib/features/staff_approval/domain/staff_application_model.dart (515 lines)
+- **Referenced anywhere?** NO. Zero external references to `StaffApplication`, `StaffApplicationSource`, or the file itself outside the staff_approval folder.
+- **Live equivalent?** NO-LIVE-EQUIVALENT — no live staff_applications model exists. (AppConstants.staffApplicationsCollection = 'staff_applications' is declared but never read by any Dart service/repository; the string is a forward-declared constant.)
+- **Wiring signals found?** None active. firestore.rules has NO `staff_applications` match. Zero Cloud Functions named submitStaffApplication / reviewStaffApplication / acceptStaffInvitation / revokeStaffAccess. No /staff-approval routes. Roadmap v2.2 (lines 583-607) describes the workflow this model would serve, but `staff_applications` is not in the roadmap's master Collections list.
+- **Completeness:** FINISHED. 515-line model with fromFirestore/fromMap/toFirestore/copyWith/== /hashCode, idempotency `version` field, invitation/review/revocation/reapplication chain, scope assignment, soft-deletion. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** KEEP-AS-REFERENCE
+- **One-line reasoning:** Complete, well-designed model for v2.2 (Teacher Approval Workflow); zero wiring today but ready to use as the design source when v2.2 begins.
+
+### lib/features/staff_approval/domain/staff_approval_policy.dart (64 lines)
+- **Referenced anywhere?** YES. Imported by 3 files: `lib/providers/organization_provider.dart` (LIVE), `lib/shared/models/tenant_model.dart`, `lib/core/models/tenant_model.dart`. `StaffApprovalPolicy` enum used by `OrganizationData.staffApprovalPolicy` field, which is consumed by 30+ live feature files transitively through `currentOrganizationProvider` / `organizationServiceProvider`.
+- **Live equivalent?** NO-LIVE-EQUIVALENT — this IS the only `StaffApprovalPolicy` definition. The 3 string constants `AppConstants.staffPolicyManual/InviteOnly/AutoApprove` are the untyped parallel; the enum `.id` values match those constants.
+- **Wiring signals found?** Active. `OrganizationService.createOrganization` (live, line 50) writes `'staffApprovalPolicy': AppConstants.staffPolicyManual` to new org docs. `OrganizationData.fromFirestore` (live, line 123) reads it back via `StaffApprovalPolicy.fromId`. `OrganizationService.updateOrganization` (live, line 121) supports runtime updates. firestore.rules does NOT lock `staffApprovalPolicy` at field level (org-update is owner-gated, which is sufficient). No Cloud Functions consume the policy server-side yet (the `submitStaffApplication` CF referenced in the policy file's docstring does NOT exist).
+- **Completeness:** FINISHED. 64-line enum with fromId/fromString(legacy)/description/allowsSelfRegistration. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** KEEP-AND-WIRE-UP (already wired in client; CF enforcement still needed for v2.2)
+- **One-line reasoning:** Live enum, would break compilation of 3 live files (and 30+ transitively) if deleted; only the CF-side enforcement is missing.
+
+### lib/features/staff_approval/domain/staff_approval_status.dart (126 lines)
+- **Referenced anywhere?** NO external. Used only by `staff_application_model.dart` (line 90, 252, 300, 391, 471-472, 486) — which is itself unreferenced.
+- **Live equivalent?** PARTIAL-OVERLAP — `AppConstants` lines 448-454 declare 7 string constants (`staffStatusPendingReview='pending_review'`, etc.) mirroring this enum's `.value` strings exactly. The enum is the typed upgrade; the constants are the untyped live mirror (both unused by any service today).
+- **Wiring signals found?** None active. No `staff_applications` collection in firestore.rules. No CFs. No routes. Roadmap v2.2 implies this status machine (pending→approved/rejected, invited→approved/declined/expired, approved→revoked).
+- **Completeness:** FINISHED. 126 lines — enum (7 values) + `StaffApprovalTransition` validator class with `_allowed` transition map + `isAllowed`/`allowedTargets` helpers. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** KEEP-AS-REFERENCE
+- **One-line reasoning:** Typed duplicate of AppConstants status strings; ready when v2.2 staff-approval work begins.
+
+### lib/features/staff_approval/domain/staff_type.dart (75 lines)
+- **Referenced anywhere?** NO external. Used only by `staff_application_model.dart` (lines 85, 251, 299, 390) — itself unreferenced.
+- **Live equivalent?** PARTIAL-OVERLAP — `AppConstants` lines 464-466 declare 3 string constants (`staffTypeTeacher='teacher'`, `staffTypeAssistantTeacher='assistant_teacher'`, `staffTypeCounselor='counselor'`) matching this enum's `.value` strings. The enum adds `displayName` + `defaultRole` mapping.
+- **Wiring signals found?** None active. No CFs, no routes.
+- **Completeness:** FINISHED. 75-line enum with fromString/displayName/defaultRole/requiresScopeAssignment/allValues. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** KEEP-AS-REFERENCE
+- **One-line reasoning:** Typed duplicate of AppConstants type strings; ready when v2.2 begins.
+
+### lib/features/organizations/data/organization_repository.dart (70 lines)
+- **Referenced anywhere?** NO external. Used only by `lib/features/organizations/providers/organization_providers.dart` (itself unreferenced).
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME — `lib/core/services/organization_service.dart` (LIVE, 444 lines) has the same 4 methods (getOrganization, getOrganizationByOwner, getOrganizationStream, updateOrganization) returning `Map<String, dynamic>` (untyped). The scaffold repository returns typed `OrganizationModel`. Both target the same `AppConstants.organizationsCollection`.
+- **Wiring signals found?** Uses `AppConstants.organizationsCollection` (which IS in firestore.rules line 375). No CFs.
+- **Completeness:** FINISHED. 70-line repository (3 read methods + 1 stream + 1 update). No TODOs. Last commit 2026-06-18.
+- **Recommendation:** NEEDS-HUMAN-DECISION
+- **One-line reasoning:** Typed duplicate of live OrganizationService with zero callers; keep only if planning a typed-model migration across all 30+ live org consumers.
+
+### lib/features/organizations/domain/campus_model.dart (166 lines)
+- **Referenced anywhere?** YES, but only INTERNALLY within the orphan `lib/features/organizations/` subtree — by `services/campus_service.dart`, `pages/campus_{list,form}_screen.dart`, `providers/campus_provider.dart`. Zero external references.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME — `lib/shared/models/campus_model.dart` ALSO defines a `CampusModel extends BaseModel` class (83 lines, different fields: no `headId`, no `isMain`, no `phone`/`email`/`country`, has `classCount`/`settings`/`tenantId` instead). Live code uses NEITHER (no live campus feature).
+- **Wiring signals found?** PARTIAL — firestore.rules has `match /campuses/{campusId}` (line 772, read for same-org, create/update for teacher-or-owner, delete for teacher-or-owner). firestore.indexes.json line 533 has a composite `campuses` index on `organizationId + isActive + createdAt DESC` — matches `CampusService.getCampuses()` query EXACTLY. NO /campus routes registered in lib/app/router.dart or lib/main.dart. `CampusListScreen` & `CampusFormScreen` are defined but never instantiated.
+- **Completeness:** FINISHED. 166-line model with fromFirestore/fromMap/toFirestore/copyWith/locationText. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** NEEDS-HUMAN-DECISION
+- **One-line reasoning:** Orphaned-but-wired vertical (rules + index + service + provider + screens all present, just no router entry); could be activated by registering `/campus` routes or deleted if multi-campus is descoped.
+
+### lib/features/organizations/domain/organization_model.dart (52 lines)
+- **Referenced anywhere?** NO external. Used only by `organization_repository.dart` and `organization_providers.dart` (both in orphan subtree, both unreferenced).
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME — TWO other definitions exist: (1) `lib/shared/models/organization_model.dart` (also dead, extends BaseModel, 78 lines); (2) `lib/providers/organization_provider.dart::OrganizationData` (LIVE, 111-line class used by 30+ feature files via `currentOrganizationProvider`). The scaffold `OrganizationModel` is STRICTLY INFERIOR to live `OrganizationData` — missing `contactEmail`, `contactPhone`, `isPortalEnabled`, `staffApprovalPolicy`, `updatedAt`; no `copyWith`; no `fromMap` separate from `fromFirestore`.
+- **Wiring signals found?** Uses `AppConstants.organizationsCollection` (in firestore.rules). No CFs.
+- **Completeness:** PARTIAL — minimal 52-line model, no copyWith, no toFirestore-with-id, missing fields vs. live OrganizationData. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** DELETE
+- **One-line reasoning:** Inferior duplicate of live OrganizationData with zero callers; offers nothing the live class doesn't already provide.
+
+### lib/features/organizations/providers/campus_provider.dart (43 lines)
+- **Referenced anywhere?** YES, but only INTERNALLY within orphan subtree — by `campus_list_screen.dart` & `campus_form_screen.dart`. Zero external references.
+- **Live equivalent?** NO-LIVE-EQUIVALENT — no live campus provider exists (no live campus feature).
+- **Wiring signals found?** PARTIAL — defines `campusServiceProvider` (singleton CampusService), `campusListProvider` (Stream), `campusListByOrgProvider` (family), `campusCurrentOrgIdProvider` (re-export). Pulls `currentOrganizationIdProvider` from `lib/providers/organization_provider.dart` (LIVE) — cross-refs the live provider layer correctly. No routes registered.
+- **Completeness:** FINISHED. 43-line provider file with 4 providers. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** NEEDS-HUMAN-DECISION
+- **One-line reasoning:** Orphaned but functional; fate tied to campus_model.dart + campus_service.dart + the orphan screens — activate together or delete together.
+
+### lib/features/organizations/providers/organization_providers.dart (40 lines)
+- **Referenced anywhere?** NO. Zero imports of this file anywhere in lib/ or test/.
+- **Live equivalent?** DUPLICATE-BY-DIFFERENT-NAME — `lib/providers/organization_provider.dart` (LIVE) ALSO defines `currentOrganizationProvider` (same identifier) returning `StreamProvider<Map<String, dynamic>?>` (untyped). The scaffold here returns `StreamProvider<OrganizationModel?>` (typed). DORMANT NAME-COLLISION LANDMINE: if any file ever imports both, Dart will refuse to compile due to a duplicate top-level identifier. Also defines `organizationRepositoryProvider` (scaffold) vs the live file's `organizationServiceProvider` (different name, different return type, different layer).
+- **Wiring signals found?** NONE — only consumes `currentOrgIdProvider` from `lib/features/auth/providers/auth_providers.dart` (which is itself live). No routes, no CFs.
+- **Completeness:** FINISHED. 40-line provider file with 2 providers. No TODOs. Last commit 2026-06-18.
+- **Recommendation:** DELETE
+- **One-line reasoning:** Dormant name-collision with live `currentOrganizationProvider`; zero callers; only feeds the orphan OrganizationRepository.
+
+---
+
+### Summary Table (10 rows)
+
+| # | File | LOC | Referenced? | Live equivalent | Wiring | Last commit | Recommendation | One-line reasoning |
+|---|------|-----|-------------|-----------------|--------|-------------|----------------|--------------------|
+| 1 | staff_approval/domain/domain.dart | 8 | No | N/A (barrel) | None | 2026-06-18 (83a427f) | DELETE | Dead barrel; only live file in folder is imported by direct path. |
+| 2 | staff_approval/domain/staff_application_model.dart | 515 | No | No-live-equivalent | None (no rules/CF/routes) | 2026-06-18 (83a427f) | KEEP-AS-REFERENCE | Finished, design-quality model for v2.2; zero wiring today. |
+| 3 | staff_approval/domain/staff_approval_policy.dart | 64 | Yes (3 live files, 30+ transitively) | No-live-equivalent (IS the only def) | Active (org doc field write+read) | 2026-06-18 (83a427f) | KEEP-AND-WIRE-UP | Live enum; would break 30+ files if deleted; CF enforcement still missing. |
+| 4 | staff_approval/domain/staff_approval_status.dart | 126 | No (only by file #2) | Partial (AppConstants string mirror) | None | 2026-06-18 (83a427f) | KEEP-AS-REFERENCE | Typed duplicate of AppConstants strings; ready when v2.2 starts. |
+| 5 | staff_approval/domain/staff_type.dart | 75 | No (only by file #2) | Partial (AppConstants string mirror) | None | 2026-06-18 (83a427f) | KEEP-AS-REFERENCE | Typed duplicate of AppConstants strings; ready when v2.2 starts. |
+| 6 | organizations/data/organization_repository.dart | 70 | No (only by file #10) | DUPLICATE-BY-DIFFERENT-NAME (live OrganizationService, untyped) | Uses AppConstants.organizationsCollection (in rules) | 2026-06-18 (83a427f) | NEEDS-HUMAN-DECISION | Typed duplicate of live OrganizationService; keep only if migrating all 30+ consumers to typed models. |
+| 7 | organizations/domain/campus_model.dart | 166 | Internal only (orphan subtree) | DUPLICATE-BY-DIFFERENT-NAME (lib/shared/models/campus_model.dart, also dead) | PARTIAL — firestore.rules line 772 + indexes.json line 533 (exact match) | 2026-06-18 (83a427f) | NEEDS-HUMAN-DECISION | Orphaned-but-wired vertical; activate by registering /campus routes or delete with the campus subtree. |
+| 8 | organizations/domain/organization_model.dart | 52 | No (only by files #6, #10) | DUPLICATE-BY-DIFFERENT-NAME (live OrganizationData is strictly superior) | Uses AppConstants.organizationsCollection (in rules) | 2026-06-18 (83a427f) | DELETE | Inferior duplicate of live OrganizationData; no copyWith, missing fields, zero callers. |
+| 9 | organizations/providers/campus_provider.dart | 43 | Internal only (orphan screens) | No-live-equivalent | PARTIAL — pulls live currentOrganizationIdProvider; no routes | 2026-06-18 (83a427f) | NEEDS-HUMAN-DECISION | Orphaned but functional; fate tied to campus_model + campus_service + screens. |
+| 10 | organizations/providers/organization_providers.dart | 40 | No | DUPLICATE-BY-DIFFERENT-NAME (live file defines same `currentOrganizationProvider` identifier) → DORMANT COLLISION | None | 2026-06-18 (83a427f) | DELETE | Dormant name-collision with live `currentOrganizationProvider`; zero callers. |
+
+---
+
+### Cluster-level observations
+
+1. **All 10 files (and the 2 barrels + 2 orphan pages + 1 orphan service = 15 total files) appeared in a single audit-archive commit `83a427f` on 2026-06-18.** No prior history, no subsequent edits. This is a scaffold drop, not an organic growth — the entire `lib/features/organizations/` subtree + the entire `lib/features/staff_approval/domain/` subtree were written in one pass.
+
+2. **staff_approval cluster (5 files): only `staff_approval_policy.dart` is live.** The other 4 (model, status, type, barrel) form a self-referential closed system — they reference each other but nothing outside references them. `staff_approval_policy.dart` survives because `OrganizationData.staffApprovalPolicy` (in the live `lib/providers/organization_provider.dart`) uses it.
+
+3. **organizations cluster (5 files): zero external references.** The entire subtree (data + domain + providers + pages + services = 8 files total) is orphaned. Internal references exist (campus_provider → campus_service → campus_model → providers/organization_provider [LIVE]; campus screens → campus_provider + LIVE providers/organization_provider), but no file outside `lib/features/organizations/` imports any file inside it.
+
+4. **The organizations cluster has a UNIQUE wiring advantage over the staff_approval cluster**: firestore.rules line 772 (`match /campuses/{campusId}`) and firestore.indexes.json line 533 (`campuses` composite index matching `CampusService.getCampuses()`) are BOTH present — meaning the campus vertical is "wired at the database layer" and could be activated by simply registering `/campus` routes pointing at the existing `CampusListScreen` / `CampusFormScreen`. The staff_approval cluster has NEITHER rules NOR indexes NOR routes — its `staff_applications` collection is purely aspirational.
+
+5. **DORMANT COLLISION LANDMINE** in `lib/features/organizations/providers/organization_providers.dart`: defines top-level `currentOrganizationProvider` (typed `StreamProvider<OrganizationModel?>`) — SAME IDENTIFIER as the live `lib/providers/organization_provider.dart::currentOrganizationProvider` (untyped `StreamProvider<Map<String, dynamic>?>`). Currently harmless (scaffold never imported) but will cause a compile error if a future developer accidentally imports both. Same risk for `OrganizationModel` class name (defined in 3 places: `lib/features/organizations/domain/`, `lib/shared/models/`, and the live `OrganizationData` class — though `OrganizationData` has a different name so no collision there).
+
+6. **Roadmap alignment gap**: DEVELOPMENT_ROADMAP.md v2.2 (lines 583-607) describes the "Teacher Approval Workflow" this staff_approval cluster would serve, but the roadmap's master Collections list (lines 2264-2336) does NOT include `staff_applications` — and uses different naming throughout (`schools` / `school_members` / `school_profiles` instead of `organizations` / `users` / `campuses`). The scaffold predates (or diverges from) the roadmap's collection-naming convention.
+
+### Recommended next actions
+
+- **SAFE-DELETE now (zero callers, zero risk):**
+  - `lib/features/staff_approval/domain/domain.dart` (barrel)
+  - `lib/features/organizations/domain/organization_model.dart` (inferior duplicate)
+  - `lib/features/organizations/providers/organization_providers.dart` (dormant collision)
+  - Three-file subtotal: ~100 lines deleted, zero behavior change.
+
+- **DELETE the entire orphan `lib/features/organizations/` subtree IF multi-campus is descoped** — 8 files, ~1100 lines, no external callers. But first verify nobody plans to register `/campus` routes soon (the rules + indexes are already in place, so the wiring cost to activate is low).
+
+- **KEEP the staff_approval domain cluster (model, status, type) as v2.2 design reference** — 716 lines, well-designed, no callers but ready to wire when v2.2 begins. DO NOT delete `staff_approval_policy.dart` (it's live).
+
+- **HUMAN DECISION REQUIRED:**
+  - Is multi-campus (campuses collection + UI) in scope for the next 2-3 sprints? If yes → register `/campus` routes in lib/app/router.dart pointing at the orphan CampusListScreen, and the campus vertical comes alive. If no → delete the entire `lib/features/organizations/` subtree.
+  - Is a typed-model migration of OrganizationService planned? If yes → keep `organization_repository.dart` + `organization_model.dart` (but fix the model's missing fields first); if no → delete them.
+
+### Post-investigation state
+- No code changes made by this agent (investigation-only).
+- This worklog entry is the only file modified.
