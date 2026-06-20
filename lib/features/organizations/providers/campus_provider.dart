@@ -5,6 +5,17 @@ import '../../../providers/organization_provider.dart';
 import '../domain/campus_model.dart';
 import '../services/campus_service.dart';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// KEEP-AND-WIRE-UP — Scaffold Cleanup Phase 2 verdict (2026-06-21)
+// ─────────────────────────────────────────────────────────────────────────
+// Part of the planned-but-unactivated multi-campus vertical. Already wired
+// to the LIVE `currentOrganizationIdProvider` from `lib/providers/
+// organization_provider.dart` (not the deleted scaffold version). Activation
+// requires only registering `/campus` + `/campus/new` routes in
+// `lib/app/router.dart` and adding a nav menu entry.
+// See `download/scaffold-phase2-report.md` for the full wire-up sketch.
+// ═══════════════════════════════════════════════════════════════════════════
+
 // ─── Service Provider ────────────────────────────────────────────────────────
 
 /// Provides a singleton [CampusService] instance.

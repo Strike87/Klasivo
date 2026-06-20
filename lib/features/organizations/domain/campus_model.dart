@@ -1,5 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// KEEP-AND-WIRE-UP — Scaffold Cleanup Phase 2 verdict (2026-06-21)
+// ─────────────────────────────────────────────────────────────────────────
+// This file is part of the planned-but-unactivated multi-campus vertical.
+// Kept because:
+//   - DEVELOPMENT_ROADMAP.md mentions multi-campus 11× (lines 1089, 1095,
+//     1096, 1097, 1135, 1787, 1869, 1965, 1980, 2039, 2688).
+//   - `roleCampusManager` is declared in `app_constants.dart:105`.
+//   - `campusesCollection` is declared in `app_constants.dart:76`.
+//   - `firestore.rules:772` has a `match /campuses/{campusId}` block.
+//   - `firestore.indexes.json:533` has a composite index matching
+//     `CampusService.getCampuses()` exactly.
+// Activation: register `/campus` and `/campus/new` routes in
+// `lib/app/router.dart` (gated by `roleCampusManager`/`roleOwner`/`roleAdmin`)
+// and add a "Campuses" entry to the org admin nav menu. No rules/index
+// changes needed. See `download/scaffold-phase2-report.md` for full context.
+// ═══════════════════════════════════════════════════════════════════════════
+
 /// Domain model for a Klasivo campus (physical location within an organization).
 ///
 /// Multi-campus schools use this to represent distinct physical sites,
