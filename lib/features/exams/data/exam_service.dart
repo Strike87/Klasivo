@@ -123,11 +123,25 @@ class ExamService {
 
   Future<void> publishExam(String examId) async {
     try {
-      final questionsSnapshot = await _firestore
-          .collection(AppConstants.questionsCollection)
-          .where('examId', isEqualTo: examId)
-          .count()
+      // AUDIT FIX #6: fetch the exam doc to get organizationId, then scope
+      // the questions count query by it. Without this, the list query was
+      // denied by isInSameOrg().
+      final examDoc = await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
           .get();
+      if (!examDoc.exists) {
+        throw Exception('Exam not found.');
+      }
+      final organizationId = examDoc.data()!['organizationId'] as String?;
+
+      var questionsQuery = _firestore
+          .collection(AppConstants.questionsCollection)
+          .where('examId', isEqualTo: examId);
+      if (organizationId != null && organizationId.isNotEmpty) {
+        questionsQuery = questionsQuery.where('organizationId', isEqualTo: organizationId);
+      }
+      final questionsSnapshot = await questionsQuery.count().get();
 
       if (questionsSnapshot.count == 0) {
         throw Exception('Cannot publish exam without questions. Add at least one question.');
@@ -200,25 +214,67 @@ class ExamService {
     try {
       await notif_service.NotificationService.cancelExamReminders(examId);
 
+      // AUDIT FIX #7: fetch the exam doc to get organizationId, then scope all
+      // cascade queries by it. Without this, all 4 list queries were denied
+      // by isInSameOrg() and the cascade silently no-op'd.
+      final examDoc = await _firestore
+          .collection(AppConstants.examsCollection)
+          .doc(examId)
+          .get();
+      if (!examDoc.exists) {
+        // Already deleted — nothing to cascade
+        return;
+      }
+      final organizationId = examDoc.data()!['organizationId'] as String?;
+
       // Fetch all related collections in parallel for better performance
-      final results = await Future.wait([
-        _firestore
-            .collection(AppConstants.questionsCollection)
-            .where('examId', isEqualTo: examId)
-            .get(),
-        _firestore
-            .collection(AppConstants.submissionsCollection)
-            .where('examId', isEqualTo: examId)
-            .get(),
-        _firestore
-            .collection(AppConstants.examInstancesCollection)
-            .where('examId', isEqualTo: examId)
-            .get(),
-        _firestore
-            .collection(AppConstants.examStatsCollection)
-            .where('examId', isEqualTo: examId)
-            .get(),
-      ]);
+      List<QuerySnapshot> results;
+      if (organizationId != null && organizationId.isNotEmpty) {
+        results = await Future.wait([
+          _firestore
+              .collection(AppConstants.questionsCollection)
+              .where('examId', isEqualTo: examId)
+              .where('organizationId', isEqualTo: organizationId)
+              .get(),
+          _firestore
+              .collection(AppConstants.submissionsCollection)
+              .where('examId', isEqualTo: examId)
+              .where('organizationId', isEqualTo: organizationId)
+              .get(),
+          _firestore
+              .collection(AppConstants.examInstancesCollection)
+              .where('examId', isEqualTo: examId)
+              .where('organizationId', isEqualTo: organizationId)
+              .get(),
+          _firestore
+              .collection(AppConstants.examStatsCollection)
+              .where('examId', isEqualTo: examId)
+              .where('organizationId', isEqualTo: organizationId)
+              .get(),
+        ]);
+      } else {
+        // Legacy exam doc without organizationId — fall back to unscoped
+        // queries (will only succeed if the rule permits, otherwise the
+        // operation will throw, which is the correct safety behavior).
+        results = await Future.wait([
+          _firestore
+              .collection(AppConstants.questionsCollection)
+              .where('examId', isEqualTo: examId)
+              .get(),
+          _firestore
+              .collection(AppConstants.submissionsCollection)
+              .where('examId', isEqualTo: examId)
+              .get(),
+          _firestore
+              .collection(AppConstants.examInstancesCollection)
+              .where('examId', isEqualTo: examId)
+              .get(),
+          _firestore
+              .collection(AppConstants.examStatsCollection)
+              .where('examId', isEqualTo: examId)
+              .get(),
+        ]);
+      }
 
       final questionsSnapshot = results[0];
       final submissionsSnapshot = results[1];
@@ -315,12 +371,24 @@ class ExamService {
   }) async {
     try {
       // Check if instance already exists for this student
-      final existingSnapshot = await _firestore
+      // AUDIT FIX #8: fetch the exam doc to get organizationId, then scope the
+      // existing-instance query by it. Also stamp organizationId on the new
+      // submission + exam_instance docs so future reads are not denied.
+      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
+      if (!examDoc.exists) {
+        throw Exception('Exam not found.');
+      }
+      final organizationId = examDoc.data()!['organizationId'] as String?;
+      final classId = examDoc.data()!['classId'] as String? ?? '';
+
+      var existingQuery = _firestore
           .collection(AppConstants.examInstancesCollection)
           .where('examId', isEqualTo: examId)
-          .where('studentId', isEqualTo: studentId)
-          .limit(1)
-          .get();
+          .where('studentId', isEqualTo: studentId);
+      if (organizationId != null && organizationId.isNotEmpty) {
+        existingQuery = existingQuery.where('organizationId', isEqualTo: organizationId);
+      }
+      final existingSnapshot = await existingQuery.limit(1).get();
 
       if (existingSnapshot.docs.isNotEmpty) {
         return existingSnapshot.docs.first.id;
@@ -343,14 +411,12 @@ class ExamService {
         }
       }
 
-      // Create submission
-      // Get classId from the exam document
-      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
-      final classId = examDoc.data()?['classId'] as String? ?? '';
+      // Create submission (AUDIT FIX #8: stamp organizationId)
       final submissionRef = await _firestore.collection(AppConstants.submissionsCollection).add({
         'examId': examId,
         'studentId': studentId,
         'classId': classId,
+        'organizationId': organizationId,  // AUDIT FIX #8
         'status': AppConstants.submissionStatusStarted,
         'startedAt': FieldValue.serverTimestamp(),
         'submittedAt': null,
@@ -361,11 +427,12 @@ class ExamService {
         'violationCount': 0,
       });
 
-      // Create exam instance (immutable snapshot)
+      // Create exam instance (immutable snapshot) — AUDIT FIX #8: stamp organizationId
       final docRef = await _firestore.collection(AppConstants.examInstancesCollection).add({
         'examId': examId,
         'studentId': studentId,
         'classId': classId,
+        'organizationId': organizationId,  // AUDIT FIX #8
         'isRandomized': randomizeQuestions,
         'randomizedQuestionIds': processedQuestions.map((q) => q['id'] ?? '').toList(),
         'startedAt': FieldValue.serverTimestamp(),
@@ -382,14 +449,17 @@ class ExamService {
   Future<Map<String, dynamic>?> getExamInstance({
     required String examId,
     required String studentId,
+    String? organizationId,  // AUDIT FIX #8: optional scope; if provided, query is narrowed
   }) async {
     try {
-      final snapshot = await _firestore
+      var query = _firestore
           .collection(AppConstants.examInstancesCollection)
           .where('examId', isEqualTo: examId)
-          .where('studentId', isEqualTo: studentId)
-          .limit(1)
-          .get();
+          .where('studentId', isEqualTo: studentId);
+      if (organizationId != null && organizationId.isNotEmpty) {
+        query = query.where('organizationId', isEqualTo: organizationId);
+      }
+      final snapshot = await query.limit(1).get();
 
       if (snapshot.docs.isEmpty) return null;
       return {'id': snapshot.docs.first.id, ...snapshot.docs.first.data()};
@@ -403,10 +473,24 @@ class ExamService {
   /// Update exam stats after a submission
   Future<void> updateExamStats(String examId) async {
     try {
-      final submissionsSnapshot = await _firestore
+      // AUDIT FIX #9: fetch exam doc FIRST to get organizationId + passing score
+      // + total marks in a single read, then scope the submissions + exam_stats
+      // queries by organizationId. Previously the submissions + stats list
+      // queries were denied by isInSameOrg().
+      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
+      if (!examDoc.exists) return;
+      final examData = examDoc.data()!;
+      final passingScore = (examData['passingScore'] as int?) ?? 0;
+      final totalMarks = (examData['totalMarks'] as int?) ?? 0;
+      final organizationId = examData['organizationId'] as String?;
+
+      var submissionsQuery = _firestore
           .collection(AppConstants.submissionsCollection)
-          .where('examId', isEqualTo: examId)
-          .get();
+          .where('examId', isEqualTo: examId);
+      if (organizationId != null && organizationId.isNotEmpty) {
+        submissionsQuery = submissionsQuery.where('organizationId', isEqualTo: organizationId);
+      }
+      final submissionsSnapshot = await submissionsQuery.get();
 
       int totalStudents = submissionsSnapshot.docs.length;
       int submittedStudents = 0;
@@ -415,11 +499,6 @@ class ExamService {
       int lowestScore = 0;
       bool firstScore = true;
       int passCount = 0;
-
-      // Get passing score
-      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
-      final passingScore = (examDoc.data()?['passingScore'] as int?) ?? 0;
-      final totalMarks = (examDoc.data()?['totalMarks'] as int?) ?? 0;
 
       for (final doc in submissionsSnapshot.docs) {
         final data = doc.data();
@@ -455,15 +534,18 @@ class ExamService {
           ? (passCount / submittedStudents) * 100
           : 0.0;
 
-      // Upsert exam stats
-      final statsSnapshot = await _firestore
+      // Upsert exam stats (AUDIT FIX #9: scope by organizationId)
+      var statsQuery = _firestore
           .collection(AppConstants.examStatsCollection)
-          .where('examId', isEqualTo: examId)
-          .limit(1)
-          .get();
+          .where('examId', isEqualTo: examId);
+      if (organizationId != null && organizationId.isNotEmpty) {
+        statsQuery = statsQuery.where('organizationId', isEqualTo: organizationId);
+      }
+      final statsSnapshot = await statsQuery.limit(1).get();
 
       final statsData = {
         'examId': examId,
+        'organizationId': organizationId,  // ensure stats doc has orgId for future reads
         'totalStudents': totalStudents,
         'submittedStudents': submittedStudents,
         'averageScore': averageScore,
@@ -486,22 +568,24 @@ class ExamService {
     }
   }
 
-  Stream<QuerySnapshot> getExamsStream(String teacherId, {String? organizationId}) {
-    var query = _firestore
+  Stream<QuerySnapshot> getExamsStream(String teacherId, {required String organizationId}) {
+    // AUDIT FIX #4: organizationId is now required — Firestore rule isInSameOrg()
+    // requires the query to be scoped to the caller's org. Previously optional and
+    // not passed by the provider, so every teacher exam list query was denied.
+    return _firestore
         .collection(AppConstants.examsCollection)
-        .where('teacherId', isEqualTo: teacherId);
-    if (organizationId != null) {
-      query = query.where('organizationId', isEqualTo: organizationId);
-    }
-    return query
+        .where('teacherId', isEqualTo: teacherId)
+        .where('organizationId', isEqualTo: organizationId)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
-  Stream<QuerySnapshot> getClassExamsStream(String classId) {
+  Stream<QuerySnapshot> getClassExamsStream(String classId, {required String organizationId}) {
+    // AUDIT FIX #5: added organizationId filter — student exam list was denied
     return _firestore
         .collection(AppConstants.examsCollection)
         .where('classId', isEqualTo: classId)
+        .where('organizationId', isEqualTo: organizationId)
         .where('status', isEqualTo: AppConstants.statusPublished)
         .orderBy('startDate', descending: false)
         .snapshots();

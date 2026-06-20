@@ -96,10 +96,13 @@ class MessagingService {
   }
 
   /// Get conversations for a user (where they are a participant).
-  Stream<QuerySnapshot> getUserConversationsStream(String userId) {
+  /// AUDIT FIX #11: added required organizationId filter — Firestore rule
+  /// isInSameOrg() requires list queries to be scoped to the caller's org.
+  Stream<QuerySnapshot> getUserConversationsStream(String userId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.conversationsCollection)
         .where('participantIds', arrayContains: userId)
+        .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #11
         .orderBy('updatedAt', descending: true)
         .snapshots();
   }
@@ -164,30 +167,36 @@ class MessagingService {
     required String text,
   }) async {
     try {
-      // Create the message
+      // AUDIT FIX #12: fetch the conversation doc FIRST to get organizationId,
+      // then stamp it on the new message doc. Without organizationId, the
+      // messages.create rule isInComingSameOrg() denies the write.
+      final conversationDoc = await _firestore
+          .collection(AppConstants.conversationsCollection)
+          .doc(conversationId)
+          .get();
+      if (!conversationDoc.exists) {
+        throw Exception('Conversation not found.');
+      }
+      final conversationData = conversationDoc.data()!;
+      final participantIds = List<String>.from(
+        conversationData['participantIds'] ?? [],
+      );
+      final organizationId = conversationData['organizationId'] as String?;
+      final conversationName = conversationData['name'] as String?;
+
+      // Create the message — AUDIT FIX #12: stamp organizationId
       final docRef = await _firestore
           .collection(AppConstants.messagesCollection)
           .add({
         'conversationId': conversationId,
         'senderId': senderId,
         'text': text,
+        'organizationId': organizationId,  // AUDIT FIX #12
+        'participants': participantIds,    // rule also checks participants hasAny(uid)
         'isRead': false,
         'readBy': [senderId], // Sender has read their own message
         'createdAt': FieldValue.serverTimestamp(),
       });
-
-      // Get conversation details for notification
-      final conversationDoc = await _firestore
-          .collection(AppConstants.conversationsCollection)
-          .doc(conversationId)
-          .get();
-
-      final conversationData = conversationDoc.data();
-      final participantIds = List<String>.from(
-        conversationData?['participantIds'] ?? [],
-      );
-      final organizationId = conversationData?['organizationId'] as String?;
-      final conversationName = conversationData?['name'] as String?;
 
       // Update the conversation's last message info
       await _firestore
@@ -256,25 +265,31 @@ class MessagingService {
   }
 
   /// Get messages for a conversation, ordered by time.
+  /// AUDIT FIX #13: added required organizationId filter — Firestore rule
+  /// isInSameOrg() requires list queries to be scoped to the caller's org.
   Stream<QuerySnapshot> getConversationMessagesStream(
-      String conversationId) {
+      String conversationId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.messagesCollection)
         .where('conversationId', isEqualTo: conversationId)
+        .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #13
         .orderBy('createdAt', descending: false)
         .snapshots();
   }
 
   /// Mark messages as read by a user in a conversation.
+  /// AUDIT FIX #13: added required organizationId filter on the read query.
   Future<void> markMessagesAsRead({
     required String conversationId,
     required String userId,
+    required String organizationId,
   }) async {
     try {
       // Get all unread messages in this conversation not sent by this user
       final snapshot = await _firestore
           .collection(AppConstants.messagesCollection)
           .where('conversationId', isEqualTo: conversationId)
+          .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #13
           .where('senderId', isNotEqualTo: userId)
           .get();
 
@@ -296,14 +311,17 @@ class MessagingService {
   }
 
   /// Get unread message count for a user in a conversation.
+  /// AUDIT FIX #13: added required organizationId filter.
   Future<int> getUnreadCount({
     required String conversationId,
     required String userId,
+    required String organizationId,
   }) async {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.messagesCollection)
           .where('conversationId', isEqualTo: conversationId)
+          .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #13
           .where('senderId', isNotEqualTo: userId)
           .get();
 

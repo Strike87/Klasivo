@@ -681,31 +681,51 @@ class AuthService {
       }
       await signInSpan.finish();
 
-      // ── Step 2: Fetch the user doc (now allowed — caller is authenticated) ──
+      // ── Step 2: Fetch the user doc by UID (single-doc read — bypasses list-query orgId requirement) ──
+      // AUDIT FIX #1 (CRITICAL): Previously queried users.where('studentCode', isEqualTo: code)
+      // which is a LIST query. Firestore rules require isInSameOrg() for list queries on
+      // org-scoped collections — but at this point we don't yet know the user's orgId (it's
+      // stored IN the doc we're trying to fetch). Result: every student login was denied.
+      // Fix: read the doc directly by the authenticated UID. Single-doc reads can be
+      // authorized via `request.auth.uid == userId` (no orgId filter needed).
       final findUserSpan = transaction.startChild('find_user_by_code');
-      final snapshot = await _firestore
+      final uid = _auth.currentUser!.uid;
+      final userDoc = await _firestore
           .collection(AppConstants.usersCollection)
-          .where('studentCode', isEqualTo: studentCode)
-          .where('role', isEqualTo: AppConstants.roleStudent)
-          .limit(1)
+          .doc(uid)
           .get();
       await findUserSpan.finish();
 
-      if (snapshot.docs.isEmpty) {
+      if (!userDoc.exists) {
         // Auth succeeded but Firestore doc missing — sign out and fail.
         // This is an inconsistent state (Auth account exists, user doc doesn't).
         // Log to Sentry for manual investigation.
         await _auth.signOut();
         await Sentry.captureMessage(
-          'A1: Auth sign-in succeeded for $authEmail but no Firestore user doc found with studentCode=$studentCode. '
+          'A1: Auth sign-in succeeded for $authEmail (uid=$uid) but no Firestore user doc exists at users/$uid. '
           'Possible data inconsistency (Auth account exists without Firestore doc).',
           level: SentryLevel.error,
         );
         throw Exception('Account data not found. Please contact your administrator.');
       }
 
-      final userDoc = snapshot.docs.first;
-      final student = userDoc.data();
+      final student = userDoc.data()!;
+
+      // ── Step 2.5: Defense-in-depth — verify role is student ───────────
+      // AUDIT FIX #1 (CRITICAL): Single-doc read bypasses the role filter that
+      // the old list query had (.where('role', isEqualTo: 'student')). Re-add
+      // it explicitly here to prevent a non-student Auth account from using
+      // the student login flow.
+      final docRole = student['role'] as String?;
+      if (docRole != AppConstants.roleStudent) {
+        await _auth.signOut();
+        await Sentry.captureMessage(
+          'A1: Role mismatch in student login flow. uid=$uid, docRole=$docRole, '
+          'authEmail=$authEmail. Non-student attempted student login.',
+          level: SentryLevel.warning,
+        );
+        throw Exception('This account is not a student account.');
+      }
 
       // ── Step 3: Defense-in-depth — verify studentCode matches ──────────
       // Catches the (extremely unlikely) case where two student codes

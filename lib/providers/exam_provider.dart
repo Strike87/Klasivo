@@ -6,6 +6,7 @@ import '../core/config/app_constants.dart';
 import '../core/services/exam_service.dart';
 import 'auth_provider.dart';
 import 'class_provider.dart';
+import 'organization_provider.dart';
 
 final examServiceProvider = Provider<ExamService>((ref) => ExamService());
 
@@ -14,7 +15,9 @@ final examsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   if (teacherId == null || teacherId.isEmpty) {
     return const Stream.empty();
   }
-  return ref.read(examServiceProvider).getExamsStream(teacherId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(examServiceProvider).getExamsStream(teacherId, organizationId: orgId);
 });
 
 final examsProvider = Provider<List<ExamData>>((ref) {
@@ -82,7 +85,9 @@ final examStatsProvider = Provider<Map<String, int>>((ref) {
 
 final classExamsStreamProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, classId) {
-  return ref.read(examServiceProvider).getClassExamsStream(classId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(examServiceProvider).getClassExamsStream(classId, organizationId: orgId);
 });
 
 // ─── Exam Stats Stream Provider ──────────────────────────────────────────

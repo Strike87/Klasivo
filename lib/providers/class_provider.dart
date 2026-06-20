@@ -14,7 +14,9 @@ final classServiceProvider = Provider<ClassService>((ref) => ClassService());
 
 final classesByStageProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, stageId) {
-  return ref.read(classServiceProvider).getClassesByStageStream(stageId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(classServiceProvider).getClassesByStageStream(stageId, organizationId: orgId);
 });
 
 // ─── Classes by Organization (stream) ─────────────────────────────────────────

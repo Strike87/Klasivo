@@ -37,6 +37,7 @@ class StudentService {
       final snapshot = await _firestore
           .collection(AppConstants.usersCollection)
           .where('studentCode', isEqualTo: code)
+          .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #3
           .limit(1)
           .get();
       exists = snapshot.docs.isNotEmpty;
@@ -258,10 +259,11 @@ class StudentService {
     }
   }
 
-  Stream<QuerySnapshot> getStudentsByClassStream(String classId) {
+  Stream<QuerySnapshot> getStudentsByClassStream(String classId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.usersCollection)
         .where('classId', isEqualTo: classId)
+        .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #2
         .where('role', isEqualTo: AppConstants.roleStudent)
         .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)
@@ -459,6 +461,7 @@ class StudentService {
       final teachersSnapshot = await _firestore
           .collection(AppConstants.teacherAssignmentsCollection)
           .where('classId', isEqualTo: classId)
+          .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #17
           .get();
       final teacherIds = teachersSnapshot.docs
           .map((d) => d.data()['teacherId'] as String?)

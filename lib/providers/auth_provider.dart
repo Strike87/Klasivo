@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -308,7 +309,7 @@ Future<void> saveParentAuthData({
 
 // ─── Helper: Clear auth data ─────────────────────────────────────────────────
 
-Future<void> clearAuthData() async {
+Future<void> clearAuthData({WidgetRef? ref}) async {
   final box = Hive.box(AppConstants.authBox);
 
   // Fire logout event before clearing data
@@ -334,6 +335,25 @@ Future<void> clearAuthData() async {
   await box.delete('organizationId');
   await box.delete('hasCompletedSetup');
 
+  // AUDIT (provider divergence) FIX: reset Riverpod StateProviders too,
+  // otherwise they hold stale orgId/userId/role in memory until app restart.
+  if (ref != null) {
+    try {
+      ref.read(isLoggedInProvider.notifier).state = false;
+      ref.read(userRoleProvider.notifier).state = null;
+      ref.read(userNameProvider.notifier).state = null;
+      ref.read(userIdProvider.notifier).state = null;
+      ref.read(authMethodProvider.notifier).state = null;
+      ref.read(organizationIdProvider.notifier).state = null;
+      ref.read(currentOrganizationIdProvider.notifier).state = null;
+      ref.read(hasCompletedSetupProvider.notifier).state = false;
+    } catch (e) {
+      // Non-critical — providers may not be initialized yet (e.g., during
+      // app shutdown). Hive clear above is the source of truth on next boot.
+      debugPrint('clearAuthData: provider reset skipped: $e');
+    }
+  }
+
   // Also sign out Firebase Auth + Google Sign-In
   try {
     await FirebaseAuth.instance.signOut();
@@ -343,4 +363,19 @@ Future<void> clearAuthData() async {
   await KlasivoSentry.userContext.clearUser();
 
   KlasivoSentry.breadcrumb.auth('clear_auth_data_success');
+}
+
+/// AUDIT (provider divergence) FIX: Single source of truth for setting the
+/// organization ID. Updates Hive + both Riverpod StateProviders atomically.
+/// Use this anywhere the org context changes (login, org switch, etc.)
+/// instead of writing to organizationIdProvider directly.
+void setOrganizationId(WidgetRef ref, String? organizationId) {
+  final box = Hive.box(AppConstants.authBox);
+  if (organizationId != null && organizationId.isNotEmpty) {
+    box.put('organizationId', organizationId);
+  } else {
+    box.delete('organizationId');
+  }
+  ref.read(organizationIdProvider.notifier).state = organizationId;
+  ref.read(currentOrganizationIdProvider.notifier).state = organizationId;
 }

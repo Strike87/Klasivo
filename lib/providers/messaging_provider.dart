@@ -20,19 +20,23 @@ final currentConversationIdProvider = StateProvider<String?>((ref) => null);
 final userConversationsProvider = StreamProvider<QuerySnapshot>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return const Stream.empty();
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
 
   return ref
       .read(messagingServiceProvider)
-      .getUserConversationsStream(userId);
+      .getUserConversationsStream(userId, organizationId: orgId);
 });
 
 // ─── Conversation Messages Stream ───────────────────────────────────────────
 
 final conversationMessagesProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, conversationId) {
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
   return ref
       .read(messagingServiceProvider)
-      .getConversationMessagesStream(conversationId);
+      .getConversationMessagesStream(conversationId, organizationId: orgId);
 });
 
 // ─── Class Conversations Stream ─────────────────────────────────────────────

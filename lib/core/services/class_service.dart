@@ -197,10 +197,11 @@ class ClassService {
     }
   }
 
-  Stream<QuerySnapshot> getClassesByStageStream(String stageId) {
+  Stream<QuerySnapshot> getClassesByStageStream(String stageId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.classesCollection)
         .where('stageId', isEqualTo: stageId)
+        .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #10
         .where('isArchived', isEqualTo: false)
         .orderBy('name')
         .snapshots();

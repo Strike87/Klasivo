@@ -11,7 +11,9 @@ final studentServiceProvider =
 
 final studentsByClassProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, classId) {
-  return ref.read(studentServiceProvider).getStudentsByClassStream(classId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(studentServiceProvider).getStudentsByClassStream(classId, organizationId: orgId);
 });
 
 final studentsByOrgProvider = StreamProvider<QuerySnapshot>((ref) {

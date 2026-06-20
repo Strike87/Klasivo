@@ -4,14 +4,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/config/app_constants.dart';
 import '../core/services/student_service.dart';
-import 'organization_provider.dart';
+import '../../../providers/organization_provider.dart';
 
 final studentServiceProvider =
     Provider<StudentService>((ref) => StudentService());
 
 final studentsByClassProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, classId) {
-  return ref.read(studentServiceProvider).getStudentsByClassStream(classId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(studentServiceProvider).getStudentsByClassStream(classId, organizationId: orgId);
 });
 
 final studentsByOrgProvider = StreamProvider<QuerySnapshot>((ref) {

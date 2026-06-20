@@ -109,7 +109,8 @@ abstract class IMessagingRepository {
   Future<String> createConversation(ConversationData conversation);
 
   /// Watch conversations for a specific user.
-  Stream<List<ConversationData>> getConversations(String userId);
+  /// AUDIT FIX #14: added required organizationId for rule isInSameOrg().
+  Stream<List<ConversationData>> getConversations(String userId, {required String organizationId});
 
   /// Watch conversations for a class.
   Stream<List<ConversationData>> getClassConversations({
@@ -118,9 +119,12 @@ abstract class IMessagingRepository {
   });
 
   /// Watch messages in a conversation, ordered by time ascending.
-  Stream<List<MessageData>> getMessages(String conversationId);
+  /// AUDIT FIX #16: added required organizationId for rule isInSameOrg().
+  Stream<List<MessageData>> getMessages(String conversationId, {required String organizationId});
 
   /// Send a text message in a conversation. Returns the message ID.
+  /// AUDIT FIX #15: fetches conversation to stamp organizationId on the new
+  /// message doc — otherwise the create rule isInComingSameOrg() denies it.
   Future<String> sendMessage({
     required String conversationId,
     required String senderId,
@@ -128,15 +132,19 @@ abstract class IMessagingRepository {
   });
 
   /// Mark all messages in a conversation as read by [userId].
+  /// AUDIT FIX #16: added required organizationId for rule isInSameOrg().
   Future<void> markAsRead({
     required String conversationId,
     required String userId,
+    required String organizationId,
   });
 
   /// Get the number of unread messages for a user in a conversation.
+  /// AUDIT FIX #16: added required organizationId for rule isInSameOrg().
   Future<int> getUnreadCount({
     required String conversationId,
     required String userId,
+    required String organizationId,
   });
 
   /// Delete a single message by ID.
@@ -251,9 +259,11 @@ class FirestoreMessagingRepository implements IMessagingRepository {
   // ─── GetConversations ─────────────────────────────────────────────────
 
   @override
-  Stream<List<ConversationData>> getConversations(String userId) {
+  Stream<List<ConversationData>> getConversations(String userId, {required String organizationId}) {
+    // AUDIT FIX #14: scope by organizationId
     return _conversations
         .where('participantIds', arrayContains: userId)
+        .where('organizationId', isEqualTo: organizationId)
         .orderBy('updatedAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
@@ -281,9 +291,11 @@ class FirestoreMessagingRepository implements IMessagingRepository {
   // ─── GetMessages ──────────────────────────────────────────────────────
 
   @override
-  Stream<List<MessageData>> getMessages(String conversationId) {
+  Stream<List<MessageData>> getMessages(String conversationId, {required String organizationId}) {
+    // AUDIT FIX #16: scope by organizationId
     return _messages
         .where('conversationId', isEqualTo: conversationId)
+        .where('organizationId', isEqualTo: organizationId)
         .orderBy('createdAt', descending: false)
         .snapshots()
         .map((snapshot) =>
@@ -299,11 +311,23 @@ class FirestoreMessagingRepository implements IMessagingRepository {
     required String text,
   }) async {
     try {
-      // Create the message
+      // AUDIT FIX #15: fetch conversation doc to get organizationId + participants,
+      // then stamp on the new message doc — otherwise isInComingSameOrg() denies.
+      final conversationDoc = await _conversations.doc(conversationId).get();
+      if (!conversationDoc.exists) {
+        throw Exception('Conversation not found.');
+      }
+      final conversationData = conversationDoc.data()!;
+      final organizationId = conversationData['organizationId'] as String?;
+      final participantIds = List<String>.from(conversationData['participantIds'] ?? []);
+
+      // Create the message — AUDIT FIX #15: stamp organizationId + participants
       final docRef = await _messages.add({
         'conversationId': conversationId,
         'senderId': senderId,
         'text': text,
+        'organizationId': organizationId,  // AUDIT FIX #15
+        'participants': participantIds,    // rule also checks participants hasAny(uid)
         'isRead': false,
         'readBy': [senderId], // Sender has read their own message
         'createdAt': FieldValue.serverTimestamp(),
@@ -330,11 +354,14 @@ class FirestoreMessagingRepository implements IMessagingRepository {
   Future<void> markAsRead({
     required String conversationId,
     required String userId,
+    required String organizationId,
   }) async {
     try {
       // Get all messages in this conversation not sent by this user
+      // AUDIT FIX #16: scope by organizationId
       final snapshot = await _messages
           .where('conversationId', isEqualTo: conversationId)
+          .where('organizationId', isEqualTo: organizationId)
           .where('senderId', isNotEqualTo: userId)
           .get();
 
@@ -361,10 +388,13 @@ class FirestoreMessagingRepository implements IMessagingRepository {
   Future<int> getUnreadCount({
     required String conversationId,
     required String userId,
+    required String organizationId,
   }) async {
     try {
+      // AUDIT FIX #16: scope by organizationId
       final snapshot = await _messages
           .where('conversationId', isEqualTo: conversationId)
+          .where('organizationId', isEqualTo: organizationId)
           .where('senderId', isNotEqualTo: userId)
           .get();
 

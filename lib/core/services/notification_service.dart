@@ -291,6 +291,7 @@ class NotificationService {
         final assignmentsSnapshot = await _firestore
             .collection(AppConstants.teacherAssignmentsCollection)
             .where('teacherId', isEqualTo: userId)
+            .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #18
             .get();
         for (final doc in assignmentsSnapshot.docs) {
           final assignedClassId = doc.data()['classId'] as String?;
@@ -439,6 +440,7 @@ class NotificationService {
           .where('userId', isEqualTo: userId)
           .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
           .where('isRead', isEqualTo: false)
+          .where('isDeleted', isEqualTo: false)  // AUDIT FIX #19
           .get();
 
       final batch = _firestore.batch();
@@ -459,6 +461,7 @@ class NotificationService {
           .where('userId', isEqualTo: userId)
           .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
           .where('isRead', isEqualTo: false)
+          .where('isDeleted', isEqualTo: false)  // AUDIT FIX #19
           .count()
           .get();
       return snapshot.count ?? 0;
@@ -474,6 +477,7 @@ class NotificationService {
         .collection(AppConstants.notificationsCollection)
         .where('userId', isEqualTo: userId)
         .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
+        .where('isDeleted', isEqualTo: false)  // AUDIT FIX #19
         .orderBy('createdAt', descending: true)
         .limit(AppConstants.notificationsPageSize)
         .snapshots();
@@ -495,28 +499,42 @@ class NotificationService {
   }
 
   /// Delete a notification.
+  /// AUDIT FIX #19: Firestore rules block all notification deletes
+  /// (`allow delete: if false`). Use soft-delete via isDeleted flag instead —
+  /// the read queries above filter on isDeleted == false (or should — see
+  /// getUserNotificationsStream). The notification doc remains in Firestore
+  /// for audit trail purposes.
   static Future<void> deleteNotification(String notificationId) async {
     try {
       await _firestore
           .collection(AppConstants.notificationsCollection)
           .doc(notificationId)
-          .delete();
+          .update({
+        'isDeleted': true,
+        'deletedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       rethrow;
     }
   }
 
-  /// Delete all notifications for a user.
-  static Future<void> deleteAllNotifications(String userId) async {
+  /// Delete (soft-delete) all notifications for a user.
+  /// AUDIT FIX #19: same soft-delete pattern as deleteNotification.
+  static Future<void> deleteAllNotifications(String userId, {required String organizationId}) async {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.notificationsCollection)
           .where('userId', isEqualTo: userId)
+          .where('organizationId', isEqualTo: organizationId)  // AUDIT FIX #19
+          .where('isDeleted', isEqualTo: false)
           .get();
 
       final batch = _firestore.batch();
       for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
+        batch.update(doc.reference, {
+          'isDeleted': true,
+          'deletedAt': FieldValue.serverTimestamp(),
+        });
       }
       await batch.commit();
     } catch (e) {

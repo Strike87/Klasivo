@@ -6,6 +6,7 @@ import '../../../core/config/theme.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/messaging_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_avatar.dart';
 import '../../../widgets/klasivo_button.dart';
@@ -57,11 +58,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _markAsRead() async {
     final userId = ref.read(currentUserIdProvider);
     if (userId == null) return;
+    final orgId = ref.read(currentOrganizationIdProvider);
+    if (orgId == null || orgId.isEmpty) return;
 
     try {
       await ref.read(messagingServiceProvider).markMessagesAsRead(
             conversationId: widget.conversationId,
             userId: userId,
+            organizationId: orgId,
           );
     } catch (_) {
       // Silently fail — non-critical operation
