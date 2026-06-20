@@ -6281,3 +6281,88 @@ Stage Summary:
     - lib/features/auth/data/auth_repository.dart (imports `auth_providers.dart` which is NEEDS-HUMAN-DECISION)
     - lib/features/organizations/domain/organization_model.dart (imports `organization_repository.dart` which is NEEDS-HUMAN-DECISION)
 - Phase 2 scope (NOT started in this task): decide the 5 NEEDS-HUMAN-DECISION files + 2 deferred files + Bucket C (4 same-named-different-content providers). Helper scripts ready for re-use.
+
+---
+Task ID: phase2-scaffold-judgment
+Agent: main (Phase 2 judgment pass)
+Task: Judgment pass on the 11 files deferred from Phase 1 — auth cluster (4 files), org/campus cluster (4 files), Bucket C remainder (3 files). Produce concrete verdicts, not "needs human decision" repeats.
+
+Work Log:
+- Re-read download/scaffold-investigation-report.md for prior context on each file.
+- Dispatched 3 parallel investigation agents (Explore subagent type):
+    1. AUTH cluster: auth_repository.dart, auth_providers.dart, user_model.dart, Bucket C auth_provider.dart
+    2. ORG/CAMPUS cluster: organization_model.dart, organization_repository.dart, campus_model.dart, campus_provider.dart (with awareness of 3 sibling files: campus_service.dart, campus_form_screen.dart, campus_list_screen.dart)
+    3. BUCKET C remainder: class_provider.dart, exam_provider.dart, student_provider.dart (each vs. live lib/providers/ equivalent)
+- Each agent did: side-by-side diff, full file reads, lib/+test/ grep for imports and class names, worklog.md grep for bug-fix history, RBAC/feature-flag cross-referencing.
+- All 3 agents reported back independently. No contradictions between them.
+
+Key findings:
+
+1. ORG/CAMPUS CLUSTER IS NOT ABANDONED SCAFFOLD — IT'S A HALF-SHIPPED FEATURE.
+   - The `campus_manager` RBAC role is fully wired into ~30 LIVE files (lib/core/rbac/, lib/core/permissions/, lib/features/user_management/, functions/src/, firestore.rules, app_constants.dart, 4 test files).
+   - The live `scope_assignment_screen.dart:488` actively reads from the `campuses` collection and shows admins "No campuses — Create campuses first in Organization Settings" — pointing at a screen that doesn't link to campus management.
+   - The `campusManagement` feature flag exists (feature_flag_service.dart:230, default OFF), surfaced in feature_flags_screen.dart:308, consumed by NOTHING.
+   - 9 of 11 campus vertical artifacts exist (rules, index, model, service, provider, list screen, form screen, AppConstants, feature flag). Missing: GoRouter routes + Cloud Functions.
+   - Roadmap: every campus-related item is 🔲 Planned or 🟡 Partial (Sprint 5 v2.8 "Campus/stage/class hierarchy management"). Sprint 2 shipped the RBAC role; Sprint 3B shipped the scope-assignment UI that reads campuses; Sprint 5 (which would ship the campus management UI) hasn't started.
+
+2. AUTH CLUSTER'S FIRESTORE-STREAM currentOrgIdProvider SOLVES A REAL STALENESS BUG.
+   - Live `currentOrgIdProvider` (permission_provider.dart:30) is Hive-only. Returns stale org id indefinitely after server-side org reassignment, until re-login.
+   - Scaffold's pattern (auth_providers.dart:42-119) is Firestore-stream + Hive fallback. Cold-start is identical (both fall back to Hive). Real difference: staleness during a logged-in session.
+   - Recommendation: port the pattern to live permission_provider.dart:30 as a separate ~30-line patch. The most valuable design idea in the entire 4-file auth cluster.
+
+3. ORIGINAL REPORT CLAIM (c) ABOUT auth_provider.dart (BUCKET C) IS REFUTED.
+   - Original report claimed scaffold "lacks rbacInitProvider claims-sync trigger." Wrong.
+   - Scaffold has it at lines 147, 202, 258 + import at line 12, with identical "ISSUE 5" comments. Worklog L5363 documents the addition to both files.
+   - Original report's other two claims confirmed:
+     * (a) Scaffold lacks 8 Sentry/Crashlytics touch-points (including KlasivoSentry.userContext.clearUser() on logout — forensically important)
+     * (b) Scaffold has `defaultValue: true` (buggy) on hasCompletedSetupProvider
+
+4. THE defaultValue: true BUG IS MORE WIDESPREAD IN LIVE CODE THAN THE ORIGINAL REPORT ACKNOWLEDGED.
+   - 8 total sites set defaultValue for hasCompletedSetup:
+     * 3 sites are ✅ fixed (false): lib/providers/auth_provider.dart:87, lib/main.dart:573, lib/features/auth/pages/splash_screen.dart:48
+     * 5 sites are ❌ buggy (true): lib/app/router.dart:68 (THE PRODUCTION ROUTER), lib/app/app_providers.dart:43, lib/features/auth/presentation/splash_screen.dart:48, lib/features/auth/providers/auth_notifier_provider.dart:140, lib/features/auth/providers/auth_provider.dart:81 (Bucket C scaffold — being deleted)
+   - Even after deleting the 4 auth-cluster scaffold files, 3 live sites remain buggy including the production router.
+
+5. THREE DEAD TYPED USER MODELS, NOT ONE.
+   - lib/features/auth/domain/user_model.dart (UserModel — has profileImageUrl field-name bug)
+   - lib/infrastructure/repositories/auth_repository.dart:21 (AuthUser — has displayName field-name bug, opposite direction)
+   - lib/features/user_management/data/user_management_repository.dart:29 (UserListItem — for admin listings, partially live)
+   - Live auth flow uses raw Map<String, dynamic> end-to-end. If team ever wants a typed user model: delete all 3 and design ONE that aligns with actual Firestore field names (fullName, photoUrl).
+
+6. THREE COMPETING CAMPUS MODEL CLASSES (in addition to 3 competing organization models).
+   - lib/features/organizations/domain/campus_model.dart (in-scope, 166 lines)
+   - lib/shared/models/campus_model.dart (82 lines, orphan)
+   - lib/shared/models/tenant_model.dart:303 CampusData (with duplicate at lib/core/models/tenant_model.dart:578, only consumed by dead tenant_migration.dart)
+   - All have DIFFERENT field shapes. None consumed by live code.
+
+7. ALL 3 BUCKET C REMAINDER FILES HAVE BROKEN RELATIVE IMPORTS.
+   - Scaffold uses `../core/...` paths from lib/features/<feature>/providers/, resolving to non-existent lib/features/<feature>/core/...
+   - Wouldn't compile if wired up. Makes KEEP-AND-WIRE-UP a non-starter.
+   - All 3 also have audit-19 fix (org-boundary) — confirmed via worklog L5148-5150. Only missing P0-9 flicker fix (UX-only).
+   - Original report's "strictly older copy" verdict confirmed for all 3, with refinement: scaffold is actually a mostly-synced copy that received audit-19 but missed P0-9.
+
+8. NO SECURITY-RELEVANT DIFFERENCES IN ANY OF THE 3 BUCKET C REMAINDER PAIRS.
+   - Org-boundary enforcement lives in service layer, invoked identically by both versions of each provider.
+   - No role/permission checks in either version (both rely on Firestore rules).
+   - Error handlers identical (silent return-empty or debugPrint + return-empty; no UI leak).
+   - skipLoadingOnReload is purely UX (verified by reading data: branches — produce identical output).
+
+Per-file verdicts:
+- 9 of 11 files: DELETE (unconditional)
+  - Auth cluster: user_model.dart, auth_repository.dart, auth_providers.dart, auth_provider.dart (Bucket C)
+  - Org/campus cluster: organization_model.dart, organization_repository.dart
+  - Bucket C remainder: class_provider.dart, exam_provider.dart, student_provider.dart
+- 2 of 11 files: CONDITIONAL on multi-campus decision
+  - campus_model.dart: KEEP-AND-WIRE-UP if wanted, DELETE if not
+  - campus_provider.dart: KEEP-AND-WIRE-UP if wanted, DELETE if not
+
+Stage Summary:
+- Phase 2 judgment pass COMPLETE. Report written to download/scaffold-phase2-report.md (357 lines).
+- 9 files ready for Phase 3 mechanical delete (zero-risk — all confirmed unreferenced, zero unique code).
+- 2 files await human decision on multi-campus. Recommended framing for the decision-maker included in the report.
+- 3 separate follow-up tickets identified (independent of Phase 3):
+  1. Port Firestore-stream currentOrgIdProvider pattern to live permission_provider.dart:30 (~30 lines, closes multi-tenant staleness bug)
+  2. Audit and align all 6 live hasCompletedSetup defaultValue sites to false (especially lib/app/router.dart:68 — the production router)
+  3. Investigate pages/ vs presentation/ auth screen duplication (root cause of defaultValue inconsistency)
+- Investigation only — no code changes made.
+- Original report should be updated to retract claim (c) about auth_provider.dart (Bucket C) lacking rbacInitProvider.
