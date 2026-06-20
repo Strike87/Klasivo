@@ -23,6 +23,7 @@ final examsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
 final examsProvider = Provider<List<ExamData>>((ref) {
   final asyncExams = ref.watch(examsStreamProvider);
   return asyncExams.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) =>
         snapshot.docs.map((doc) => ExamData.fromFirestore(doc)).toList(),
     loading: () => [],

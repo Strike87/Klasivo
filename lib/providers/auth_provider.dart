@@ -12,6 +12,7 @@ import '../core/services/sentry_service.dart';
 import '../core/services/event_bus.dart';
 import '../core/services/notification_service.dart';
 import 'organization_provider.dart';
+import 'rbac_provider.dart';  // ISSUE 5: rbacInitProvider for claims sync on login
 
 // ─── Auth Service Provider ───────────────────────────────────────────────────
 
@@ -164,6 +165,7 @@ Future<void> saveTeacherAuthData({
   // Update Riverpod StateProviders so they reflect the new data immediately
   if (ref != null) {
     ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(rbacInitProvider.future);  // ISSUE 5: Start claims sync (was dead code)
     ref.read(userRoleProvider.notifier).state = role;
     ref.read(userNameProvider.notifier).state = name;
     ref.read(userIdProvider.notifier).state = userId;
@@ -228,6 +230,7 @@ Future<void> saveStudentAuthData({
   // Update Riverpod StateProviders so they reflect the new data immediately
   if (ref != null) {
     ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(rbacInitProvider.future);  // ISSUE 5: Start claims sync (was dead code)
     ref.read(userRoleProvider.notifier).state = AppConstants.roleStudent;
     ref.read(userNameProvider.notifier).state = name;
     ref.read(userIdProvider.notifier).state = userId;
@@ -288,6 +291,7 @@ Future<void> saveParentAuthData({
   // Update Riverpod StateProviders so they reflect the new data immediately
   if (ref != null) {
     ref.read(isLoggedInProvider.notifier).state = true;
+    ref.read(rbacInitProvider.future);  // ISSUE 5: Start claims sync (was dead code)
     ref.read(userRoleProvider.notifier).state = AppConstants.roleParent;
     ref.read(userNameProvider.notifier).state = name;
     ref.read(userIdProvider.notifier).state = userId;

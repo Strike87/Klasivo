@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import '../config/app_constants.dart';
+import 'password_hasher.dart';
 
 class ExcelImportService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -155,7 +156,7 @@ class ExcelImportService {
 
             final password = student.password.isNotEmpty
                 ? student.password
-                : AppConstants.defaultStudentPassword;
+                : PasswordHasher.instance.generateTemporaryPassword();  // P0-7: was defaultStudentPassword
             final passwordHash = hashPassword(password);
 
             batch.set(docRef, {

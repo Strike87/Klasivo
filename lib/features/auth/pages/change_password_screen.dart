@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:go_router/go_router.dart';  // P1-4: go_router compatible navigation
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../core/tokens/app_colors.dart';
@@ -97,7 +98,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         );
         // Navigate away — replace this route
         if (widget.isForced) {
-          Navigator.of(context).pushReplacementNamed('/dashboard');
+          context.go('/dashboard');  // P1-4: go_router compatible (was Navigator.pushReplacementNamed)
         } else {
           Navigator.of(context).pop();
         }

@@ -25,6 +25,7 @@ final studentsByOrgProvider = StreamProvider<QuerySnapshot>((ref) {
 final allStudentsProvider = Provider<List<StudentData>>((ref) {
   final asyncStudents = ref.watch(studentsByOrgProvider);
   return asyncStudents.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) => snapshot.docs
         .map((doc) => StudentData.fromFirestore(doc))
         .toList(),
@@ -37,6 +38,7 @@ final studentsByClassListProvider =
     Provider.family<List<StudentData>, String>((ref, classId) {
   final asyncStudents = ref.watch(studentsByClassProvider(classId));
   return asyncStudents.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) => snapshot.docs
         .map((doc) => StudentData.fromFirestore(doc))
         .toList(),

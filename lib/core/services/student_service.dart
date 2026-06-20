@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart';
+import 'password_hasher.dart';
 import 'sentry_service.dart';
 
 class StudentService {
@@ -346,7 +347,7 @@ class StudentService {
             'organizationId': organizationId,
             'classId': classId,
             'fullName': student['fullName']!,
-            'password': student['password'] ?? AppConstants.defaultStudentPassword,
+            'password': student['password'] ?? PasswordHasher.instance.generateTemporaryPassword(),  // P0-7: was defaultStudentPassword
             'email': student['email'],
             'phone': student['phone'],
           });

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -115,9 +116,69 @@ class AuthService {
 
   // ─── Owner Registration (Email + Password) ────────────────────────────────
 
-  /// Register a new owner with email and password.
-  /// Organization is auto-created with a temporary default name.
-  /// After login, the owner is redirected to the Welcome/Org Naming screen.
+  /// P0-1 FIX (Day 4): Register owner via Cloud Function.
+  ///
+  /// Replaces the old `registerOwner` which wrote role:'owner' from the client
+  /// — blocked by Firestore rules (only student/parent/teacher are allowed on
+  /// self-create; owner must come from a CF writing via Admin SDK).
+  ///
+  /// The CF (functions/src/functions/registerOwner.ts) atomically:
+  ///   1. Creates the Firebase Auth account
+  ///   2. Creates the organization doc
+  ///   3. Creates the user doc with role:'owner' + real organizationId
+  ///   4. Sets custom claims (role, organizationId, roleVersion)
+  ///   5. Writes an audit log
+  ///   6. Returns { uid, organizationId }
+  ///
+  /// After the CF succeeds, this method signs the user in with the provided
+  /// email + password so subsequent Firestore reads are authenticated.
+  Future<Map<String, dynamic>> registerOwnerViaCF({
+    required String email,
+    required String password,
+    required String fullName,
+    required String organizationName,
+    String? phone,
+  }) async {
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('registerOwner')
+          .call({
+        'email': email,
+        'password': password,
+        'fullName': fullName,
+        'organizationName': organizationName,
+        'phone': phone,
+      });
+
+      final data = result.data as Map<String, dynamic>;
+      final uid = data['uid'] as String;
+      final orgId = data['organizationId'] as String;
+
+      // Sign in the newly created user so subsequent Firestore reads are
+      // authenticated (the CF uses Admin SDK which bypasses rules; the client
+      // now needs its own Auth session to read its own user doc).
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+
+      return {
+        'success': true,
+        'uid': uid,
+        'organizationId': orgId,
+        'role': 'owner',
+      };
+    } on FirebaseFunctionsException catch (e) {
+      return {
+        'success': false,
+        'error': e.message ?? 'Registration failed',
+        'code': e.code,
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// DEPRECATED: Use registerOwnerViaCF instead.
+  /// This method attempts to write role:'owner' from the client, which is
+  /// blocked by Firestore rules. Kept for backward compatibility only.
   Future<Map<String, dynamic>> registerOwner({
     required String email,
     required String password,
@@ -1127,7 +1188,63 @@ class AuthService {
 
   // ─── Parent Registration (Email + Password) ───────────────────────────────
 
-  /// Register a parent with email, password, and an invite code to link child.
+  /// P0-2 FIX (Day 4): Register parent via Cloud Function.
+  ///
+  /// Replaces the old `registerParent` which wrote organizationId:null from
+  /// the client — blocked by Firestore rules (is string check fails on null).
+  ///
+  /// The CF (functions/src/functions/registerParent.ts) atomically:
+  ///   1. Creates the Firebase Auth account
+  ///   2. Creates the user doc with role:'parent' + organizationId:'' (empty
+  ///      string, not null — passes the is-string rule)
+  ///   3. Sets custom claims
+  ///   4. If studentCode is provided, links parent to student + updates
+  ///      organizationId to match the student's org + creates a parent_link
+  ///   5. Returns { uid }
+  ///
+  /// After the CF succeeds, this method signs the user in.
+  Future<Map<String, dynamic>> registerParentViaCF({
+    required String email,
+    required String password,
+    required String fullName,
+    String? phone,
+    String? studentCode,
+  }) async {
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('registerParent')
+          .call({
+        'email': email,
+        'password': password,
+        'fullName': fullName,
+        'phone': phone,
+        'studentCode': studentCode,
+      });
+
+      final data = result.data as Map<String, dynamic>;
+      final uid = data['uid'] as String;
+
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+
+      return {
+        'success': true,
+        'uid': uid,
+        'role': 'parent',
+      };
+    } on FirebaseFunctionsException catch (e) {
+      return {
+        'success': false,
+        'error': e.message ?? 'Registration failed',
+        'code': e.code,
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// DEPRECATED: Use registerParentViaCF instead.
+  /// This method writes organizationId:null from the client, which fails the
+  /// Firestore rules `is string` check. Kept for backward compatibility only.
   Future<Map<String, dynamic>> registerParent({
     required String email,
     required String password,

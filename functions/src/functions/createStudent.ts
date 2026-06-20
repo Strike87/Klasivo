@@ -521,6 +521,7 @@ export const createStudent = onCall(
             isActive: true,
             createdBy: callerUid,
             authProvider: 'student_code',
+            mustChangePassword: true,  // P0-6: Force password change on first login
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });

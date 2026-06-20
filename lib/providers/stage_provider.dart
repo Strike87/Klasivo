@@ -23,6 +23,7 @@ final stagesStreamProvider = StreamProvider<QuerySnapshot>((ref) {
 final stagesProvider = Provider<List<StageData>>((ref) {
   final asyncStages = ref.watch(stagesStreamProvider);
   return asyncStages.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) =>
         snapshot.docs.map((doc) => StageData.fromFirestore(doc)).toList(),
     loading: () => [],

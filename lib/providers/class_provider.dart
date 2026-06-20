@@ -32,6 +32,7 @@ final classesByOrgProvider = StreamProvider<QuerySnapshot>((ref) {
 final classesProvider = Provider<List<ClassData>>((ref) {
   final asyncClasses = ref.watch(classesByOrgProvider);
   return asyncClasses.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) =>
         snapshot.docs.map((doc) => ClassData.fromFirestore(doc)).toList(),
     loading: () => [],
@@ -45,6 +46,7 @@ final classesByStageListProvider =
     Provider.family<List<ClassData>, String>((ref, stageId) {
   final asyncClasses = ref.watch(classesByStageProvider(stageId));
   return asyncClasses.when(
+    skipLoadingOnReload: true,  // P0-9: prevent dashboard flicker on pull-to-refresh
     data: (snapshot) =>
         snapshot.docs.map((doc) => ClassData.fromFirestore(doc)).toList(),
     loading: () => [],
