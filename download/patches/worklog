@@ -1,0 +1,52 @@
+Found five significant authorization issues at commit ef5cf09:
+[P1] assignRole validates the supplied organization, but never verifies the target user belongs to it. An admin can modify a cross-tenant account and issue mismatched custom claims.
+[P1] setPermissionOverrides has the same missing target-organization check.
+[P1] Any authenticated organization member—including students—can create arbitrary payment records.
+[P1] Many update rules validate only the existing organizationId, allowing staff to move documents into another tenant by changing that field.
+[P1] New owners receive tenantId: "default", while tenant rules treat matching tenant IDs as authorization. Owners can therefore access or update other organizations’ "default" tenant records.
+Additional review found seven more issues:
+[P1] Students can create submissions containing forged grades/statuses.
+[P1] Students can edit answers after submission.
+[P1] Parents can approve their own pending student link.
+[P1] Any scoped teacher can disable any student in the organization.
+[P1] The password callable does not enforce recent authentication.
+[P2] Organization archival exceeds Firestore’s 500-write batch limit.
+[P2] Confirmed organization deletion can orphan exam-dependent records.
+Verification: TypeScript build passed. Flutter tests reached 410 tests but failed with 40 errors, including stale assertions, missing Firebase initialization, and two test compilation errors.
+Further findings:
+[P1] LiveKit remove/end authorization can be bypassed using mismatched roomId and roomName.
+[P1] The mute endpoint has no tenant or room-scope check.
+[P1] Signed upload URLs permit global, unscoped uploads that bypass Storage Rules.
+[P1] Student creation ignores teacher class/campus scope.
+[P2] Any organization member can create arbitrary notifications.
+[P2] Email retries happen immediately and exhaust all attempts without backoff.
+[P2] Class-start notifications are sent to every student in the organization.
+Further findings, with focused RBAC tests confirming 8 failures:
+[P1] Role hierarchy checks are reversed.
+[P1] Explicit permission grants bypass resource scope.
+[P1] Messaging rules and client use different participant fields.
+[P1] Users can inject messages into conversations they do not belong to.
+[P2] Router handling omits most staff roles.
+[P2] Storage files cannot be deleted.
+[P2] Admin organization listing filters by ownership instead of membership.
+Further data-exposure findings:
+[P1] Students can read every exam’s correct answers.
+[P1] Any organization member can download student login codes and password hashes.
+[P1] Users can expand their own server-trusted scope arrays.
+[P1] Unauthenticated attackers can enumerate and redeem active invitations.
+[P2] Students can read draft/unpublished exams.
+[P2] Owner registration and organization creation lack effective abuse controls.
+ Same-org users can read password hashes" body="isInSameOrg allows students and parents to enumerate all user documents in their organization, including studentCode, authEmail,
+ Further data-exposure findings:
+[P1] Students can read complete answer keys before taking exams.
+[P1] Any organization member can download student codes and password hashes.
+[P1] Users can expand their own authorization scope.
+[P1] Unauthenticated callers can enumerate and redeem active invitations.
+[P2] Students can read draft/unpublished exams.
+[P2] Any authenticated account can create organization records.
+Further exam-flow findings:
+[P1] Starting an exam cannot create a submission under current Rules.
+[P1] Answer autosave documents lack required ownership fields.
+[P1] Student submission attempts client-side grading that Rules reject.
+[P1] Assignment submission creation and resubmission are both incompatible with Rules.
+[P2] Existing tests bypass Firebase Security Rules, hiding these failures.
