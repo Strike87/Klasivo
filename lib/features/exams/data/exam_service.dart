@@ -20,7 +20,7 @@ class ExamService {
     required int passingScore,
     bool isRandomized = false,
     bool allowRetake = false,
-    String organizationId = AppConstants.defaultInstitutionId,
+    required String organizationId,
   }) async {
     try {
       final keywords = _searchKeywordService.generateKeywords(title);

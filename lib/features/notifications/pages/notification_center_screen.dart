@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/app_constants.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/organization_provider.dart';
 import '../../../providers/paginated_providers.dart';
 import '../../../core/services/pagination_service.dart';
 import '../../../core/services/notification_service.dart';
@@ -37,7 +38,12 @@ class NotificationCenterScreen extends ConsumerWidget {
               onPressed: () async {
                 // Use batch markAllAsRead for efficiency
                 if (userId != null) {
-                  await NotificationService.markAllAsRead(userId);
+                  final orgId = ref.read(currentOrganizationIdProvider);
+                  if (orgId == null || orgId.isEmpty) return;
+                  await NotificationService.markAllAsRead(
+                    userId,
+                    organizationId: orgId,
+                  );
                 }
               },
             ),

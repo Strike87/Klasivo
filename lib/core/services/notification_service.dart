@@ -432,11 +432,12 @@ class NotificationService {
   }
 
   /// Mark all notifications as read for a user.
-  static Future<void> markAllAsRead(String userId) async {
+  static Future<void> markAllAsRead(String userId, {required String organizationId}) async {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.notificationsCollection)
           .where('userId', isEqualTo: userId)
+          .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
           .where('isRead', isEqualTo: false)
           .get();
 
@@ -451,11 +452,12 @@ class NotificationService {
   }
 
   /// Get unread notification count for a user.
-  static Future<int> getUnreadCount(String userId) async {
+  static Future<int> getUnreadCount(String userId, {required String organizationId}) async {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.notificationsCollection)
           .where('userId', isEqualTo: userId)
+          .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
           .where('isRead', isEqualTo: false)
           .count()
           .get();
@@ -466,10 +468,12 @@ class NotificationService {
   }
 
   /// Stream notifications for a user (for notification center UI).
-  static Stream<QuerySnapshot> getUserNotificationsStream(String userId) {
+  static Stream<QuerySnapshot> getUserNotificationsStream(
+      String userId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.notificationsCollection)
         .where('userId', isEqualTo: userId)
+        .where('organizationId', isEqualTo: organizationId)  // ISSUE 3 FIX
         .orderBy('createdAt', descending: true)
         .limit(AppConstants.notificationsPageSize)
         .snapshots();

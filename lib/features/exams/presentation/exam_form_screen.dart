@@ -184,8 +184,14 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
         }
       } else {
         final teacherId = ref.read(userIdProvider) ?? '';
+        final organizationId = ref.read(organizationIdProvider);
+        if (organizationId == null || organizationId.isEmpty) {
+          KlasivoToast.error(context, message: 'Organization context missing. Please re-login.');
+          return;
+        }
         final examId = await examService.createExam(
           teacherId: teacherId,
+          organizationId: organizationId,
           title: _titleController.text.trim(),
           classId: _selectedClassId!,
           description: _descriptionController.text.trim().isEmpty

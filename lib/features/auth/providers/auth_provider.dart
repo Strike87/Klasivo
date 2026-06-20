@@ -7,6 +7,7 @@ import '../core/config/app_constants.dart';
 import '../core/services/auth_service.dart';
 import '../core/services/event_bus.dart';
 import '../core/services/notification_service.dart';
+import '../../../providers/organization_provider.dart';
 
 // ─── Auth Service Provider ───────────────────────────────────────────────────
 
@@ -147,6 +148,7 @@ Future<void> saveTeacherAuthData({
     ref.read(authMethodProvider.notifier).state = authProvider;
     if (organizationId != null) {
       ref.read(organizationIdProvider.notifier).state = organizationId;
+      ref.read(currentOrganizationIdProvider.notifier).state = organizationId;  // ISSUE 1 FIX
     }
     ref.read(hasCompletedSetupProvider.notifier).state = hasCompletedSetup;
   }
@@ -203,6 +205,7 @@ Future<void> saveStudentAuthData({
     if (studentCode != null) ref.read(studentCodeProvider.notifier).state = studentCode;
     if (className != null) ref.read(studentClassNameProvider.notifier).state = className;
     if (organizationId != null) ref.read(organizationIdProvider.notifier).state = organizationId;
+    if (organizationId != null) ref.read(currentOrganizationIdProvider.notifier).state = organizationId;  // ISSUE 1 FIX
     ref.read(hasCompletedSetupProvider.notifier).state = true;
   }
 
@@ -254,6 +257,7 @@ Future<void> saveParentAuthData({
     ref.read(authMethodProvider.notifier).state = authProvider;
     if (organizationId != null) {
       ref.read(organizationIdProvider.notifier).state = organizationId;
+      ref.read(currentOrganizationIdProvider.notifier).state = organizationId;  // ISSUE 1 FIX
     }
     ref.read(hasCompletedSetupProvider.notifier).state = hasCompletedSetup;
   }

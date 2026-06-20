@@ -21,7 +21,7 @@ class ViolationService {
     String? ipAddress,
     int? questionIndex,
     int? timeElapsedSeconds,
-    String organizationId = AppConstants.defaultInstitutionId,
+    required String organizationId,
   }) async {
     try {
       final docRef =

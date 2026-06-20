@@ -6,14 +6,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/app_constants.dart';
 import '../core/services/notification_service.dart' as notif_service;
 import 'auth_provider.dart';
+import 'organization_provider.dart';
 
 // ─── Notifications Stream ────────────────────────────────────────────────────
 
 final notificationsStreamProvider = StreamProvider<QuerySnapshot>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return const Stream.empty();
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
 
-  return notif_service.NotificationService.getUserNotificationsStream(userId);
+  return notif_service.NotificationService.getUserNotificationsStream(
+    userId,
+    organizationId: orgId,
+  );
 });
 
 // ─── Parsed Notifications List ───────────────────────────────────────────────
@@ -40,8 +46,13 @@ final unreadNotificationsProvider = Provider<int>((ref) {
 final unreadCountProvider = FutureProvider<int>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return 0;
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return 0;
 
-  return notif_service.NotificationService.getUnreadCount(userId);
+  return notif_service.NotificationService.getUnreadCount(
+    userId,
+    organizationId: orgId,
+  );
 });
 
 // ─── Notifications by Type ────────────────────────────────────────────────────
