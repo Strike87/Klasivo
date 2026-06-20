@@ -43,7 +43,15 @@ async function processQueueItem(type: string, to: string | string[], payload: Re
 async function handleFailure(docRef: admin.firestore.DocumentReference, currentAttempts: number, maxAttempts: number, errorMessage: string): Promise<void> {
   const newAttempts = currentAttempts + 1;
   if (newAttempts < maxAttempts) {
-    await docRef.update({ status: 'retrying' as QueueStatus, attempts: newAttempts, lastError: errorMessage });
+    // P2-2: Exponential backoff — delay = 2^attempts seconds (2s, 4s, 8s, 16s, 32s)
+    const delaySeconds = Math.pow(2, newAttempts);
+    const retryAfter = new Date(Date.now() + delaySeconds * 1000);
+    await docRef.update({
+      status: 'retrying' as QueueStatus,
+      attempts: newAttempts,
+      lastError: errorMessage,
+      retryAfter: admin.firestore.Timestamp.fromDate(retryAfter),
+    });
     console.log(`Queue item ${docRef.id} retrying — attempt ${newAttempts}/${maxAttempts}: ${errorMessage}`);
     Sentry.addBreadcrumb({ category: 'email', message: 'Retry scheduled', level: 'warning', data: { queueId: docRef.id, attempts: newAttempts, maxAttempts, error: errorMessage } });
   } else {
@@ -72,6 +80,17 @@ export const emailWorker = onDocumentWritten(
 
     const queueId = change.after.id;
     const docRef = change.after.ref;
+
+  // P2-2: Check exponential backoff — don't process if retryAfter is in the future
+  const retryAfter = afterData['retryAfter'];
+  if (status === 'retrying' && retryAfter) {
+    const retryAfterDate = retryAfter.toDate ? retryAfter.toDate() : new Date(retryAfter);
+    if (retryAfterDate > new Date()) {
+      console.log(`Queue item ${queueId} waiting for backoff (retry after ${retryAfterDate.toISOString()})`);
+      return;
+    }
+  }
+
     const type = afterData['type'] as string | undefined;
     const to = afterData['to'] as string | string[] | undefined;
     const attempts = afterData['attempts'] as number | undefined;

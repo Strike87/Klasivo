@@ -63,13 +63,22 @@ export const onLiveKitRoomCreated = onDocumentCreated(
         }
       }
 
-      // Find all students in the organization
-      const studentsSnapshot = await db
-        .collection('users')
-        .where('organizationId', '==', orgId)
-        .where('role', '==', 'student')
-        .where('isActive', '==', true)
-        .get();
+      // P2-3: Find students in the CLASS (not the entire org)
+      const classId = data['classId'] as string | undefined;
+      let studentsSnapshot;
+      if (classId) {
+        studentsSnapshot = await db
+          .collection('users')
+          .where('organizationId', '==', orgId)
+          .where('classId', '==', classId)
+          .where('role', '==', 'student')
+          .where('isActive', '==', true)
+          .get();
+      } else {
+        // No classId on room — skip notifications (shouldn't happen)
+        console.log('Room has no classId — skipping student notifications');
+        return;
+      }
 
       if (studentsSnapshot.empty) {
         console.log('No active students found in org — skipping notifications');

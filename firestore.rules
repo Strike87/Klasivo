@@ -434,7 +434,8 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isAuth() && isInSameOrg() &&
         (isStaff() || resource.data.userId == request.auth.uid);
-      allow create: if isAuth() && isIncomingSameOrg();
+      // P2-1: Only staff can create notifications (was: any org member)
+      allow create: if isStaffExcludingObserverInSameOrg();
       allow update: if isAuth() && isInSameOrg() &&
         resource.data.userId == request.auth.uid &&
         // Recipient can only flip read-state fields, not title/body/type.

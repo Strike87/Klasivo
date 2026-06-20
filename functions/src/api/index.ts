@@ -136,7 +136,8 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
     res.status(401).json({ error: 'Authentication required.' });
     return;
   }
-  if (!['teacher', 'owner', 'admin'].includes(req.userRole ?? '')) {
+  if (!['super_admin', 'owner', 'admin', 'campus_manager', 'stage_manager',
+        'academic_supervisor', 'teacher', 'assistant_teacher'].includes(req.userRole ?? '')) {
     res.status(403).json({ error: 'Admin access required.' });
     return;
   }
@@ -422,6 +423,13 @@ app.post(
         return;
       }
 
+      // P1-1: Verify roomName matches the roomDoc's actual name
+      const docRoomName = roomDoc.data()?.['name'] as string;
+      if (docRoomName && roomName !== docRoomName) {
+        res.status(400).json({ error: 'roomName does not match the room document.' });
+        return;
+      }
+
       const livekitUrl =
         (roomDoc.data()?.['metadata']?.['livekitUrl'] as string) ??
         'https://klasivo.livekit.cloud';
@@ -500,13 +508,31 @@ app.post(
     try {
       const { RoomServiceClient } = await import('livekit-server-sdk');
 
-      // Resolve LiveKit URL
+      // P1-2: Resolve LiveKit URL + verify org boundary + roomName
       let livekitUrl = 'https://klasivo.livekit.cloud';
       if (roomId) {
         const roomDoc = await admin.firestore().collection('livekit_rooms').doc(roomId).get();
         if (roomDoc.exists) {
           livekitUrl = (roomDoc.data()?.['metadata']?.['livekitUrl'] as string) ?? livekitUrl;
+
+          // P1-2: Verify caller is in the same org as the room
+          const roomOrgId = roomDoc.data()?.['organizationId'] as string;
+          if (roomOrgId !== req.userOrgId) {
+            res.status(403).json({ error: 'You can only mute participants in rooms in your organization.' });
+            return;
+          }
+
+          // P1-1: Verify roomName matches
+          const docRoomName = roomDoc.data()?.['name'] as string;
+          if (docRoomName && roomName !== docRoomName) {
+            res.status(400).json({ error: 'roomName does not match the room document.' });
+            return;
+          }
         }
+      } else {
+        // P1-2: No roomId means no org verification possible — deny
+        res.status(400).json({ error: 'roomId is required for mute operations.' });
+        return;
       }
 
       const roomService = new RoomServiceClient(
@@ -564,6 +590,12 @@ app.post(
       const roomOrgId = roomDoc.data()?.['organizationId'] as string;
       if (roomOrgId !== req.userOrgId) {
         res.status(403).json({ error: 'You can only end rooms in your organization.' });
+        return;
+      }
+      // P1-1: Verify roomName matches
+      const docRoomName = roomDoc.data()?.['name'] as string;
+      if (docRoomName && roomName !== docRoomName) {
+        res.status(400).json({ error: 'roomName does not match the room document.' });
         return;
       }
 
@@ -630,12 +662,10 @@ app.post(
     }
 
     // Validate path doesn't escape allowed prefixes
+    // P1-3: All uploads must be org-scoped (was: 'exams/', 'materials/', 'submissions/' unscoped)
     const allowedPrefixes = [
       `users/${req.user!.uid}/`,
       `organizations/${req.userOrgId ?? ''}/`,
-      'exams/',
-      'materials/',
-      'submissions/',
     ];
 
     const isAllowed = allowedPrefixes.some((prefix) => filePath.startsWith(prefix));
