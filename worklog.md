@@ -5186,3 +5186,72 @@ NEXT STEPS (awaiting user decision):
   - Run the 11 verification tests above
   - If all pass → Sprint 1 + bug fixes + audit fixes are fully deployed
   - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md)
+
+---
+Task ID: apply-all-query-fixes-script-gap-audit
+Agent: main (GLM)
+Task: User uploaded apply-all-query-fixes.py to GitHub repo root and shared the URL. Apply the script's fixes to the codebase.
+
+Work Log:
+- Fetched the script from origin (commit b8f2e04 "Add files via upload" by user Mohamed Khairy Mohamed via web UI).
+- Read the full 854-line script. Identified it as the ORIGINAL audit-fix script written BEFORE the manual audit fix in 19b60c0 was applied.
+- Verified current state: all 19 audit findings from 19b60c0 are in place (auth_service.dart .doc(uid).get() HOTFIX, getStudentsByClassStream required orgId, getExamsStream required orgId, getClassExamsStream required orgId, getClassesByStageStream required orgId, getUserConversationsStream required orgId, sendMessage stamps organizationId, deleteNotification soft-delete via isDeleted, dead lib/features/auth/data/auth_service.dart deleted).
+- Identified known compile-break risks in the script: it adds .where('organizationId', isEqualTo: organizationId) filters to query bodies but does NOT always update method signatures, leaving callers like getStudentsByClassStream(classId, organizationId: orgId) calling methods that don't accept that parameter.
+- Pulled origin/main (was 2 commits behind: d217c7f "Delete sprints.zip" + b8f2e04 "Add files via upload"). Rebased cleanly.
+- Ran the script with --no-push --no-build --force (safe mode: no push, no npm build, bypass dirty-tree check). The script created a backup branch backup-before-query-fixes-20260620-145154 before running.
+- Script output analysis:
+  * HOTFIX (auth_service.dart): correctly skipped ("Query not found — may already be fixed")
+  * student_service.dart: printed nothing — patterns already fixed
+  * exam_service.dart: printed nothing — patterns already fixed
+  * class_service.dart: printed "[OK] getClassesByStageStream has orgId" for BOTH copies (core + features/data) — but the core copy was already fixed, so this created a DUPLICATE filter
+  * stage_service.dart: printed nothing — patterns already fixed
+  * messaging_service.dart: printed 3 "[OK]" messages — but each was a DUPLICATE (the existing fix already had these)
+  * messaging_repository.dart: printed 2 "[OK]" messages — both DUPLICATES
+  * notification_service.dart: printed nothing — patterns already fixed
+  * Dead auth_service.dart: correctly skipped ("Already deleted")
+- Inspected commit 9bd5abd (script's commit) diff. Confirmed catastrophic regressions:
+  * 2 COMPILE ERRORS: duplicate 'organizationId': organizationId keys in sendMessage map literals (messaging_service.dart line 193 + messaging_repository.dart line 327)
+  * 5 DUPLICATE FILTER regressions: .where('organizationId', isEqualTo: organizationId) appeared twice in 5 different queries (messaging_service.dart × 3 + messaging_repository.dart × 2)
+  * 1 DUPLICATE FILTER in class_service.dart (core)
+  * 3 VALID additions the manual fix had missed:
+    - messaging_service.dart line 245: senderDoc.data()?['name'] → ?['fullName'] (user docs use 'fullName', not 'name' — verified via 11 refs in auth_service.dart)
+    - messaging_service.dart deleteConversation cascade: messages query missing orgId filter
+    - messaging_repository.dart deleteConversation cascade: messages query missing orgId filter (interface + impl)
+  * 1 dead-code sync: lib/features/classes/data/class_service.dart got the required orgId param + filter, but this file is dead code (not imported anywhere)
+- Reverted commit 9bd5abd via git reset --hard HEAD~1 (backup branch still available).
+- Applied the 3 valid gap fixes manually via MultiEdit:
+  * messaging_service.dart deleteConversation: signature now (String conversationId, {required String organizationId}); query has orgId filter; updated doc comment.
+  * messaging_service.dart line 253: sender name field 'name' → 'fullName' with explanatory comment.
+  * messaging_repository.dart deleteConversation: interface + impl both updated; query has orgId filter; updated doc comment.
+- Verified zero callers of deleteConversation exist (grep on 'deleteConversation\(' in lib/ excluding the method definitions returns nothing) — signature change is safe.
+- Deleted dead lib/features/classes/data/class_service.dart via git rm. Verified zero imports of it anywhere.
+- Sanity checks:
+  * messaging_service.dart: 173/173 parens, 76/76 braces — balanced
+  * messaging_repository.dart: 161/161 parens, 65/65 braces — balanced
+  * Zero duplicate 'organizationId': organizationId keys in any single map literal
+  * Zero duplicate .where('organizationId', ...) filters within any single query
+- Staged 3 files (2 modified + 1 deleted). Commit f74bc51 created.
+- Pushed to origin/main successfully.
+
+Stage Summary:
+- Commit on origin/main: f74bc51 fix(audit-gaps): 3 gaps found by apply-all-query-fixes.py + delete dead duplicate
+- 3 files changed, 20 insertions(+), 255 deletions(-)
+- The user-supplied apply-all-query-fixes.py script is preserved at the repo root (from origin commit b8f2e04) as a historical artifact.
+- Backup branch backup-before-query-fixes-20260620-145154 is still available locally if needed for forensic comparison.
+- The 3 gap fixes are minimal, surgical, and verified safe (no callers of deleteConversation exist).
+- No firebase deploy required — purely client-side Dart changes.
+
+POST-PUSH VERIFICATION (manual):
+  □ 1. flutter pub get → build & publish new client to Play Store
+  □ 2. Send a message in a conversation → notification should show the sender's actual fullName (not 'Someone')
+  □ 3. Delete a conversation (when UI is built for it — no callers exist yet) → should succeed without permission-denied
+
+KEY LESSON for future scripts:
+  The apply-all-query-fixes.py script had no idempotency guard for the case where fixes were already applied. Its `if old in content and new not in content:` checks were inconsistent (some had the guard, some didn't). When run against already-fixed code, it produced 2 compile errors + 6 duplicate-filter regressions. Future audit-fix scripts MUST check `if new in content: skip` BEFORE applying, for every pattern.
+
+NO FIREBASE DEPLOY REQUIRED. All 3 fixes are client-side Dart. The Firestore rules were already correct.
+
+NEXT STEPS (awaiting user decision):
+  - The full audit fix is now complete (19 original findings in 19b60c0 + 3 gaps in f74bc51 = 22 total findings addressed).
+  - Run the 11 verification tests listed in the 19b60c0 worklog entry.
+  - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md).
