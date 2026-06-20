@@ -155,12 +155,17 @@ class ExamService {
         'publishedAt': FieldValue.serverTimestamp(),
       });
 
-      final examDoc = await _firestore
+      // COMPILE FIX: renamed from 'examDoc' to avoid duplicate declaration in
+      // the same try-block scope (the first examDoc was fetched above to get
+      // organizationId for the questions count query). Re-fetching here to
+      // read startDate/title/classId for notification scheduling — these
+      // fields were not extracted from the first fetch.
+      final updatedExamDoc = await _firestore
           .collection(AppConstants.examsCollection)
           .doc(examId)
           .get();
-      if (examDoc.exists) {
-        final data = examDoc.data()!;
+      if (updatedExamDoc.exists) {
+        final data = updatedExamDoc.data()!;
         final startDate = (data['startDate'] as Timestamp?)?.toDate();
         final title = data['title'] as String? ?? 'Exam';
         final classId = data['classId'] as String? ?? '';

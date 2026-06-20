@@ -300,7 +300,7 @@ Future<void> clearAuthData({WidgetRef? ref}) async {
   if (ref != null) {
     try {
       ref.read(isLoggedInProvider.notifier).state = false;
-      ref.read(userRoleProvider.notifier).state = null;
+      ref.read(userRoleProvider.notifier).state = '';  // COMPILE FIX: provider is StateProvider<String> (non-nullable) — use '' instead of null on logout
       ref.read(userNameProvider.notifier).state = null;
       ref.read(userIdProvider.notifier).state = null;
       ref.read(authMethodProvider.notifier).state = null;
