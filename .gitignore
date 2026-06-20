@@ -90,6 +90,11 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 # Firebase - Protect real credentials
 google-services.json
 GoogleService-Info.plist
+# Service-account JSON (Admin SDK) — NEVER commit. Contains private key.
+functions/service-account.json
+functions/serviceAccount.json
+**/service-account*.json
+**/serviceAccount*.json
 
 # Generated files
 .dart_tool/
