@@ -6623,3 +6623,43 @@ Stage Summary:
         Firebase Console → Firestore → query users where passwordHash != null → expect 0 docs.
 - Outstanding (Step 1 — deploy):
     firebase deploy --only functions,firestore:rules,firestore:indexes,storage
+
+---
+Task ID: final-wiring-audit
+Agent: Super Z (main)
+Task: Audit "Final Wiring" Python script (4 steps: owner/parent ViaCF, syncClaims roleVersion, StatefulShellRoute)
+
+Work Log:
+- Read script: applies 4 fixes via regex/string replace
+- Step 1 (owner_register_screen -> registerOwnerViaCF): logic OK but doesn't verify method exists
+- Step 2 (parent_register_screen -> registerParentViaCF): same as Step 1
+- Step 3 (syncClaims roleVersion): CRITICAL BUG - paren counting starts at "await admin.auth()..."
+  and breaks at the ")" of auth(), not at the ")" of setCustomUserClaims(...). Result: code inserted
+  mid-line after "await admin.auth();" producing broken TS like:
+    await admin.auth();
+          // roleVersion...
+          await db.collection('users').doc(targetUserId).set(...);
+  .setCustomUserClaims(targetUserId, claims);
+- Step 4 (StatefulShellRoute): same step user already skipped in v2. 3 fatal issues:
+  (a) exact-string match for ShellRoute header is fragile (whitespace/format sensitive)
+  (b) GoRoute regex requires single-line builder + path: '...' - won't match real GoRoutes
+      with multi-line builders, name:, pageBuilder:, redirect:, or nested GoRoutes
+  (c) TeacherShell not refactored - passing navigationShell as Widget child doesn't enable
+      goBranch(index) calls on tab tap
+
+Stage Summary:
+- Saved corrected script: /home/z/my-project/download/patches/apply-final-wiring-v2.py
+- Corrections in v2:
+  1. Step 3: search "setCustomUserClaims(" only, start counting AFTER the opening paren
+     (paren_count=1 initial), advance to matching close, then skip trailing whitespace + ";"
+  2. Step 3: added warning if 'db' variable not detected in syncClaims.ts scope
+  3. Steps 1-2: cleaner fallback regex (X.registerOwner( -> X.registerOwnerViaCF(, count=1)
+     instead of global content.replace that could hit comments/strings
+  4. Step 4: explicitly SKIPPED with manual refactoring instructions for TeacherShell
+- Recommended user workflow:
+  1. Verify registerOwnerViaCF / registerParentViaCF exist on AuthService
+  2. Run apply-final-wiring-v2.py from repo root
+  3. If functions build fails - fix manually (likely ViaCF signature mismatch)
+  4. Commit + push + deploy
+  5. THEN do Step 4 (StatefulShellRoute) manually with TeacherShell refactor + per-tab
+     StatefulBranch + manual QA on tab switching
