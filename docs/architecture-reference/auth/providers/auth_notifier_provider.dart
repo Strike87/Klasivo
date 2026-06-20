@@ -1,3 +1,26 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️  ARCHITECTURE REFERENCE — NOT COMPILED, NOT WIRED INTO THE APP  ⚠️
+// ─────────────────────────────────────────────────────────────────────────────
+// This file was MOVED here from lib/features/auth/providers/ as part of the
+// Sprint 1 scaffold cleanup (Phase 5+). It is preserved as a DESIGN REFERENCE
+// for a future Riverpod Generator migration, but it is NOT included in the
+// Flutter build (this directory is outside `lib/`).
+//
+// ⚠️  KNOWN INCOMPLETENESS — DO NOT MIGRATE WITHOUT RE-ADDING:
+//   1. `part 'auth_notifier_provider.g.dart';` references a non-existent file
+//      — the codegen was never run. The file has NEVER compiled.
+//   2. Lacks Sentry/Crashlytics instrumentation added to the live
+//      lib/providers/auth_provider.dart during the Sentry integration sprint.
+//   3. Lacks the `rbacInitProvider` claims-sync trigger (ISSUE 5 fix at live
+//      lines 168/233/294) — a Sprint 1 security requirement.
+//   4. Has `defaultValue: true` on hasCompletedSetupProvider (P0-8 cold-start
+//      bug — live version has `defaultValue: false`).
+//
+// If you wire this up without re-adding (2) + (3) + (4), you will regress
+// Sprint 1 security work. See download/scaffold-investigation-report.md
+// lines 294-300 for full context.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── Auth Notifier Provider — Riverpod Generator ──────────────────────────────
 //
 // Migrated from lib/providers/auth_provider.dart (and the feature-first copy

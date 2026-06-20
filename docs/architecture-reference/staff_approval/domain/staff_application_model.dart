@@ -1,4 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️  ARCHITECTURE REFERENCE — NOT COMPILED, NOT WIRED INTO THE APP  ⚠️
+// ─────────────────────────────────────────────────────────────────────────────
+// This file was MOVED here from lib/features/staff_approval/domain/ as part of the Sprint 1
+// scaffold cleanup (Phase 5+). It is preserved as a DESIGN REFERENCE for a
+// future typed-model migration, but it is NOT included in the Flutter build
+// (this directory is outside `lib/`).
+//
+// Before relying on this as the design source for a migration, verify field
+// shapes match what the live service actually writes to Firestore. See
+// download/scaffold-investigation-report.md for full context.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO — Staff Application Model
 //
 // Mirrors the `staff_applications` Firestore collection.

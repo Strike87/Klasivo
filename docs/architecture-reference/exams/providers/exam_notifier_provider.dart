@@ -1,3 +1,25 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️  ARCHITECTURE REFERENCE — NOT COMPILED, NOT WIRED INTO THE APP  ⚠️
+// ─────────────────────────────────────────────────────────────────────────────
+// This file was MOVED here from lib/features/exams/providers/ as part of the
+// Sprint 1 scaffold cleanup (Phase 5+). It is preserved as a DESIGN REFERENCE
+// for a future Riverpod Generator migration, but it is NOT included in the
+// Flutter build (this directory is outside `lib/`).
+//
+// ⚠️  KNOWN INCOMPLETENESS — DO NOT MIGRATE WITHOUT RE-ADDING:
+//   1. `part 'exam_notifier_provider.g.dart';` references a non-existent file
+//      — the codegen was never run. The file has NEVER compiled.
+//   2. Lacks the P0-9 `skipLoadingOnReload: true` dashboard-flicker fix on
+//      `.when()` calls — live lib/providers/exam_provider.dart has it.
+//   3. `deleteExam` is partial (line 543 NOTE: "we delete just the exam doc"
+//      — no sub-collection cleanup of questions/submissions/instances/stats).
+//      Live lib/core/services/exam_service.dart::_deleteExamImpl does full
+//      cascading cleanup.
+//
+// Migration would touch ~18 importers. See download/scaffold-investigation-
+// report.md lines 355-361 for full context.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── Exam Notifier Provider — Riverpod Generator ──────────────────────────────
 //
 // Migrated from lib/providers/exam_provider.dart (and the feature-first copy
