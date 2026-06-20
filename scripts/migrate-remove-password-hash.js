@@ -85,11 +85,25 @@ if (useAdc) {
   // Use ADC — admin.initializeApp() auto-discovers the credentials.
   // Requires `gcloud auth application-default login` to have been run.
   console.log('Auth: Application Default Credentials (ADC)');
-  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !fs.existsSync(path.join(process.env.USERPROFILE || process.env.HOME || '', '.config', 'gcloud', 'application_default_credentials.json'))) {
-    console.error('ERROR: ADC not found. Run this once to set it up:');
-    console.error('  gcloud auth application-default login');
-    process.exit(1);
+
+  // Check well-known ADC locations (Linux/Mac + Windows) so we can fail
+  // fast with a helpful message. firebase-admin itself checks these too,
+  // but its error is cryptic ("UNAUTHENTICATED") — we want actionable text.
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const adcPaths = [
+      path.join(home, '.config', 'gcloud', 'application_default_credentials.json'),         // Linux/Mac
+      path.join(process.env.APPDATA || '', 'gcloud', 'application_default_credentials.json'), // Windows
+    ];
+    const found = adcPaths.some((p) => fs.existsSync(p));
+    if (!found) {
+      console.error('ERROR: ADC not found. Run this once to set it up:');
+      console.error('  gcloud auth application-default login');
+      console.error('  gcloud auth application-default set-quota-project <your-project-id>');
+      process.exit(1);
+    }
   }
+
   adminApp = admin.initializeApp({
     projectId: serviceAccount?.project_id,
   });
