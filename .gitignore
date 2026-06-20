@@ -104,7 +104,8 @@ functions/.runtimeconfig.json
 # AI agent / unrelated artifacts — NEVER track these
 # ============================================================
 skills/
-download/
+download/*
+!download/patches/
 fixes/
 Smart-Exam-Pro*/
 smart-exam-pro*/
