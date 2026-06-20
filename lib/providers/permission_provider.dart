@@ -27,6 +27,33 @@ final currentUserIdProvider = Provider<String>((ref) {
 });
 
 // ─── Current Org ID Provider ─────────────────────────────────────────────
+// ⚠️ KNOWN STALENESS BUG (deferred — needs architectural design):
+// This provider reads `organizationId` from Hive synchronously, which works
+// correctly for cold start and offline use. BUT it does NOT update when an
+// admin reassigns the user to a different organization server-side — the
+// cached value stays stale until the user logs out and logs back in.
+//
+// The fix is to add a private `_userDocStreamProvider` (StreamProvider) that
+// watches `users/{uid}` in Firestore and writes back to Hive on change. The
+// pattern was sketched in the deleted scaffold file `lib/features/auth/
+// providers/auth_providers.dart` (recoverable from git history at commit
+// 83a427f if needed). DO NOT change this provider's type from `Provider<String?>`
+// to `StreamProvider<String?>` — that would force ~16 downstream consumers
+// (messaging_provider, feature_flag_provider, paginated_providers,
+// calendar_event_provider, this file's own hasPermissionProvider, etc.) to
+// switch from `ref.watch(...)` (returns String?) to `.when(...)` /
+// `.valueOrNull`. Instead, keep the sync Provider type and add a background
+// stream that writes back to Hive; downstream consumers that watch this
+// provider will rebuild when Hive is updated.
+//
+// Why deferred:
+//   1. Needs `flutter analyze` to verify (not available in container).
+//   2. Needs cold-start + org-reassignment test coverage.
+//   3. Cascading invalidation of downstream providers that read Hive directly
+//      (not via this provider) needs separate audit — they won't auto-update.
+//   4. Should be coordinated with Sprint 2 multi-tenant sync work.
+//
+// Tracked in: download/scaffold-phase2-report.md (Follow-up Items).
 final currentOrgIdProvider = Provider<String?>((ref) {
   final box = Hive.box(AppConstants.authBox);
   return box.get('organizationId') as String?;
