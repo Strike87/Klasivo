@@ -32,14 +32,18 @@ const fs = require('fs');
 // (regardless of where node is invoked from).
 const functionsDir = path.resolve(__dirname, '..', 'functions');
 const saPath = path.join(functionsDir, 'service-account.json');
-if (!fs.existsSync(saPath)) {
-  console.error(`ERROR: service-account.json not found at:\n  ${saPath}`);
-  console.error('Download it from Firebase Console -> Project Settings ->');
-  console.error('Service Accounts -> Generate new private key, then save as');
-  console.error(`${saPath}`);
-  process.exit(1);
+
+// serviceAccount is loaded lazily below (after the ADC-vs-file decision).
+let serviceAccount = null;
+if (fs.existsSync(saPath)) {
+  try {
+    serviceAccount = JSON.parse(fs.readFileSync(saPath, 'utf-8'));
+  } catch (e) {
+    console.error(`WARNING: service-account.json is not valid JSON: ${e.message}`);
+    console.error('Will fall back to Application Default Credentials (ADC).');
+    console.error('Run: gcloud auth application-default login');
+  }
 }
-const serviceAccount = require(saPath);
 
 // Load firebase-admin from functions/node_modules if NODE_PATH wasn't set.
 let admin;
@@ -59,12 +63,67 @@ try {
   }
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  projectId: serviceAccount.project_id,
-});
+// ─── Authentication strategy ───────────────────────────────────────────────
+// Try (in order):
+//   1. Application Default Credentials (ADC) — most reliable on dev machines.
+//      Set up once via:  gcloud auth application-default login
+//   2. service-account.json in functions/ — fallback for CI / ephemeral runners.
+//
+// ADC is preferred because PowerShell sometimes mangles the private_key field
+// in downloaded JSON files (escaped newlines get double-escaped), causing
+// `UNAUTHENTICATED` errors even though the file parses as valid JSON.
+// ───────────────────────────────────────────────────────────────────────────
 
-const db = admin.firestore();
+let adminApp;
+let projectIdForLog = '(unset)';
+
+// Prefer ADC if GOOGLE_APPLICATION_CREDENTIALS is set, OR if the JSON file
+// is missing/corrupted (serviceAccount will be null in that case).
+const useAdc = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !serviceAccount;
+
+if (useAdc) {
+  // Use ADC — admin.initializeApp() auto-discovers the credentials.
+  // Requires `gcloud auth application-default login` to have been run.
+  console.log('Auth: Application Default Credentials (ADC)');
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !fs.existsSync(path.join(process.env.USERPROFILE || process.env.HOME || '', '.config', 'gcloud', 'application_default_credentials.json'))) {
+    console.error('ERROR: ADC not found. Run this once to set it up:');
+    console.error('  gcloud auth application-default login');
+    process.exit(1);
+  }
+  adminApp = admin.initializeApp({
+    projectId: serviceAccount?.project_id,
+  });
+  projectIdForLog = serviceAccount?.project_id || '(from ADC)';
+} else {
+  // Verify the service-account.json looks intact before trusting it.
+  projectIdForLog = serviceAccount.project_id || '(unknown)';
+
+  // Common PowerShell-corruption check: private_key should contain real
+  // newlines, not literal "\n" sequences or escaped "\\n".
+  if (serviceAccount.private_key) {
+    const pemHeader = '-----BEGIN ' + 'PRIVATE KEY-----';
+    const looksMangled = !serviceAccount.private_key.includes(pemHeader)
+      || serviceAccount.private_key.includes('\\n');
+    if (looksMangled) {
+      console.error('ERROR: service-account.json private_key looks corrupted.');
+      console.error('Common cause: PowerShell escaped the newlines when saving.');
+      console.error('');
+      console.error('Fix: switch to ADC instead — run:');
+      console.error('  gcloud auth application-default login');
+      console.error('then re-run this script. ADC reads from your gcloud user');
+      console.error('profile and avoids the JSON-corruption problem entirely.');
+      process.exit(1);
+    }
+  }
+
+  console.log(`Auth: service-account.json (project: ${serviceAccount.project_id})`);
+  adminApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
+  });
+}
+
+const db = adminApp.firestore();
 
 // Dry-run mode: `node migrate-remove-password-hash.js --dry-run`
 // Lists what would be deleted without actually deleting.
@@ -72,7 +131,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 
 async function migrate() {
   console.log(`Mode: ${DRY_RUN ? 'DRY RUN (no writes)' : 'LIVE (will delete field)'}`);
-  console.log(`Project: ${serviceAccount.project_id}`);
+  console.log(`Project: ${projectIdForLog}`);
   console.log('Fetching all user docs with passwordHash field...');
 
   const snapshot = await db.collection('users')
