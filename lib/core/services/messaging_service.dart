@@ -134,11 +134,17 @@ class MessagingService {
   }
 
   /// Delete a conversation and all its messages.
-  Future<void> deleteConversation(String conversationId) async {
+  //
+  // AUDIT FIX #11 (gap found by apply-all-query-fixes.py): the messages cascade
+  // query was missing the .where('organizationId', ...) filter required by
+  // isInSameOrg() — would have thrown permission-denied at runtime. No callers
+  // exist yet, but signature now requires organizationId for defense-in-depth.
+  Future<void> deleteConversation(String conversationId, {required String organizationId}) async {
     try {
-      // Delete all messages in this conversation
+      // Delete all messages in this conversation (scoped to org)
       final messagesSnapshot = await _firestore
           .collection(AppConstants.messagesCollection)
+          .where('organizationId', isEqualTo: organizationId)
           .where('conversationId', isEqualTo: conversationId)
           .get();
 
@@ -240,7 +246,11 @@ class MessagingService {
           .collection(AppConstants.usersCollection)
           .doc(senderId)
           .get();
-      final senderName = senderDoc.data()?['name'] as String? ?? 'Someone';
+      // AUDIT FIX (gap found by apply-all-query-fixes.py): user docs use the
+      // 'fullName' field, not 'name' (verified via auth_service.dart — 11 refs
+      // to 'fullName' on user docs, 0 to 'name'). The old code would always
+      // fall through to the 'Someone' default.
+      final senderName = senderDoc.data()?['fullName'] as String? ?? 'Someone';
 
       // Determine notification title
       final title = conversationName ?? senderName;

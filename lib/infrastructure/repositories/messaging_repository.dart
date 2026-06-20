@@ -151,7 +151,7 @@ abstract class IMessagingRepository {
   Future<void> deleteMessage(String messageId);
 
   /// Delete an entire conversation and all its messages.
-  Future<void> deleteConversation(String conversationId);
+  Future<void> deleteConversation(String conversationId, {required String organizationId});
 }
 
 // ─── Firestore Implementation ──────────────────────────────────────────────────
@@ -424,11 +424,15 @@ class FirestoreMessagingRepository implements IMessagingRepository {
 
   // ─── DeleteConversation ───────────────────────────────────────────────
 
+  // AUDIT FIX #11 (gap found by apply-all-query-fixes.py): messages cascade
+  // was missing the .where('organizationId', ...) filter required by isInSameOrg().
+  // No callers exist yet, but signature now requires organizationId for defense-in-depth.
   @override
-  Future<void> deleteConversation(String conversationId) async {
+  Future<void> deleteConversation(String conversationId, {required String organizationId}) async {
     try {
-      // Delete all messages in this conversation
+      // Delete all messages in this conversation (scoped to org)
       final messagesSnapshot = await _messages
+          .where('organizationId', isEqualTo: organizationId)
           .where('conversationId', isEqualTo: conversationId)
           .get();
 
