@@ -6250,3 +6250,34 @@ Stage Summary:
   - Path B: Skip the 2 DELETE files (auth_repository.dart, organization_model.dart) that cause the dangling refs. Phase 1 commits 63 of 65 planned files.
   - Path C: Defer Phase 1 entirely until Phase 2 resolves the 5 NEEDS-HUMAN-DECISION files first.
 - Artifacts left in scripts/ for traceability: phase1-candidates.txt, phase1-final-delete.txt, phase1_verify.py, phase1_verify_extra.py, phase1_check_barrels.py, phase1_build_final_list.py, phase1_post_delete_check.py, phase1-loc-count.txt, phase1-safe.txt, phase1-has-refs.txt (empty), phase1-missing.txt (empty).
+
+---
+Task ID: phase1-scaffold-cleanup-attempt (RESOLVED via Path B)
+Agent: main (Phase 1B executor)
+Task: Resolution of phase1-scaffold-cleanup-attempt — execute Path B as chosen by the human: commit the 63 verified-clean files, defer the 2 implicated files (auth_repository.dart, organization_model.dart) to Phase 2.
+
+Work Log:
+- Reconstructed the 63-file list from the prior 65-file list (scripts/phase1-final-delete.txt) by removing:
+    - lib/features/auth/data/auth_repository.dart (deferred)
+    - lib/features/organizations/domain/organization_model.dart (deferred)
+- Saved as scripts/phase1b-final-delete.txt (63 files).
+- Wrote scripts/phase1b_verify.py with 4 checks:
+    1. Each candidate has zero external `import` references in lib/test.
+    2. The 2 deferred files don't import anything in the 63 (no cascading refs).
+    3. Inter-candidate imports (informational — all 30 will be deleted together).
+    4. External `export`/`part` references to candidates (would have caught the 4 orphan barrels in Phase 1A).
+  All 4 checks PASSED. 63/63 safe.
+- Computed total LOC for commit message: 1284 lines across 63 files.
+- Executed `xargs git rm` on all 63 files. All staged cleanly.
+- Wrote scripts/phase1b_post_delete_check.py — scans lib/ and test/ for any remaining `import`/`export`/`part` reference to deleted files.
+  RESULT: 0 dangling references. All 63 files confirmed absent from worktree.
+- Committed as 1eb276e with the message specified by the user (Path B variant of the Phase 1 commit template). 66 files changed (63 deletes + 3 new helper scripts), 327 insertions, 1284 deletions.
+- Decision on helper scripts: KEPT TRACKED in the repo. Rationale: phase1_verify.py is generalizable for Phase 2 (re-point at a different candidate list); phase1b-final-delete.txt is the authoritative record of what was deleted in 1eb276e; phase1b_verify.py documents the cascading-reference check methodology that should be re-applied for Phase 2.
+
+Stage Summary:
+- Phase 1 (Path B) COMMITTED. Working tree clean. Branch is 3 commits ahead of origin/main (1eb276e + 69d81dd + a8c70d9).
+- 63 files deleted, 1284 lines removed. Zero new dangling references introduced.
+- 2 files deferred to Phase 2:
+    - lib/features/auth/data/auth_repository.dart (imports `auth_providers.dart` which is NEEDS-HUMAN-DECISION)
+    - lib/features/organizations/domain/organization_model.dart (imports `organization_repository.dart` which is NEEDS-HUMAN-DECISION)
+- Phase 2 scope (NOT started in this task): decide the 5 NEEDS-HUMAN-DECISION files + 2 deferred files + Bucket C (4 same-named-different-content providers). Helper scripts ready for re-use.
