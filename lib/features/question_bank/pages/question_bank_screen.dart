@@ -5,6 +5,7 @@ import '../../../core/config/app_constants.dart';
 import '../../../core/config/theme.dart';
 import '../../../providers/question_bank_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/permission_provider.dart';  // currentOrgIdProvider
 import '../../../widgets/klasivo_components.dart';
 import '../../../widgets/klasivo_button.dart';
 import '../../../widgets/klasivo_text_field.dart';
@@ -650,6 +651,22 @@ class _QuestionBankScreenState extends ConsumerState<QuestionBankScreen> {
                       try {
                         final teacherId =
                             ref.read(userIdProvider) ?? '';
+                        // SECURITY FIX (Sprint 1, Phase 5+): organizationId is
+                        // required by QuestionBankService.addQuestionToBank.
+                        // Previously defaulted to 'default' which would either
+                        // fail Firestore rules (D8 strict-org) or leak
+                        // cross-tenant if rules were ever loosened.
+                        final organizationId =
+                            ref.read(currentOrgIdProvider);
+                        if (organizationId == null ||
+                            organizationId.isEmpty) {
+                          if (ctx.mounted) {
+                            KlasivoToast.error(ctx,
+                                message:
+                                    'Organization context missing. Please re-login.');
+                          }
+                          return;
+                        }
                         final tags = tagsController.text
                             .split(',')
                             .map((t) => t.trim())
@@ -660,6 +677,7 @@ class _QuestionBankScreenState extends ConsumerState<QuestionBankScreen> {
                             .read(questionBankServiceProvider)
                             .addQuestionToBank(
                               teacherId: teacherId,
+                              organizationId: organizationId,
                               subject: subjectController.text.trim(),
                               type: type,
                               difficulty: difficulty,

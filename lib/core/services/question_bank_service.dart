@@ -18,7 +18,15 @@ class QuestionBankService {
     int marks = 1,
     List<String>? tags,
     String? imageUrl,
-    String organizationId = AppConstants.defaultInstitutionId,
+    // SECURITY FIX (Sprint 1, Phase 5+): organizationId is now REQUIRED.
+    // Previously defaulted to AppConstants.defaultInstitutionId ('default'),
+    // which violates the D8 strict-org Firestore rules — isIncomingSameOrg()
+    // requires organizationId to be a non-empty string matching the caller's
+    // actual org. Writes with 'default' would be DENIED by rules; if rules
+    // were ever loosened, questions would land in a cross-tenant leak.
+    // The single caller (question_bank_screen.dart) now passes
+    // ref.read(currentOrgIdProvider).
+    required String organizationId,
   }) async {
     try {
       final docRef = await _firestore.collection(AppConstants.questionBankCollection).add({

@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'notification_service.dart' as notif_service;
@@ -366,89 +365,14 @@ class ExamService {
 
   // ─── Exam Instance (for randomization) ────────────────────────────────
 
-  /// Create an exam instance with randomized question order when student starts
-  Future<String> createExamInstance({
-    required String examId,
-    required String studentId,
-    required List<Map<String, dynamic>> questions,
-    bool randomizeQuestions = false,
-    bool randomizeOptions = false,
-  }) async {
-    try {
-      // Check if instance already exists for this student
-      // AUDIT FIX #8: fetch the exam doc to get organizationId, then scope the
-      // existing-instance query by it. Also stamp organizationId on the new
-      // submission + exam_instance docs so future reads are not denied.
-      final examDoc = await _firestore.collection(AppConstants.examsCollection).doc(examId).get();
-      if (!examDoc.exists) {
-        throw Exception('Exam not found.');
-      }
-      final organizationId = examDoc.data()!['organizationId'] as String?;
-      final classId = examDoc.data()!['classId'] as String? ?? '';
-
-      var existingQuery = _firestore
-          .collection(AppConstants.examInstancesCollection)
-          .where('examId', isEqualTo: examId)
-          .where('studentId', isEqualTo: studentId);
-      if (organizationId != null && organizationId.isNotEmpty) {
-        existingQuery = existingQuery.where('organizationId', isEqualTo: organizationId);
-      }
-      final existingSnapshot = await existingQuery.limit(1).get();
-
-      if (existingSnapshot.docs.isNotEmpty) {
-        return existingSnapshot.docs.first.id;
-      }
-
-      // Randomize questions if needed
-      List<Map<String, dynamic>> processedQuestions = List.from(questions);
-      if (randomizeQuestions) {
-        processedQuestions.shuffle(Random());
-      }
-
-      // Randomize options within each question if needed
-      if (randomizeOptions) {
-        for (final q in processedQuestions) {
-          final options = List<String>.from(q['options'] ?? []);
-          if (options.isNotEmpty) {
-            options.shuffle(Random());
-            q['options'] = options;
-          }
-        }
-      }
-
-      // Create submission (AUDIT FIX #8: stamp organizationId)
-      final submissionRef = await _firestore.collection(AppConstants.submissionsCollection).add({
-        'examId': examId,
-        'studentId': studentId,
-        'classId': classId,
-        'organizationId': organizationId,  // AUDIT FIX #8
-        'status': AppConstants.submissionStatusStarted,
-        'startedAt': FieldValue.serverTimestamp(),
-        'submittedAt': null,
-        'timeSpent': 0,
-        'totalMarks': 0,
-        'score': 0,
-        'percentage': 0,
-        'violationCount': 0,
-      });
-
-      // Create exam instance (immutable snapshot) — AUDIT FIX #8: stamp organizationId
-      final docRef = await _firestore.collection(AppConstants.examInstancesCollection).add({
-        'examId': examId,
-        'studentId': studentId,
-        'classId': classId,
-        'organizationId': organizationId,  // AUDIT FIX #8
-        'isRandomized': randomizeQuestions,
-        'randomizedQuestionIds': processedQuestions.map((q) => q['id'] ?? '').toList(),
-        'startedAt': FieldValue.serverTimestamp(),
-        'submissionId': submissionRef.id,
-      });
-
-      return docRef.id;
-    } catch (e) {
-      rethrow;
-    }
-  }
+  // NOTE (Sprint 1, Phase 5+ cleanup): createExamInstance was previously
+  // defined here (84 LOC, lines 370-453) but had ZERO callers. The live
+  // canonical implementation is ExamInstanceService.createExamInstance at
+  // lib/core/services/exam_instance_service.dart:13 — called from
+  // lib/features/student_exams/pages/exam_taking_screen.dart:134. The dead
+  // method was an older signature (accepted `List<Map<String, dynamic>>
+  // questions` rather than fetching them internally) that was superseded
+  // when the ExamInstanceService was extracted. Removed in this commit.
 
   /// Get exam instance for a student
   Future<Map<String, dynamic>?> getExamInstance({
