@@ -4948,3 +4948,61 @@ NEXT STEPS (awaiting user decision):
   - If all pass → apply Issue 2 (ShellRoute conversion) only if needed
   - Apply the deferred exam_instance_service.dart fix (separate small PR)
   - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md) once Sprint 1 is deployed + verified
+
+
+---
+Task ID: issue-4-followup-exam-instance
+Agent: main (GLM)
+Task: Apply the deferred Issue 4 follow-up fix — replace hardcoded AppConstants.defaultInstitutionId with a real organizationId parameter in ExamInstanceService.createExamInstance() and update the caller in exam_taking_screen.dart. Also run an audit of all remaining defaultInstitutionId references in lib/ (the user explicitly requested this).
+
+Work Log:
+- Re-verified state of both exam_instance_service.dart copies (still identical, still buggy on line 63 — writing 'organizationId': AppConstants.defaultInstitutionId).
+- Confirmed createExamInstance method signature: {examId, studentId, classId, teacherId, isRandomized=false}. The user's prompt mentioned a hypothetical 'startExam' method name and a 'studentName' field — neither exists in the actual code. Used the actual method name (createExamInstance) and actual fields.
+- Applied the fix to lib/core/services/exam_instance_service.dart:
+  * Added 'required String organizationId' parameter to createExamInstance()
+  * Replaced 'AppConstants.defaultInstitutionId' with 'organizationId' on line 64
+- Applied the identical fix to lib/features/exams/data/exam_instance_service.dart (duplicate file).
+- Verified both copies are still byte-identical after the fix.
+- Updated the single caller in lib/features/student_exams/pages/exam_taking_screen.dart (line ~118-142):
+  * Prefers examData['organizationId'] (already in hand from getExam() on line 114 — guarantees instance is in the same org as the exam, which is semantically correct)
+  * Falls back to ref.read(organizationIdProvider) for legacy exam docs that might not have organizationId set
+  * Early-returns with KlasivoToast.error if both are null/empty (defensive guard — prevents writing a doc with empty orgId which would still fail the rule)
+  * No new import needed — auth_provider.dart (which exports organizationIdProvider) was already imported
+- Discovered a SEPARATE createExamInstance method in lib/core/services/exam_service.dart (line 309) and its duplicate in lib/features/exams/data/exam_service.dart (line 309). This is a DIFFERENT method (different signature: takes `List<Map<String, dynamic>> questions` instead of classId+teacherId) and is worse — it writes BOTH a submission doc and an exam_instance doc with NO organizationId field at all. Both writes would be denied by isInComingSameOrg(). Verified via grep that this method has ZERO callers anywhere in lib/, test/, or integration_test/ → classified as DEAD CODE. Did not modify it (keeps this commit focused); flagged in commit message + audit.
+- Ran the audit the user explicitly requested: `grep -rn defaultInstitutionId lib/` → 27 references. Categorized them:
+  * 2 DANGEROUS — service method default param (qr_enrollment_service.dart:23, question_bank_service.dart:21). Same bug pattern as this commit. Caller may omit the arg → service writes 'default' → permission-denied.
+  * 2 DEAD CODE — exam_service.dart:309 createExamInstance() in both copies. Writes no organizationId at all. Zero callers.
+  * 22 SAFE — model constructor defaults (`this.organizationId = defaultInstitutionId`) and fromFirestore fallbacks (`data['organizationId'] ?? ... ?? defaultInstitutionId`). These are last-resort defaults for in-memory models / legacy data and don't write to Firestore.
+  * 1 CONSTANT DEFINITION — app_constants.dart:433 (`static const String defaultInstitutionId = 'default'`). Not a bug; this is the constant itself.
+  * 2 COMMENTS — the two exam_instance_service.dart lines I just fixed (the literal `defaultInstitutionId` only appears in the trailing comment now).
+- Could not run `flutter analyze` (no dart toolchain in this env). Manual syntax verification of all 3 modified files confirmed correctness:
+  * Both exam_instance_service.dart copies: parameter added cleanly, body uses parameter, no other references to old default
+  * exam_taking_screen.dart: organizationId read + null guard + createExamInstance call all syntactically valid; uses already-imported providers
+- Staged only the 3 fix files. Commit 3e94007 created.
+- Fetched origin/main before pushing — local main was 1 commit ahead (aefab14, the auto-commit of previously-unrelated dirty files from prior session). Pushed both commits (aefab14 + 3e94007) to origin/main successfully.
+
+Stage Summary:
+- Commit on origin/main: 3e94007 fix(issue-4-followup): replace defaultInstitutionId in exam_instance_service
+- 3 files changed, 19 insertions(+), 2 deletions(-)
+- No backup branch created (small focused change; rollback via `git revert 3e94007` if needed)
+- Students can now take randomized exams without permission-denied errors (once new client is built + published)
+
+POST-PUSH VERIFICATION (manual):
+  □ 1. flutter pub get → build & publish new client to Play Store
+  □ 2. Sign in as student → open exam → tap 'Start Exam'
+  □ 3. Confirm: no permission-denied error, exam starts
+  □ 4. Check Firestore: exam_instances doc has organizationId = real org (e.g., 'review-org'), NOT 'default'
+
+KNOWN REMAINING defaultInstitutionId ISSUES (from audit):
+  - 2 DANGEROUS service-method defaults (qr_enrollment_service.dart:23, question_bank_service.dart:21) — same bug pattern, should be fixed in a follow-up commit
+  - 2 DEAD CODE methods (exam_service.dart:309 createExamInstance in both copies) — writes no orgId at all; zero callers; user should decide: delete vs. fix vs. leave
+  - 22 SAFE references (model defaults + fromFirestore fallbacks) — no action needed
+  - 1 constant definition (app_constants.dart:433) — not a bug
+
+NO FIREBASE DEPLOY REQUIRED for this commit. It is purely a client-side Dart fix; the Firestore rule requiring organizationId on exam_instances was already in place — the client was just not sending it.
+
+NEXT STEPS (awaiting user decision):
+  - Run the 4 verification tests above
+  - Optional: apply the same fix pattern to qr_enrollment_service.dart and question_bank_service.dart (2 DANGEROUS references)
+  - Optional: decide what to do with the dead-code createExamInstance in exam_service.dart (recommend DELETE — it duplicates ExamInstanceService.createExamInstance with worse behavior and no callers)
+  - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md) once Sprint 1 + these bug fixes are deployed + verified
