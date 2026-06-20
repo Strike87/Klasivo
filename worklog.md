@@ -6406,3 +6406,44 @@ Stage Summary:
     2. Audit and align all 6 live hasCompletedSetup defaultValue sites to false (especially lib/app/router.dart:68 — the production router)
     3. Investigate lib/features/auth/pages/ vs lib/features/auth/presentation/ screen duplication
 - Phase 5 sweep of lib/shared/models/ and lib/infrastructure/repositories/ still outstanding (separate dead-code clusters not in Phase 1/2 scope).
+
+---
+Task ID: phase5-tickets-2-3-sweep
+Agent: main (Phase 5 + Tickets 2/3 execution)
+Task: Execute the 3 follow-up tickets from the Phase 2 investigation + run the Phase 5 sweep of lib/shared/models/ and lib/core/models/.
+
+Work Log:
+- Investigated all 3 tickets in parallel by reading the relevant files and grep-scanning for importers.
+- TICKET 1 (currentOrgIdProvider staleness bug): DECIDED to document, not implement. The fix requires either (a) changing the provider type from Provider<String?> to StreamProvider<String?> (would force ~16 downstream consumers to switch from ref.watch to .when/.valueOrNull), or (b) adding a background _userDocStreamProvider that writes back to Hive (safer but needs flutter analyze to verify). Both options need cold-start + org-reassignment test coverage. Added a 28-line TODO comment at lib/providers/permission_provider.dart:30 with the full design sketch, the safe pattern recommendation, and the deferral rationale.
+- TICKET 2 (hasCompletedSetupProvider defaultValue bug): DISCOVERED the prior worklog claim was WRONG. lib/app/router.dart is NOT the production router — it's dead code. The actual production router lives in lib/main.dart:511 (routerProvider) which already has defaultValue: false at line 573. The entire lib/app/ directory is dead:
+    * lib/app/app.dart (KlasivoApp class, never imported — MyApp in main.dart:345 is the live entry point)
+    * lib/app/router.dart (794 LOC, klasivoRouter + klasivoRouterProvider + AuthChangeNotifier — all dead; main.dart has its own AuthChangeNotifier at line 431)
+    * lib/app/app_providers.dart (contains the buggy hasCompletedSetupProvider defaultValue: true, but it's dead)
+    * lib/app/app_provider.dart (TODO-only stub)
+  Verified: 0 external importers of any lib/app/ file. All 4 files deleted.
+  The 3 LIVE sites are already correctly defaultValue: false — no fix needed.
+- TICKET 3 (pages/ vs presentation/ duplication): DISCOVERED the duplication is NOT just auth. ALL 9 lib/features/*/presentation/ directories are dead:
+    * academic/presentation/ (1 file), analytics/presentation/ (1), attendance/presentation/ (1), auth/presentation/ (9), classes/presentation/ (3), exams/presentation/ (5), messaging/presentation/ (1), students/presentation/ (4), submissions/presentation/ (1)
+  Total: 26 dead presentation files. All have 0 importers. The live versions are in lib/features/*/pages/ (imported by main.dart). All 26 deleted; 9 empty directories auto-removed.
+- PHASE 5 SWEEP (lib/shared/models/ + lib/core/models/): 9 files deleted, 3444 LOC removed.
+    * lib/shared/models/ (5 files, 676 LOC): models.dart barrel (0 importers), base_model.dart (1 importer = lib/core/models/tenant_model.dart which is itself dead), campus_model.dart (0 importers, dead dup of kept lib/features/organizations/domain/campus_model.dart), organization_model.dart (0 importers, dead dup of live OrganizationData), tenant_model.dart (0 importers, dead dup of lib/core/models/tenant_model.dart which is also dead).
+    * lib/core/models/ (4 files, 2768 LOC): models.dart barrel (0 importers), tenant_model.dart (0 importers, defines 8 classes including StageData/GroupData/GradeData duplicates of live lib/providers/*_provider.dart versions + dead TenantData/OrganizationData/CampusData/ClassSectionData), tenant_migration.dart (0 importers, uses dead TenantData/CampusData), analytics_models.dart (0 importers, defines 6 classes including DailyAnalytics/WeeklyAnalytics/MonthlyAnalytics live dup at lib/core/analytics/analytics_models.dart + orphan StudentPerformanceEntry/TeacherPerformanceEntry/ClassPerformanceEntry with 0 refs anywhere).
+- VERIFICATION: Wrote scripts/phase5_post_delete_check.py. Scanned 423 Dart files under lib/ and test/ for import/export/part references to all 39 deleted paths. Result: ZERO dangling references. Symbol-level grep confirmed no live code references the deleted classes (BaseModel, KlasivoApp, klasivoRouter, klasivoRouterProvider, TenantData, CampusData, ClassSectionData, StudentPerformanceEntry, TeacherPerformanceEntry, ClassPerformanceEntry all returned 0 references). flutter analyze could not run (Flutter not in container) — verification is import-graph + symbol based, matching Phase 1/2 methodology.
+- COMMITTED: 41 files changed (39 deletes + 1 modified permission_provider.dart + 1 new verifier script), 160 insertions, 10478 deletions.
+
+Stage Summary:
+- Phase 5 + Tickets 2/3 COMPLETE. Working tree clean.
+- 39 dead files deleted (10,478 LOC): 4 from lib/app/, 26 from lib/features/*/presentation/, 5 from lib/shared/models/, 4 from lib/core/models/.
+- Ticket 1 documented but not implemented (deferred per TODO — needs flutter analyze + architectural design + cascading invalidation audit).
+- Ticket 2 resolved by deletion (the "buggy" sites were all in dead code; live sites already correct).
+- Ticket 3 resolved by deletion (26 dead presentation files removed across 9 feature dirs).
+- Phase 5 sweep complete: 9 dead duplicate model files removed (tenant_model.dart had 2 dead copies + tenant_migration.dart + analytics_models.dart all dead).
+- Verifier script committed at scripts/phase5_post_delete_check.py for future reuse.
+- Total scaffold + dead-code cleanup across Phases 1-5: 111 files deleted (63 + 9 + 39), ~12,754 LOC removed (1284 + 992 + 10478).
+- OUTSTANDING (out of scope for this commit):
+    1. Ticket 1 implementation (currentOrgIdProvider staleness fix) — deferred per TODO
+    2. lib/infrastructure/repositories/ dead-code cluster (separate sweep, flagged in original report)
+    3. 7 KEEP-AS-REFERENCE files under lib/features/ (should move to docs/architecture-reference/)
+    4. Sprint 1 deploy still pending: firebase deploy --only functions,firestore:rules,firestore:indexes
+    5. 1 DANGEROUS defaultInstitutionId reference at question_bank_service.dart:21
+    6. exam_service.dart:309 createExamInstance dead code (recommend DELETE)
