@@ -6447,3 +6447,46 @@ Stage Summary:
     4. Sprint 1 deploy still pending: firebase deploy --only functions,firestore:rules,firestore:indexes
     5. 1 DANGEROUS defaultInstitutionId reference at question_bank_service.dart:21
     6. exam_service.dart:309 createExamInstance dead code (recommend DELETE)
+
+---
+Task ID: phase5plus-items-1-4
+Agent: main (Phase 5+ outstanding items execution)
+Task: Apply the 4 outstanding items from the prior Phase 5 commit summary: (1) fix DANGEROUS defaultInstitutionId, (2) delete createExamInstance dead code, (3) sweep lib/infrastructure/ dead cluster, (4) move 8 KEEP-AS-REFERENCE files to docs/architecture-reference/.
+
+Work Log:
+- ITEM 1 (defaultInstitutionId fix): Investigated question_bank_service.dart:21. The `addQuestionToBank` method's `organizationId` parameter defaulted to `AppConstants.defaultInstitutionId` ('default'). This is a security smell: D8 strict-org Firestore rules (isIncomingSameOrg) require organizationId to be a non-empty string matching the caller's actual org, so writes with 'default' would either be DENIED by rules (correct behavior) or leak cross-tenant if rules were ever loosened. FIX: changed parameter to `required String organizationId` with 8-line explanatory comment; updated the single caller (question_bank_screen.dart:660) to read `ref.read(currentOrgIdProvider)` and pass organizationId explicitly, with null/empty guard that shows a toast + early-returns if org context is missing. Added `permission_provider.dart` import for `currentOrgIdProvider`. Verified zero other callers exist.
+- ITEM 2 (createExamInstance dead code): Confirmed `ExamService.createExamInstance` (lib/core/services/exam_service.dart:370-453, 84 LOC) had ZERO callers — the only `createExamInstance` call site is `lib/features/student_exams/pages/exam_taking_screen.dart:134` which calls the LIVE `ExamInstanceService.createExamInstance` (different class, different file). The dead method was an older signature (accepted `List<Map<String, dynamic>> questions` rather than fetching internally). FIX: replaced the 84-line method body with a 9-line explanatory comment pointing to the live canonical location. Removed the now-unused `import 'dart:math';` (the deleted method used `Random()` for shuffling; no other code in the file uses dart:math). Note: `getExamInstance` (immediately below, also 0 callers) was left in place — out of scope, flagged for future cleanup.
+- ITEM 3 (lib/infrastructure/ sweep): Investigated the entire `lib/infrastructure/` directory (21 files, 3664 LOC). Discovered it was entirely dead code:
+    * lib/infrastructure/firebase/ (4 files, 539 LOC) — KlasivoApp v2.0 firebase abstraction. Zero importers. 4 of the files were 5-8 LOC re-export stubs 'for backward compatibility during migration' — the migration never happened.
+    * lib/infrastructure/notifications/ (3 files, 44 LOC) — same re-export pattern.
+    * lib/infrastructure/repositories/ (7 files, 2613 LOC) — repository pattern abstraction (FirestoreXxxRepository classes). Zero importers. Symbol-level grep confirmed all duplicate class names (AssignmentData, ConversationData, MessageData, DailyAnalytics, WeeklyAnalytics, MonthlyAnalytics, SyncOperation, FirebaseConfig) have LIVE canonical definitions in lib/providers/ or lib/core/. The `native.SyncOperation` reference in `lib/core/abstractions/implementations/hive_sync_service.dart` refers to the LIVE enum at `lib/core/services/sync_queue_service.dart:18`, NOT the dead class at `lib/infrastructure/sync_engine/sync_engine_service.dart:21` (different definitions: live is enum, dead is class).
+    * lib/infrastructure/sync_engine/ (7 files, 468 LOC) — SyncEngine, SyncConflict, ConflictResolver, SyncProgress all dead.
+  FIX: `git rm -r lib/infrastructure/` — all 21 files deleted, directory removed.
+- ITEM 4 (move 8 KEEP-AS-REFERENCE files): Per the original investigation report's Phase 4 recommendation (lines 596-607), moved 8 substantial design-reference files from `lib/features/` to `docs/architecture-reference/` using `git mv` to preserve history:
+    * auth/providers/auth_notifier_provider.dart (522 LOC) — added 22-line WARNING header documenting missing .g.dart codegen, missing Sentry/Crashlytics instrumentation, missing rbacInitProvider trigger, buggy defaultValue:true on hasCompletedSetupProvider.
+    * exams/providers/exam_notifier_provider.dart (598 LOC) — added 21-line WARNING header documenting missing .g.dart codegen, missing P0-9 skipLoadingOnReload fix, incomplete deleteExam.
+    * exams/domain/exam_instance_model.dart (55 LOC), exam_stats_model.dart (207 LOC), exam_template_model.dart (71 LOC) — added 10-line generic ARCHIVE warning headers via scripts/add_archive_headers.py.
+    * staff_approval/domain/staff_application_model.dart (515 LOC), staff_approval_status.dart (126 LOC), staff_type.dart (75 LOC) — same generic headers.
+  Created `docs/architecture-reference/README.md` (87 LOC) with purpose, critical warnings, file inventory (8 files, 2169 LOC), provenance, and related documentation links.
+  BONUS: deleted 2 broken barrels exposed by the move — `lib/features/staff_approval/domain/domain.dart` and `lib/features/staff_approval/staff_approval.dart` — both had dangling exports referencing the moved files. Both had 0 external importers.
+- VERIFICATION: Wrote scripts/phase5plus_post_change_check.py (4-check verifier):
+    (1) Zero dangling import/export/part refs to all 31 deleted/moved paths across 392 Dart files in lib/ + test/.
+    (2) Zero live symbol references to 21 deleted infrastructure classes (AuthUser, ExamDocument, FirestoreAnalyticsRepository, FirebaseDocument, SyncConflict, ConflictResolver, SyncEngine, FcmService, etc.).
+    (3) Sanity check of the 3 modified files: question_bank_service.dart security fix landed (organizationId required, no default), exam_service.dart dead method removed, question_bank_screen.dart caller updated to pass organizationId.
+    (4) All 9 expected docs/architecture-reference/ files present (8 moved + 1 README).
+  Result: ALL CHECKS PASSED. flutter analyze could not run (Flutter not in container).
+- COMMITTED: 34 files changed (3 modified + 23 deleted + 8 renamed + 3 new including 2 scripts + README), 472 insertions, 3681 deletions. Net: -3209 LOC.
+
+Stage Summary:
+- Phase 5+ Items 1-4 COMPLETE. Working tree clean.
+- Item 1: DANGEROUS defaultInstitutionId security smell FIXED. QuestionBankService.addQuestionToBank now requires organizationId; caller passes ref.read(currentOrgIdProvider) with null guard.
+- Item 2: 84 LOC of dead createExamInstance code removed from exam_service.dart. dart:math import also removed (now unused).
+- Item 3: 21 files (3664 LOC) deleted from lib/infrastructure/. Entire directory removed. Zero dangling refs.
+- Item 4: 8 KEEP-AS-REFERENCE files (2169 LOC) moved from lib/features/ to docs/architecture-reference/ with WARNING headers. README.md created. 2 broken barrels also deleted.
+- Verifier scripts committed: scripts/phase5plus_post_change_check.py (4-check verifier), scripts/add_archive_headers.py (header-prepending utility).
+- Cumulative cleanup across Phases 1-5+: 145 files affected (63+9+39+23 deletes + 8 moves + 3 modifications + 5 new scripts/docs), ~15,963 LOC removed net.
+- OUTSTANDING (deferred indefinitely or to future sprints):
+    1. Ticket 1 (currentOrgIdProvider staleness) — documented via TODO at permission_provider.dart:30, needs architectural design + flutter analyze.
+    2. getExamInstance in exam_service.dart is also dead (0 callers) — flagged for future cleanup, not in this commit's scope.
+    3. Sprint 1 deploy still pending: firebase deploy --only functions,firestore:rules,firestore:indexes
+    4. flutter analyze + flutter test must be run locally to confirm zero breakage before deploy.
