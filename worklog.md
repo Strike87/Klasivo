@@ -5255,3 +5255,67 @@ NEXT STEPS (awaiting user decision):
   - The full audit fix is now complete (19 original findings in 19b60c0 + 3 gaps in f74bc51 = 22 total findings addressed).
   - Run the 11 verification tests listed in the 19b60c0 worklog entry.
   - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md).
+
+---
+Task ID: fix-2-compile-errors-script
+Agent: main (GLM)
+Task: User supplied a Python script to fix 2 compile errors blocking flutter build apk --release: (1) auth_provider.dart:343 userRoleProvider = null type mismatch, (2) exam_service.dart:158 duplicate examDoc declaration.
+
+Work Log:
+- Analyzed the script before running. Found 2 design flaws:
+  * Fix 1 proposed changing userRoleProvider from StateProvider<String> to StateProvider<String?>. This would break 8+ consumers that read it as String (route_guards.dart, attendance_provider.dart, analytics_provider.dart, settings_screen.dart, announcement_detail_screen.dart). The script's fallback options (B/C) actually do the correct thing — assign '' instead of null — but only if the declaration is already String? or as a final fallback.
+  * Fix 2 would have renamed ALL 'final examDoc' declarations at lines 158, 220, 377, 480 to examDoc1/examDoc2/examDoc3/examDoc4. But only line 158 is a true duplicate (same try-block as line 129, both in publishExam). Lines 220, 377, 480 are in SEPARATE methods (_deleteExamImpl, createExamInstance, updateExamStats) with their own scopes — they are NOT duplicates. The script's blind rename would have produced confusing variable names in unrelated methods.
+
+- Verified current state:
+  * auth_provider.dart line 45: final userRoleProvider = StateProvider<String> (non-nullable)
+  * auth_provider.dart line 343: ref.read(userRoleProvider.notifier).state = null; ← type error
+  * exam_service.dart line 129: final examDoc = await _firestore....get() (in publishExam, gets organizationId)
+  * exam_service.dart line 158: final examDoc = await _firestore....get() (in publishExam, gets startDate/title/classId) ← duplicate declaration in same try-block
+
+- Applied targeted manual fixes instead of running the script:
+
+  Fix 1 (auth_provider.dart — both copies):
+  * Changed `ref.read(userRoleProvider.notifier).state = null;` to `ref.read(userRoleProvider.notifier).state = '';`
+  * This is consistent with the existing defaultValue in app_providers.dart line 32: `box.get('userRole', defaultValue: '') as String;`
+  * All other StateProvider<String?> providers in clearAuthData (userNameProvider, userIdProvider, authMethodProvider, organizationIdProvider, currentOrganizationIdProvider) correctly use null — only userRoleProvider was the odd one out as StateProvider<String>.
+
+  Fix 2 (exam_service.dart — both copies):
+  * Renamed the SECOND `final examDoc` (line 158) to `final updatedExamDoc` — descriptive name reflecting that it's a re-fetch after the .update() call to read startDate/title/classId for notification scheduling.
+  * Left the first `final examDoc` (line 129) unchanged.
+  * Did NOT touch lines 220, 377, 480 — they are in separate methods and are not duplicates.
+  * Added a comment explaining the rename and why the second fetch is needed (startDate/title/classId were not extracted from the first fetch).
+
+- Synced the changes between lib/core/services/exam_service.dart and lib/features/exams/data/exam_service.dart via cp (they were identical before the fix, kept identical after).
+
+- Sanity checks:
+  * Only one `final examDoc` remains in publishExam (line 129). The second fetch is now `final updatedExamDoc` (line 163).
+  * Bracket balance: exam_service.dart 278/278 parens, 100/100 braces. auth_provider.dart 218/218 parens, 44/44 braces. (Both copies of each.)
+  * Ran a heuristic scan for other potential duplicate-final-declaration compile errors across all lib/**/*.dart files. The scan produced ~100 false positives (most are in nested if/for/try blocks which Dart allows). The user reported only 2 specific errors — those are the only ones confirmed and fixed.
+
+- Staged 4 files (2 modified × 2 copies each). Commit 67f6ae7 created.
+- Pushed to origin/main successfully.
+
+Stage Summary:
+- Commit on origin/main: 67f6ae7 fix(compile): 2 errors blocking flutter build apk --release
+- 4 files changed, 18 insertions(+), 8 deletions(-)
+- Both compile errors fixed with minimal, surgical changes that preserve all consumer contracts.
+- NO FIREBASE DEPLOY REQUIRED. Pure Dart compile fixes.
+
+POST-PUSH VERIFICATION (manual):
+  □ 1. flutter clean
+  □ 2. flutter build apk --release — should now succeed
+  □ 3. If new compile errors surface, share them and we'll fix iteratively
+
+KEY LESSON for future scripts:
+  The fix-2-compile-errors.py script would have introduced 2 regressions:
+  1. Changing userRoleProvider to StateProvider<String?> would break 8+ consumers.
+  2. Blindly renaming all 'final examDoc' declarations would have produced examDoc1/2/3/4 in unrelated methods.
+  Future compile-fix scripts should:
+  - Prefer minimal-impact fixes (change assignments, not types) when consumers exist.
+  - Use proper scope analysis (not just line-number heuristics) before renaming variables.
+  - Run a dry-run mode first that shows what would change, before applying.
+
+NEXT STEPS (awaiting user decision):
+  - Run `flutter clean && flutter build apk --release` to verify the build succeeds.
+  - If it succeeds, proceed with the 11 verification tests from the 19b60c0 worklog entry.
+  - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md).
