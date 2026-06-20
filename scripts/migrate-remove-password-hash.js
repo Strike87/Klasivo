@@ -17,11 +17,47 @@
 //   cd functions
 //   npm install firebase-admin
 //   # Place service-account.json in functions/ (download from Firebase Console)
-//   node ../scripts/migrate-remove-password-hash.js
+//   # Then EITHER:
+//   #   $env:NODE_PATH = "$PWD\node_modules"   (PowerShell)
+//   #   export NODE_PATH="$PWD/node_modules"   (bash)
+//   #   node ../scripts/migrate-remove-password-hash.js
+//   # OR just run from functions/ — the script auto-discovers both
+//   # functions/node_modules and functions/service-account.json.
 // ============================================================================
 
-const admin = require('firebase-admin');
-const serviceAccount = require('./service-account.json');
+const path = require('path');
+const fs = require('fs');
+
+// Resolve service-account.json relative to the functions/ directory
+// (regardless of where node is invoked from).
+const functionsDir = path.resolve(__dirname, '..', 'functions');
+const saPath = path.join(functionsDir, 'service-account.json');
+if (!fs.existsSync(saPath)) {
+  console.error(`ERROR: service-account.json not found at:\n  ${saPath}`);
+  console.error('Download it from Firebase Console -> Project Settings ->');
+  console.error('Service Accounts -> Generate new private key, then save as');
+  console.error(`${saPath}`);
+  process.exit(1);
+}
+const serviceAccount = require(saPath);
+
+// Load firebase-admin from functions/node_modules if NODE_PATH wasn't set.
+let admin;
+try {
+  admin = require('firebase-admin');
+} catch (e) {
+  const adminPath = path.join(functionsDir, 'node_modules', 'firebase-admin');
+  if (fs.existsSync(adminPath)) {
+    admin = require(adminPath);
+  } else {
+    console.error('ERROR: firebase-admin not found.');
+    console.error('Either:');
+    console.error('  1. cd functions && npm install firebase-admin');
+    console.error('  2. $env:NODE_PATH = "$PWD\\node_modules"   (PowerShell)');
+    console.error('     export NODE_PATH="$PWD/node_modules"   (bash)');
+    process.exit(1);
+  }
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -30,8 +66,15 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+// Dry-run mode: `node migrate-remove-password-hash.js --dry-run`
+// Lists what would be deleted without actually deleting.
+const DRY_RUN = process.argv.includes('--dry-run');
+
 async function migrate() {
+  console.log(`Mode: ${DRY_RUN ? 'DRY RUN (no writes)' : 'LIVE (will delete field)'}`);
+  console.log(`Project: ${serviceAccount.project_id}`);
   console.log('Fetching all user docs with passwordHash field...');
+
   const snapshot = await db.collection('users')
     .where('passwordHash', '!=', null)
     .get();
@@ -41,6 +84,30 @@ async function migrate() {
     console.log('No docs need migration.');
     return;
   }
+
+  if (DRY_RUN) {
+    console.log('\nDocs that would be updated (first 20 shown):');
+    const preview = snapshot.docs.slice(0, 20);
+    for (const doc of preview) {
+      const data = doc.data();
+      const hashPreview = typeof data.passwordHash === 'string'
+        ? `${data.passwordHash.slice(0, 12)}... (${data.passwordHash.length} chars)`
+        : JSON.stringify(data.passwordHash).slice(0, 30);
+      console.log(`  ${doc.id}  role=${data.role ?? 'unknown'}  org=${data.organizationId ?? 'none'}  hash=${hashPreview}`);
+    }
+    if (snapshot.size > 20) {
+      console.log(`  ... and ${snapshot.size - 20} more.`);
+    }
+    console.log(`\nDry run complete. Re-run without --dry-run to actually delete the field.`);
+    return;
+  }
+
+  // LIVE mode — confirm before destroying data.
+  console.log('\nWARNING: This will DELETE the passwordHash field from');
+  console.log(`${snapshot.size} user documents. This is IRREVERSIBLE.`);
+  console.log('Make sure you have a Firestore backup.');
+  console.log('\nProceeding in 5 seconds... (Ctrl+C to abort)');
+  await new Promise((resolve) => setTimeout(resolve, 5000));
 
   let batch = db.batch();
   let count = 0;
