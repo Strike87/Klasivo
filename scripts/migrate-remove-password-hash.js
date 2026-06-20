@@ -89,25 +89,52 @@ if (useAdc) {
   // Check well-known ADC locations (Linux/Mac + Windows) so we can fail
   // fast with a helpful message. firebase-admin itself checks these too,
   // but its error is cryptic ("UNAUTHENTICATED") — we want actionable text.
-  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  let adcFilePath = process.env.GOOGLE_APPLICATION_CREDENTIALS || null;
+  if (!adcFilePath) {
     const home = process.env.USERPROFILE || process.env.HOME || '';
-    const adcPaths = [
+    const candidates = [
       path.join(home, '.config', 'gcloud', 'application_default_credentials.json'),         // Linux/Mac
       path.join(process.env.APPDATA || '', 'gcloud', 'application_default_credentials.json'), // Windows
     ];
-    const found = adcPaths.some((p) => fs.existsSync(p));
-    if (!found) {
-      console.error('ERROR: ADC not found. Run this once to set it up:');
-      console.error('  gcloud auth application-default login');
-      console.error('  gcloud auth application-default set-quota-project <your-project-id>');
-      process.exit(1);
-    }
+    adcFilePath = candidates.find((p) => fs.existsSync(p)) || null;
   }
 
-  adminApp = admin.initializeApp({
-    projectId: serviceAccount?.project_id,
-  });
-  projectIdForLog = serviceAccount?.project_id || '(from ADC)';
+  if (!adcFilePath) {
+    console.error('ERROR: ADC not found. Run this once to set it up:');
+    console.error('  gcloud auth application-default login');
+    console.error('  gcloud auth application-default set-quota-project <your-project-id>');
+    process.exit(1);
+  }
+
+  // Read the quota_project_id from the ADC file — firebase-admin doesn't
+  // do this itself, and without an explicit projectId it errors out with
+  // "Unable to detect a Project Id in the current environment".
+  let adcProjectId = serviceAccount?.project_id || null;
+  try {
+    const adc = JSON.parse(fs.readFileSync(adcFilePath, 'utf-8'));
+    adcProjectId = adcProjectId || adc.quota_project_id || adc.project_id || null;
+  } catch (e) {
+    // Ignore — we'll fall back to env vars below.
+  }
+
+  // Final fallback: GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT env vars.
+  adcProjectId = adcProjectId
+    || process.env.GCLOUD_PROJECT
+    || process.env.GOOGLE_CLOUD_PROJECT
+    || null;
+
+  if (!adcProjectId) {
+    console.error('ERROR: Could not determine project ID.');
+    console.error('Set it explicitly via env var:');
+    console.error('  PowerShell:  $env:GCLOUD_PROJECT = "your-project-id"');
+    console.error('  bash:         export GCLOUD_PROJECT="your-project-id"');
+    console.error('Or run:  gcloud auth application-default set-quota-project <your-project-id>');
+    process.exit(1);
+  }
+
+  console.log(`Project: ${adcProjectId} (from ADC)`);
+  adminApp = admin.initializeApp({ projectId: adcProjectId });
+  projectIdForLog = adcProjectId;
 } else {
   // Verify the service-account.json looks intact before trusting it.
   projectIdForLog = serviceAccount.project_id || '(unknown)';
