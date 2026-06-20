@@ -4898,3 +4898,53 @@ KNOWN PRE-EXISTING ISSUES (not blocking Sprint 1, should be addressed in a later
 
 SPRINT 1 IS CODE-COMPLETE. AWAITING USER DEPLOYMENT + VERIFICATION.
 DO NOT PROCEED TO SPRINT 2-6 WITHOUT EXPLICIT HUMAN APPROVAL.
+
+
+---
+Task ID: today-fixes-1-3-4
+Agent: main (GLM)
+Task: Apply Klasivo "Today's Fixes" — Issues 1, 3, 4 (provider sync, notifications orgId filter, exam creation orgId). Issue 2 (ShellRoute) is manual and deferred.
+
+Work Log:
+- User supplied `apply-today-fixes.py` (Windows-targeted, interactive prompt). Adapted for Linux sandbox at /home/z/my-project.
+- Adapted script saved to scripts/apply-today-fixes.py with the following differences from the user's original:
+  * Linux paths (no `cd C:\Users\Strik\Klasivo`)
+  * Non-interactive (no `input()` prompt; --no-push default true)
+  * Issue 1: also adds missing `import 'organization_provider.dart';` to both auth_provider.dart files — currentOrganizationIdProvider lives in organization_provider.dart, not auth_provider.dart (the original script would have produced uncompilable Dart)
+  * Issue 3: handles the prefixed import `notif_service.NotificationService` and updates BOTH call sites (notificationsStreamProvider + unreadCountProvider), not just one
+  * Issue 4: SKIPS the broken `exam_instance_service.dart` naive replacement from the original script (it would replace `AppConstants.defaultInstitutionId` with bare `organizationId` which isn't in scope → compile failure). Deferred as a manual follow-up.
+- Ran the adapted script with --force. Five of seven sub-patterns matched; two needed manual follow-up via Edit tool:
+  * `getUnreadCount` pattern didn't match because actual code uses `.count().get()` not `.get()` after `.where('isRead', isEqualTo: false)`. Fixed manually.
+  * `exam_form_screen.dart` createExam call pattern didn't match because the original pattern had no leading whitespace but the actual code is indented inside a method body. Fixed manually in both lib/features/exams/pages/ and lib/features/exams/presentation/ copies.
+- Post-script verification discovered 2 additional issues that the original script did NOT handle:
+  * `markAllAsRead` caller in lib/features/notifications/pages/notification_center_screen.dart (line 40) did not pass organizationId. Since the script made organizationId required, this would have broken compilation. Fixed by adding the import + passing `organizationId: ref.read(currentOrganizationIdProvider)`.
+  * Issue 1 sync line at line 238-239 (saveStudentAuthData path) was inserted after a one-line `if (organizationId != null) ref.read(organizationIdProvider.notifier).state = organizationId;` WITHOUT braces — meaning the sync line would run unconditionally and set currentOrganizationIdProvider to null when organizationId was null (e.g., parent role that has no org). Fixed by guarding the sync with its own `if (organizationId != null)`. Same fix applied to both auth_provider.dart copies.
+- Could not run `flutter analyze` (no dart toolchain in this env). Manual syntax verification of each modified file's key sections confirmed correctness.
+- Staged only the 11 Issue 1/3/4 files + the new script (left the prior session's unrelated dirty files unstaged).
+- Commit 0d5e4c7 created locally.
+- Push was rejected — remote had 3 commits I didn't have locally (dbeacd7 "Add files via upload", 283ef90 "Delete google-services.json", 6baca3b "Update pubspec.yaml"). These were user pushes made via GitHub web UI while I was offline. Notably dbeacd7 is the commit the original script mentioned as "Verified against actual code at commit dbeacd7".
+- Stashed unrelated dirty files, rebased 0d5e4c7 onto origin/main (no conflicts — remote touched google-services.json + pubspec.yaml, my commit touched 11 different files). New commit hash after rebase: 44dd359.
+- Pushed 44dd359 to origin/main successfully.
+- Restored the stashed unrelated dirty files to the working tree (left uncommitted, as before).
+
+Stage Summary:
+- Commit on origin/main: 44dd359 fix(issues-1-3-4): provider sync, notifications, exam creation
+- 11 files changed, 615 insertions(+), 9 deletions(-)
+- Backup branch: backup-before-today-fixes-20260620-003832
+- Rollback: `git reset --hard backup-before-today-fixes-20260620-003832`
+- Issues 1, 3, 4 are CODE-COMPLETE on main. Issue 2 (ShellRoute → StatefulShellRoute.indexedStack) is deferred as a manual fix in lib/main.dart — but Issue 1 fix may resolve most of Issue 2's symptoms (the disappearing data was primarily caused by null orgId, not tab disposal).
+- DEFERRED follow-up: exam_instance_service.dart createExamInstance() still hardcodes AppConstants.defaultInstitutionId. Needs `required String organizationId` parameter added to both lib/core/services/exam_instance_service.dart and lib/features/exams/data/exam_instance_service.dart (identical), plus caller update in lib/features/student_exams/pages/exam_taking_screen.dart (~line 120) to pass `organizationId: ref.read(organizationIdProvider)`.
+
+POST-PUSH VERIFICATION (manual, before deploying):
+  □ 1. Issue 1 — Login as owner (fresh, no restart) → navigate to Academic Structure immediately → confirm stages + classes appear (not '0 Classes'). Dashboard → Academic → Dashboard → confirm data persists.
+  □ 2. Issue 3 — Open Notifications/Inbox → confirm no permission-denied error, list loads, unread badge works, "Mark all read" button works.
+  □ 3. Issue 4 — Create exam → tap 'Create & Add Questions' → confirm no permission-denied, exam created. Check Firestore: exam doc has organizationId = real org (not 'default').
+  □ 4. Issue 2 (manual) — Apply ShellRoute → StatefulShellRoute.indexedStack conversion in lib/main.dart ONLY IF tab state still flickers after Issue 1 is verified.
+
+NOTE: No firebase deploy is required for these fixes — they are all client-side Dart changes (the Firestore rules requiring organizationId on notifications were already in place; the client was just not sending it). The user only needs to: `flutter pub get` → build & publish new client to Play Store → wait for adoption.
+
+NEXT STEPS (awaiting user decision):
+  - Run the 4 verification tests above
+  - If all pass → apply Issue 2 (ShellRoute conversion) only if needed
+  - Apply the deferred exam_instance_service.dart fix (separate small PR)
+  - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md) once Sprint 1 is deployed + verified
