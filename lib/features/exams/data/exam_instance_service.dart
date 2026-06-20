@@ -15,6 +15,7 @@ class ExamInstanceService {
     required String studentId,
     required String classId,
     required String teacherId,
+    required String organizationId,  // ISSUE 4 FOLLOW-UP FIX
     bool isRandomized = false,
   }) async {
     // Check if instance already exists for this student+exam
@@ -60,7 +61,7 @@ class ExamInstanceService {
     final docRef = _firestore.collection(AppConstants.examInstancesCollection).doc();
     await docRef.set({
       'id': docRef.id,
-      'organizationId': AppConstants.defaultInstitutionId,
+      'organizationId': organizationId,  // ISSUE 4 FOLLOW-UP FIX — was defaultInstitutionId
       'examId': examId,
       'studentId': studentId,
       'classId': classId,

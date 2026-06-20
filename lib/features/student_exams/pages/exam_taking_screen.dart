@@ -116,12 +116,27 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       final teacherId = examData?['teacherId'] as String? ?? '';
 
       if (isRandomized) {
+        // ISSUE 4 FOLLOW-UP FIX — exam_instance must be in the same org as the
+        // exam, otherwise Firestore rule isInComingSameOrg() denies the write.
+        // Prefer the exam doc's organizationId (already in hand); fall back to
+        // the user's current org context.
+        final organizationId = (examData?['organizationId'] as String?)
+            ?? ref.read(organizationIdProvider);
+        if (organizationId == null || organizationId.isEmpty) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            KlasivoToast.error(context,
+                message: 'Organization context missing. Please re-login.');
+          }
+          return;
+        }
         final instanceService = ExamInstanceService();
         await instanceService.createExamInstance(
           examId: widget.examId,
           studentId: studentId,
           classId: classId,
           teacherId: teacherId,
+          organizationId: organizationId,
           isRandomized: true,
         );
       }
