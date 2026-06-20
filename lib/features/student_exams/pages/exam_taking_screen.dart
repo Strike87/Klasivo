@@ -36,6 +36,8 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
   int _currentQuestionIndex = 0;
   Map<String, String> _answers = {}; // questionId -> answer
   String? _submissionId;
+  String _studentId = '';        // P1-2: required by saveAnswer rules
+  String _organizationId = '';   // P1-2: required by isIncomingSameOrg()
   bool _isLoading = true;
   bool _isSubmitting = false;
   bool _hasSubmitted = false;
@@ -80,6 +82,10 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       final studentId = ref.read(userIdProvider) ?? '';
       final classId = ref.read(studentClassIdProvider) ?? '';
       final submissionService = ref.read(submissionServiceProvider);
+
+      // P1-2: cache for saveAnswer / bulkSaveAnswers (rules require these fields)
+      _studentId = studentId;
+      _organizationId = ref.read(organizationIdProvider) ?? '';
 
       // Start or get existing submission
       final subId = await submissionService.startSubmission(

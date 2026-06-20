@@ -133,6 +133,8 @@ class SubmissionService {
             'submissionId': submissionId,
             'questionId': questionId,
             'answer': answer,
+            'studentId': studentId,  // P1-2: required by rules
+            'organizationId': organizationId,  // P1-2: required by isIncomingSameOrg()
             'isCorrect': false,
             'marksAwarded': 0,
             'updatedAt': FieldValue.serverTimestamp(),

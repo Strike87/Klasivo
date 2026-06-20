@@ -92,3 +92,4 @@ export { onLiveKitRoomCreated, onLiveKitRoomUpdated } from './functions/onLiveKi
 // ─── Scheduled Functions (v2) ────────────────────────────────
 export { scheduledClassReminder } from './functions/scheduledClassReminder';
 export { gradeSubmission } from './functions/gradeSubmission';
+export { gradeAssignmentSubmission } from './functions/gradeAssignmentSubmission';
