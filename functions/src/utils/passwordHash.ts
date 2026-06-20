@@ -75,10 +75,15 @@ export function verifyPassword(password: string, storedHash: string): boolean {
     if (parts.length !== 6) return false;
     const params: Record<string, number> = {};
     for (const part of parts.slice(1, 4)) {
-      const [k, v] = part.split('=');
+      const eqIdx = part.indexOf('=');
+      if (eqIdx === -1) return false;
+      const k = part.substring(0, eqIdx);
+      const v = part.substring(eqIdx + 1);
+      if (!k || !v) return false;
       params[k] = parseInt(v, 10);
       if (isNaN(params[k])) return false;
     }
+    if (!parts[4] || !parts[5]) return false;
     const salt = Buffer.from(parts[4], 'hex');
     const expectedHash = Buffer.from(parts[5], 'hex');
     if (salt.length === 0 || expectedHash.length === 0) return false;

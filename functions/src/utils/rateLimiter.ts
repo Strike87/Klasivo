@@ -58,7 +58,7 @@ export async function checkRateLimit(opts: RateLimitOptions): Promise<void> {
   const data = snap.data();
 
   let newCount: number;
-  let firstRequestAt: number;
+  let firstRequestAt: number = now;  // TS fix: initialized to avoid 'used before assigned'
 
   if (!data || !data.firstRequestAt) {
     // New window
@@ -89,6 +89,7 @@ export async function checkRateLimit(opts: RateLimitOptions): Promise<void> {
     } else {
       // Within window — increment atomically
       newCount = (data.count || 0) + 1;
+      firstRequestAt = firstMs;  // TS fix: assign before use at line 101
       await docRef.update({
         count: admin.firestore.FieldValue.increment(1),
         lastRequestAt: now,
