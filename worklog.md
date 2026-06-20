@@ -5006,3 +5006,44 @@ NEXT STEPS (awaiting user decision):
   - Optional: apply the same fix pattern to qr_enrollment_service.dart and question_bank_service.dart (2 DANGEROUS references)
   - Optional: decide what to do with the dead-code createExamInstance in exam_service.dart (recommend DELETE — it duplicates ExamInstanceService.createExamInstance with worse behavior and no callers)
   - Then proceed to the 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md) once Sprint 1 + these bug fixes are deployed + verified
+
+
+---
+Task ID: ts-compile-fix
+Agent: main (GLM)
+Task: Apply emergency TypeScript compile fix for passwordHash.ts + rateLimiter.ts — 6 strict-mode errors that have been blocking `firebase deploy --only functions` since commit 7f350ed (the scrypt util introduction in Sprint 1 Day 3).
+
+Work Log:
+- Re-verified the current state of both files. The bug patterns matched the user's script exactly:
+  * passwordHash.ts lines 79-83: `const [k, v] = part.split('=')` — under `noUncheckedIndexedAccess: true`, k and v become `string|undefined`, which fails strict mode when used as a Record<string, number> key and as a parseInt arg.
+  * rateLimiter.ts line 61: `let firstRequestAt: number;` declared without initializer; assigned in 2 of 3 branches (new-window at line 66, window-expired at line 82); NOT assigned in the within-window else branch (lines 89-97). Used unconditionally at line 101 in `firstRequestAt + windowMs - now`.
+- Saved the user-supplied script (Windows-targeted) as scripts/apply-ts-compile-fix.py with Linux adaptations:
+  * Removed `cd C:\Users\Strik\Klasivo` (uses /home/z/my-project)
+  * Non-interactive (no terminal prompts)
+  * Preserved the user's two-stage fallback (exact pattern → flexible pattern) for passwordHash.ts
+  * Kept the same fix logic for rateLimiter.ts: initialize declaration to `now` (defense-in-depth) AND assign `firstRequestAt = firstMs` in the within-window else branch (the semantically correct value — the existing window's start)
+- Ran the script. All 4 expected sub-patterns matched and were replaced cleanly:
+  * passwordHash.ts: array destructuring → indexOf+substring+null-check
+  * passwordHash.ts: added `if (!parts[4] || !parts[5]) return false;` before Buffer.from
+  * rateLimiter.ts: declaration `let firstRequestAt: number = now;`
+  * rateLimiter.ts: `firstRequestAt = firstMs;` added in the within-window else branch
+- Verified the post-fix file contents visually — both look correct and semantically equivalent to the original logic.
+- Installed functions/ dependencies via `npm install --no-audit --no-fund` (295 packages added in 4s — TypeScript 5.9.3 was already in devDependencies but node_modules was missing).
+- Ran `./node_modules/.bin/tsc --noEmit` from functions/ → exit code 0, no errors. This confirms ALL 6 previously-known strict-mode errors are resolved (and no new errors were introduced).
+- Staged only the 3 fix-related files (2 source files + the new script). Commit adf7abc created.
+- Fetched origin/main before pushing — local main was 2 commits ahead (224293d auto-commit + adf7abc my fix). Pushed both to origin/main successfully.
+
+Stage Summary:
+- Commit on origin/main: adf7abc fix(ts-compile): unblock firebase deploy — 6 strict-mode errors
+- 3 files changed, 159 insertions(+), 2 deletions(-)
+- Verified: `cd functions && ./node_modules/.bin/tsc --noEmit` exits 0 with no errors
+- The 6 errors were the pre-existing TS errors mentioned in the Sprint 1 closure worklog as "unrelated to Sprint 1 but should be fixed for type safety" — now resolved
+- `firebase deploy --only functions,firestore:rules,firestore:indexes` should now succeed (pending the 24-48h App Check client adoption window noted in the Sprint 1 deploy sequence)
+
+POST-PUSH VERIFICATION (manual, before deploying):
+  □ 1. cd functions && npm run build  → expect clean compile
+  □ 2. firebase deploy --only functions,firestore:rules,firestore:indexes  → expect success
+  □ 3. After deploy: re-run the 11 Sprint 1 verification tests (login as each role, cross-org isolation, App Check, etc.)
+  □ 4. After all tests pass → Sprint 1 COMPLETE → proceed to 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md)
+
+NO CLIENT-SIDE CHANGES — this commit only touches Cloud Functions TypeScript. No `flutter pub get` or Play Store rebuild required for this commit. The user can proceed directly to `firebase deploy` once ready.
