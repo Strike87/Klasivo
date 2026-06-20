@@ -1,0 +1,718 @@
+diff --git a/lib/core/services/auth_service.dart b/lib/core/services/auth_service.dart
+index a93b661..1b1ec42 100755
+--- a/lib/core/services/auth_service.dart
++++ b/lib/core/services/auth_service.dart
+@@ -1,5 +1,3 @@
+-import 'dart:convert';
+-import 'package:crypto/crypto.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'package:cloud_functions/cloud_functions.dart';
+@@ -26,23 +24,13 @@ class AuthService {
+   final FirebaseAuth _auth = FirebaseAuth.instance;
+   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+-  /// Hash a password using SHA-256.
+-  ///
+-  /// C-02 PATCH (DEPRECATED): Server-side password storage now uses scrypt
+-  /// (see functions/src/utils/passwordHash.ts). This client-side SHA-256
+-  /// helper is kept ONLY for backward compatibility with the legacy student
+-  /// login flow (lib/features/auth/data/auth_service.dart:233) which
+-  /// compares against the stored `passwordHash` field directly.
+-  ///
+-  /// Once the `studentLogin` Cloud Function is implemented (per FORENSIC-9
+-  /// recommended architecture), this helper should be removed entirely and
+-  /// the client should never see or compute a password hash.
+-  static String hashPassword(String password) {
+-    final bytes = utf8.encode(password);
+-    final digest = sha256.convert(bytes);
+-    return digest.toString();
+-  }
+-
++  // P0-12 PATCH: static hashPassword() removed. It was dead code — its own
++  // doc comment claimed it existed for backward compatibility with
++  // lib/features/auth/data/auth_service.dart:233, but that file no longer
++  // exists in the codebase. loginStudent() (below) already authenticates
++  // via FirebaseAuth.signInWithEmailAndPassword() directly, never comparing
++  // a client-computed hash against a stored passwordHash field. Server-side
++  // password hashing lives in functions/src/utils/passwordHash.ts (scrypt).
+   /// A9 PATCH: Best-effort rollback of an orphaned Firebase Auth account.
+   ///
+   /// Called from the catch block of every registration method that creates
+diff --git a/lib/core/services/excel_import_service.dart b/lib/core/services/excel_import_service.dart
+index bf55f52..e9a60f2 100755
+--- a/lib/core/services/excel_import_service.dart
++++ b/lib/core/services/excel_import_service.dart
+@@ -1,17 +1,10 @@
+ import 'dart:io';
+-import 'dart:convert';
+-import 'dart:math';
+-import 'package:cloud_firestore/cloud_firestore.dart';
+-import 'package:crypto/crypto.dart';
++import 'package:cloud_functions/cloud_functions.dart';
+ import 'package:excel/excel.dart';
+ import 'package:file_picker/file_picker.dart';
+-import '../config/app_constants.dart';
+ import 'password_hasher.dart';
+
+ class ExcelImportService {
+-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+-  final Random _random = Random();
+-
+   Future<String?> pickExcelFile() async {
+     try {
+       final result = await FilePicker.platform.pickFiles(
+@@ -108,100 +101,85 @@ class ExcelImportService {
+     }).where((row) => row.values.any((v) => v.isNotEmpty)).toList();
+   }
+
+-  Future<String> _generateStudentCode(String teacherId) async {
+-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+-    String code;
+-    bool exists;
+-    do {
+-      code = 'STU-';
+-      for (int i = 0; i < 6; i++) {
+-        code += chars[_random.nextInt(chars.length)];
+-      }
+-      final snapshot = await _firestore
+-          .collection(AppConstants.studentsCollection)
+-          .where('studentCode', isEqualTo: code)
+-          .limit(1)
+-          .get();
+-      exists = snapshot.docs.isNotEmpty;
+-    } while (exists);
+-    return code;
+-  }
+-
+-  static String hashPassword(String password) {
+-    final bytes = utf8.encode(password);
+-    final digest = sha256.convert(bytes);
+-    return digest.toString();
+-  }
++  // P0-10 PATCH: client-side hashPassword() and direct Firestore batch.set()
++  // removed. The old implementation had two separate problems:
++  //
++  //   1. It wrote a plaintext 'password' field and a weak client-computed
++  //      SHA-256 'passwordHash' directly into the users collection.
++  //   2. It NEVER created a Firebase Auth account — only a Firestore doc.
++  //      Since loginStudent() authenticates via
++  //      FirebaseAuth.signInWithEmailAndPassword() first (see auth_service.dart),
++  //      every student imported through this path was unable to log in at all.
++  //
++  // Fix: route each row through the same createStudent Cloud Function that
++  // addStudent() (student_service.dart) already uses for single-student
++  // creation. createStudent uses the Admin SDK to create the Auth account,
++  // scrypt-hash the password (functions/src/utils/passwordHash.ts), and
++  // write the Firestore doc — all server-side, bypassing the client write
++  // path entirely (Firestore rules block direct client writes to this
++  // collection: `allow create: if request.auth.uid == userId`).
++  //
++  // Calls run with bounded concurrency (_maxConcurrentCreates at a time)
++  // rather than one big Future.wait — createStudent does Auth account
++  // creation + Firestore writes + notifications per call, so unbounded
++  // parallelism for a large spreadsheet could exhaust the function's
++  // maxInstances (10) and start failing requests instead of queuing them.
++  final FirebaseFunctions _functions =
++      FirebaseFunctions.instanceFor(region: 'us-central1');
++
++  static const int _maxConcurrentCreates = 5;
+
+   Future<ExcelImportResult> importStudents({
+     required String organizationId,
+     required String classId,
+     required List<MappedStudent> students,
+-    String createdBy = '',
++    // ignore: avoid_unused_constructor_parameters
++    String createdBy = '', // No longer used — createStudent derives the
++    // creator from the authenticated caller's request.auth.uid server-side.
++    // Kept as a parameter so excel_import_screen.dart doesn't need an
++    // unrelated signature change as part of this fix.
+   }) async {
+-    try {
+-      int successCount = 0;
+-      int failCount = 0;
+-      final List<String> errors = [];
+-
+-      const batchSize = 450;
+-      for (int i = 0; i < students.length; i += batchSize) {
+-        final batch = _firestore.batch();
+-        final chunk = students.skip(i).take(batchSize);
+-
+-        for (final student in chunk) {
+-          try {
+-            final studentCode = await _generateStudentCode(organizationId);
+-            final docRef = _firestore.collection(AppConstants.studentsCollection).doc();
+-
+-            final password = student.password.isNotEmpty
+-                ? student.password
+-                : PasswordHasher.instance.generateTemporaryPassword();  // P0-7: was defaultStudentPassword
+-            final passwordHash = hashPassword(password);
+-
+-            batch.set(docRef, {
+-              'organizationId': organizationId,
+-              'role': AppConstants.roleStudent,
+-              'classId': classId,
+-              'fullName': student.name,
+-              'studentCode': studentCode,
+-              'passwordHash': passwordHash,
+-              'password': password,
+-              'phone': student.phone,
+-              'email': student.email,
+-              'isActive': true,
+-              'createdBy': createdBy,
+-              'createdAt': FieldValue.serverTimestamp(),
+-              'updatedAt': FieldValue.serverTimestamp(),
+-            });
+-            successCount++;
+-          } catch (e) {
+-            failCount++;
+-            errors.add('${student.name} - $e');
+-          }
+-        }
+-        await batch.commit();
++    int successCount = 0;
++    int failCount = 0;
++    final List<String> errors = [];
++
++    Future<void> createOne(MappedStudent student) async {
++      try {
++        final password = student.password.isNotEmpty
++            ? student.password
++            : PasswordHasher.instance.generateTemporaryPassword(); // P0-7: was defaultStudentPassword
++
++        await _functions.httpsCallable('createStudent').call<Map<String, dynamic>>({
++          'organizationId': organizationId,
++          'classId': classId,
++          'fullName': student.name,
++          'password': password,
++          'email': student.email.isNotEmpty ? student.email : null,
++          'phone': student.phone.isNotEmpty ? student.phone : null,
++        });
++
++        successCount++;
++      } catch (e) {
++        failCount++;
++        errors.add('${student.name} - $e');
+       }
++    }
++
++    // Process in fixed-size windows so at most _maxConcurrentCreates
++    // callable invocations are in flight at once.
++    for (int i = 0; i < students.length; i += _maxConcurrentCreates) {
++      final window = students.skip(i).take(_maxConcurrentCreates);
++      await Future.wait(window.map(createOne));
++    }
++
++    // createStudent already updates the class's studentCount server-side
++    // per call, so no separate count-and-update step is needed here.
+
+-      final countSnapshot = await _firestore
+-          .collection(AppConstants.studentsCollection)
+-          .where('classId', isEqualTo: classId)
+-          .count()
+-          .get();
+-
+-      await _firestore
+-          .collection(AppConstants.classesCollection)
+-          .doc(classId)
+-          .update({'studentCount': countSnapshot.count});
+-
+-      return ExcelImportResult(
+-        successCount: successCount,
+-        failCount: failCount,
+-        errors: errors,
+-      );
+-    } catch (e) {
+-      rethrow;
++    return ExcelImportResult(
++      successCount: successCount,
++      failCount: failCount,
++      errors: errors,
++    );
+   }
+ }
+
+diff --git a/lib/core/services/password_hasher.dart b/lib/core/services/password_hasher.dart
+index 1bb1d90..ea2adef 100755
+--- a/lib/core/services/password_hasher.dart
++++ b/lib/core/services/password_hasher.dart
+@@ -20,10 +20,22 @@
+ // MIGRATION HISTORY:
+ //   - Days 1-5 patches (commits 3504aef..b4f3e6c) added scrypt server-side.
+ //   - This Sprint 1 cleanup adds the client-side random password generator.
+-//   - A later sprint will remove the 5 client-side SHA-256 hashPassword()
+-//     copies and migrate callers to send plaintext to the server.
++//   - P0-8 PATCH: generateTemporaryPassword() switched from a
++//     DateTime-seeded generator to dart:math Random.secure(). The previous
++//     version derived all 8 characters from a single microsecond timestamp
++//     via fixed-offset modular arithmetic, which is deterministic and
++//     guessable — two students created in the same microsecond tick (e.g.
++//     back-to-back iterations of the Excel bulk-import loop) could receive
++//     identical or trivially related passwords. Random.secure() uses the
++//     platform CSPRNG and draws fresh entropy per character.
++//   - A later sprint will remove the remaining client-side SHA-256
++//     hashPassword() copies (auth_service.dart, student_service.dart,
++//     excel_import_service.dart) and migrate callers to send plaintext to
++//     the server (see changeUserPassword / createStudent callables).
+ // ============================================================================
+
++import 'dart:math';
++
+ /// Singleton password hashing service.
+ ///
+ /// Usage:
+@@ -35,32 +47,40 @@ class PasswordHasher {
+   PasswordHasher._();
+   static final PasswordHasher instance = PasswordHasher._();
+
++  /// Cryptographically secure RNG. Created once and reused — Random.secure()
++  /// reads from the OS entropy pool, so there's no benefit to recreating it
++  /// per call, and doing so per-character would be wasteful.
++  static final Random _secureRandom = Random.secure();
++
+   /// Generate a random 8-character temporary password for new students.
+   ///
+   /// Replaces the hardcoded '123456' default. Generates a memorable
+   /// but unpredictable password using 4 letters + 4 digits (excludes
+   /// ambiguous characters I, O, 0, 1).
+   ///
+-  /// Note: This uses DateTime.now().microsecondsSinceEpoch as the entropy
+-  /// source, which is sufficient for temporary passwords that the user
+-  /// must change on first login (mustChangePassword: true). For
+-  /// cryptographic key generation, use a proper secure random source.
++  /// Each character is drawn independently from Random.secure() (the
++  /// platform CSPRNG), so passwords generated in rapid succession — e.g.
++  /// during bulk Excel import — are not correlated with each other.
++  ///
++  /// This is a temporary password the student is forced to change on first
++  /// login (mustChangePassword: true), not a long-term credential — but it
++  /// still must not be predictable, since it's the only thing standing
++  /// between account creation and first password change.
+   String generateTemporaryPassword() {
+     // Exclude ambiguous characters: no I, O (look like 1, 0)
+     const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+     // Exclude ambiguous characters: no 0, 1 (look like O, I)
+     const digits = '23456789';
+
+-    final random = DateTime.now().microsecondsSinceEpoch;
+     final buffer = StringBuffer();
+
+     // 4 letters
+     for (int i = 0; i < 4; i++) {
+-      buffer.write(letters[(random + i * 7919) % letters.length]);
++      buffer.write(letters[_secureRandom.nextInt(letters.length)]);
+     }
+     // 4 digits
+     for (int i = 0; i < 4; i++) {
+-      buffer.write(digits[(random + i * 6271) % digits.length]);
++      buffer.write(digits[_secureRandom.nextInt(digits.length)]);
+     }
+
+     return buffer.toString();
+diff --git a/lib/core/services/qr_enrollment_service.dart b/lib/core/services/qr_enrollment_service.dart
+index 7f4e21e..d229786 100755
+--- a/lib/core/services/qr_enrollment_service.dart
++++ b/lib/core/services/qr_enrollment_service.dart
+@@ -1,11 +1,7 @@
+-import 'dart:convert';
+-import 'dart:math';
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'package:flutter/foundation.dart';
+-import 'package:sentry_flutter/sentry_flutter.dart';
+
+ import '../config/app_constants.dart';
+-import 'sentry_service.dart';
+
+ /// Service for QR code-based student enrollment
+ /// QR codes contain encoded class/teacher information that allows
+@@ -13,208 +9,26 @@ import 'sentry_service.dart';
+ class QREnrollmentService {
+   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+-  /// Generates QR data payload for a class enrollment
+-  /// Returns a JSON string containing class info
+-  String generateEnrollmentQRData({
+-    required String classId,
+-    required String teacherId,
+-    required String className,
+-    String? grade,
+-    String organizationId = AppConstants.defaultInstitutionId,
+-  }) {
+-    final data = {
+-      'type': 'enrollment',
+-      'classId': classId,
+-      'teacherId': teacherId,
+-      'className': className,
+-      'grade': grade,
+-      'organizationId': organizationId,
+-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+-    };
+-    return jsonEncode(data);
+-  }
+-
+-  /// Parses QR data from a scanned code
+-  /// Returns the decoded map or null if invalid
+-  Map<String, dynamic>? parseEnrollmentQRData(String qrData) {
+-    try {
+-      final data = jsonDecode(qrData) as Map<String, dynamic>;
+-
+-      // Validate required fields
+-      if (data['type'] != 'enrollment') return null;
+-      if (data['classId'] == null || data['teacherId'] == null) return null;
+-
+-      return data;
+-    } catch (e) {
+-      debugPrint('Error parsing QR data: $e');
+-      return null;
+-    }
+-  }
+-
+-  /// Enroll a student into a class via QR code data
+-  /// Creates a new student record with auto-generated code and default password
+-  ///
+-  /// IMPORTANT: This method now requires [authUid] — the Firebase Auth UID
+-  /// of the newly-created student account. The Firestore document uses
+-  /// `.doc(authUid)` so that security rules (`request.auth.uid == userId`)
+-  /// can verify the write. Previously used `.doc()` (auto-ID) which was
+-  /// always blocked by security rules.
+-  ///
+-  /// Returns the new student document ID (same as authUid).
+-  Future<String> enrollViaQR({
+-    required Map<String, dynamic> qrData,
+-    required String fullName,
+-    required String password,
+-    required String authUid,
+-    String Function(String)? hashPassword,
+-  }) async {
+-    final transaction = KlasivoSentry.transactions.studentEnrollment();
+-
+-    try {
+-      KlasivoSentry.breadcrumb.registration('qr_enrollment_started', data: {
+-        'classId': qrData['classId'],
+-        'teacherId': qrData['teacherId'],
+-        'fullName': fullName,
+-        'authUid': authUid,
+-      });
+-
+-      final classId = qrData['classId'] as String;
+-      final teacherId = qrData['teacherId'] as String;
+-      final className = qrData['className'] as String? ?? '';
+-      final grade = qrData['grade'] as String? ?? '';
+-      final organizationId = qrData['organizationId'] as String? ?? AppConstants.defaultInstitutionId;
+-
+-      // Verify class exists
+-      final classDoc = await _firestore.collection(AppConstants.classesCollection).doc(classId).get();
+-      if (!classDoc.exists) {
+-        KlasivoSentry.breadcrumb.registration('qr_enrollment_failed_class_not_found', data: {
+-          'classId': classId,
+-        });
+-        throw Exception('Class not found. The QR code may be outdated.');
+-      }
+-
+-      // Generate unique student code
+-      final studentCode = await _generateStudentCode(teacherId);
+-
+-      // Create student document (students ARE users — stored in usersCollection)
+-      // FIXED: Uses authUid instead of auto-ID so security rules pass
+-      final docId = authUid;
+-
+-      KlasivoSentry.breadcrumb.firestore(
+-        'create',
+-        collection: AppConstants.usersCollection,
+-        docId: docId,
+-        data: {
+-          'flow': 'qr_enrollment',
+-          'docIdStrategy': 'uid',
+-        },
+-      );
+-
+-      // Log the doc ID audit trail
+-      KlasivoSentry.docIdAudit.logUserCreation(
+-        flow: 'qr_enrollment',
+-        collection: AppConstants.usersCollection,
+-        docIdStrategy: 'uid',
+-        actualDocId: docId,
+-        authUid: authUid,
+-      );
+-
+-      await SentryFirestoreHelper.docSet(
+-        collection: AppConstants.usersCollection,
+-        docId: docId,
+-        data: {
+-          'organizationId': organizationId,
+-          'role': AppConstants.roleStudent,
+-          'id': docId,
+-          'teacherId': teacherId,
+-          'classId': classId,
+-          'className': className,
+-          'fullName': fullName,
+-          'studentCode': studentCode,
+-          'passwordHash': hashPassword != null ? hashPassword(password) : password,
+-          'grade': grade,
+-          'enrolledVia': 'qr',
+-          'isActive': true,
+-          'createdAt': FieldValue.serverTimestamp(),
+-          'updatedAt': FieldValue.serverTimestamp(),
+-        },
+-        flow: 'qr_enrollment',
+-        step: 'USER_DOC_CREATE',
+-      );
+-
+-      // Read-back verification for QR enrollment
+-      final verifyQrDoc = await _firestore
+-          .collection(AppConstants.usersCollection)
+-          .doc(docId)
+-          .get();
+-      if (!verifyQrDoc.exists) {
+-        await KlasivoObservability.reportMessage(
+-          'QR ENROLLMENT DOC SET SUCCEEDED BUT READ-BACK FAILED — '
+-          'doc users/$docId does not exist after .set()',
+-          level: SentryLevel.error,
+-          tags: {'flow': 'qr_enrollment', 'step': 'READBACK', 'docId': docId},
+-        );
+-      } else {
+-        KlasivoSentry.breadcrumb.registration('qr_enrollment_readback_verified', data: {
+-          'docId': docId,
+-          'docExists': true,
+-        });
+-      }
+-
+-      // Update class student count
+-      final currentCount = classDoc.data()?['studentCount'] as int? ?? 0;
+-      await _firestore.collection(AppConstants.classesCollection).doc(classId).update({
+-        'studentCount': currentCount + 1,
+-      });
+-
+-      KlasivoSentry.breadcrumb.registration('qr_enrollment_success', data: {
+-        'docId': docId,
+-        'studentCode': studentCode,
+-        'classId': classId,
+-      });
+-
+-      transaction.status = const SpanStatus.ok();
+-
+-      return docId;
+-    } catch (e, st) {
+-      transaction.status = const SpanStatus.internalError();
+-      await Sentry.captureException(
+-        e,
+-        stackTrace: st,
+-        withScope: (scope) {
+-          scope.setTag('flow', 'qr_enrollment');
+-          scope.setTag('step', 'enroll_via_qr');
+-          scope.setTag('collection', AppConstants.usersCollection);
+-          scope.setTag('docIdStrategy', 'auto_id');
+-        },
+-      );
+-      rethrow;
+-    } finally {
+-      await transaction.finish();
+-    }
+-  }
+-
+-  /// Generates a unique student code (STU-XXXXXX format)
+-  /// Uses cryptographically secure Random for uniqueness
+-  Future<String> _generateStudentCode(String teacherId) async {
+-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+-    final rng = Random();
+-
+-    for (int attempt = 0; attempt < 10; attempt++) {
+-      final code = 'STU-${List.generate(6, (_) => chars[rng.nextInt(chars.length)])}';
+-
+-      final existing = await _firestore
+-          .collection(AppConstants.usersCollection)
+-          .where('studentCode', isEqualTo: code)
+-          .limit(1)
+-          .get();
+-
+-      if (existing.docs.isEmpty) return code;
+-    }
+-
+-    // Fallback: use timestamp-based code
+-    return 'STU-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+-  }
++  // P0-11 PATCH: generateEnrollmentQRData() / parseEnrollmentQRData() removed.
++  // Both were dead code with zero callers anywhere in lib/. The QR scan flow
++  // that's actually wired up (features/qr/pages/qr_scan_screen.dart) uses
++  // QrService.enrollStudentByQr() instead, which enrolls an already
++  // authenticated, already-existing student into a class — a different flow
++  // from the new-account-creation this file's QR data shape was designed for.
++
++  // P0-11 PATCH: enrollViaQR() and its helper _generateStudentCode() removed.
++  // enrollViaQR had zero callers anywhere in lib/ and predates the
++  // createStudent Cloud Function pattern now used everywhere else for
++  // student account creation (see student_service.dart addStudent(),
++  // excel_import_service.dart importStudents()). It wrote directly to
++  // Firestore from the client (blocked by security rules in practice) and
++  // fell back to storing the PLAINTEXT password in the passwordHash field
++  // whenever no hashPassword callback was supplied — a real bug, but one
++  // that never shipped to users since nothing called this method.
++  //
++  // If QR-based new-account enrollment is needed in the future, it should
++  // be built as a createStudent-style Cloud Function call, not a client-side
++  // Firestore write.
+
+   /// Verify that a QR code is still valid (class exists and is active)
+   Future<bool> validateQRData(Map<String, dynamic> qrData) async {
+diff --git a/lib/core/services/student_service.dart b/lib/core/services/student_service.dart
+index 5be6a29..bc338a1 100755
+--- a/lib/core/services/student_service.dart
++++ b/lib/core/services/student_service.dart
+@@ -1,9 +1,7 @@
+ import 'dart:math';
+-import 'dart:convert';
+ import 'package:flutter/foundation.dart';
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'package:cloud_functions/cloud_functions.dart';
+-import 'package:crypto/crypto.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:sentry_flutter/sentry_flutter.dart';
+ import '../config/app_constants.dart';
+@@ -18,12 +16,9 @@ class StudentService {
+       FirebaseFunctions.instanceFor(region: 'us-central1');
+   final Random _random = Random();
+
+-  /// Hash a password using SHA-256
+-  static String hashPassword(String password) {
+-    final bytes = utf8.encode(password);
+-    final digest = sha256.convert(bytes);
+-    return digest.toString();
+-  }
++  // P0-9 PATCH: static hashPassword() removed. Password hashing now happens
++  // server-side via the changeUserPassword callable (scrypt, see
++  // functions/src/utils/passwordHash.ts). See updateStudent() below.
+
+   Future<String> generateStudentCode(String organizationId) async {
+     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+@@ -180,20 +175,6 @@ class StudentService {
+       if (phone != null) data['phone'] = phone;
+       if (grade != null) data['grade'] = grade;
+       if (isActive != null) data['isActive'] = isActive;
+-      if (password != null && password.isNotEmpty) {
+-        data['passwordHash'] = hashPassword(password);
+-
+-        try {
+-          final studentDoc = await _firestore
+-              .collection(AppConstants.usersCollection)
+-              .doc(studentId)
+-              .get();
+-          final authEmail = studentDoc.data()?['authEmail'] as String?;
+-          if (authEmail != null) {
+-            // Firebase Admin SDK would be needed for server-side password update
+-          }
+-        } catch (_) {}
+-      }
+
+       await SentryFirestoreHelper.docUpdate(
+         collection: AppConstants.usersCollection,
+@@ -202,6 +183,30 @@ class StudentService {
+         flow: 'student_update',
+         step: 'updateStudent',
+       );
++
++      // P0-9 PATCH: Password changes now go through the changeUserPassword
++      // callable instead of computing a client-side SHA-256 hash and writing
++      // it directly to Firestore. The callable hashes with scrypt server-side
++      // (functions/src/utils/passwordHash.ts), enforces PASSWORD_RESET_ROLES
++      // and org-boundary checks, and updates Firebase Auth + the Firestore
++      // passwordHash field atomically. Run after the doc update above so a
++      // failed password reset doesn't also roll back unrelated profile edits.
++      if (password != null && password.isNotEmpty) {
++        try {
++          await _functions.httpsCallable('changeUserPassword').call({
++            'newPassword': password,
++            'targetUserId': studentId,
++          });
++        } catch (e, st) {
++          await KlasivoObservability.reportError(
++            e,
++            st,
++            reason: 'Student password reset failed',
++            tags: {'flow': 'student_update', 'studentId': studentId},
++          );
++          rethrow;
++        }
++      }
+     } catch (e, st) {
+       await KlasivoObservability.reportError(
+         e,
+diff --git a/test/core/services/auth_service_test.dart b/test/core/services/auth_service_test.dart
+index c920777..8e691b9 100755
+--- a/test/core/services/auth_service_test.dart
++++ b/test/core/services/auth_service_test.dart
+@@ -3,68 +3,13 @@ import 'package:klasivo/core/services/auth_service.dart';
+
+ void main() {
+   // ─── hashPassword ──────────────────────────────────────────────────────────
+-
+-  group('AuthService.hashPassword', () {
+-    test('produces consistent SHA-256 hash for same input', () {
+-      final hash1 = AuthService.hashPassword('mypassword123');
+-      final hash2 = AuthService.hashPassword('mypassword123');
+-
+-      expect(hash1, equals(hash2));
+-    });
+-
+-    test('produces different hashes for different inputs', () {
+-      final hash1 = AuthService.hashPassword('password1');
+-      final hash2 = AuthService.hashPassword('password2');
+-
+-      expect(hash1, isNot(equals(hash2)));
+-    });
+-
+-    test('returns a 64-character hex string (SHA-256)', () {
+-      final hash = AuthService.hashPassword('test');
+-
+-      // SHA-256 produces 32 bytes = 64 hex characters
+-      expect(hash.length, 64);
+-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
+-    });
+-
+-    test('handles empty password', () {
+-      final hash = AuthService.hashPassword('');
+-
+-      // SHA-256 of empty string is a well-known value
+-      expect(hash.length, 64);
+-      expect(hash, equals('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'));
+-    });
+-
+-    test('handles special characters in password', () {
+-      final hash = AuthService.hashPassword('p@ssw0rd!#\$%');
+-
+-      expect(hash.length, 64);
+-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
+-    });
+-
+-    test('handles Arabic characters in password', () {
+-      final hash = AuthService.hashPassword('كلمةمرور');
+-
+-      expect(hash.length, 64);
+-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
+-    });
+-
+-    test('handles very long password', () {
+-      final longPassword = 'a' * 1000;
+-      final hash = AuthService.hashPassword(longPassword);
+-
+-      expect(hash.length, 64);
+-    });
+-
+-    test('default student password produces expected hash', () {
+-      // From AppConstants: defaultStudentPassword = '123456'
+-      final hash = AuthService.hashPassword('123456');
+-
+-      // Verify it's deterministic
+-      expect(hash, equals(AuthService.hashPassword('123456')));
+-      expect(hash.length, 64);
+-    });
+-  });
++  // P0-12 PATCH: AuthService.hashPassword() and its tests removed. The
++  // method was dead code with no production caller (its doc comment pointed
++  // at lib/features/auth/data/auth_service.dart, which no longer exists).
++  // Password verification now happens via Firebase Auth directly
++  // (AuthService.loginStudent uses signInWithEmailAndPassword), and password
++  // hashing for storage happens server-side via scrypt
++  // (functions/src/utils/passwordHash.ts).
+
+   // ─── AuthProviders ─────────────────────────────────────────────────────────

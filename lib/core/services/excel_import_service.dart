@@ -1,16 +1,37 @@
 import 'dart:io';
-import 'dart:convert';
-import 'dart:math';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:crypto/crypto.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
-import '../config/app_constants.dart';
 import 'password_hasher.dart';
 
 class ExcelImportService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final Random _random = Random();
+  // P0-10 PATCH: client-side hashPassword() and direct Firestore batch.set()
+  // removed. The old implementation had two separate problems:
+  //
+  //   1. It wrote a plaintext 'password' field and a weak client-computed
+  //      SHA-256 'passwordHash' directly into the users collection.
+  //   2. It NEVER created a Firebase Auth account — only a Firestore doc.
+  //      Since loginStudent() authenticates via
+  //      FirebaseAuth.signInWithEmailAndPassword() first (see auth_service.dart),
+  //      every student imported through this path was unable to log in at all.
+  //
+  // Fix: route each row through the same createStudent Cloud Function that
+  // addStudent() (student_service.dart) already uses for single-student
+  // creation. createStudent uses the Admin SDK to create the Auth account,
+  // scrypt-hash the password (functions/src/utils/passwordHash.ts), and
+  // write the Firestore doc — all server-side, bypassing the client write
+  // path entirely (Firestore rules block direct client writes to this
+  // collection: `allow create: if request.auth.uid == userId`).
+  //
+  // Calls run with bounded concurrency (_maxConcurrentCreates at a time)
+  // rather than one big Future.wait — createStudent does Auth account
+  // creation + Firestore writes + notifications per call, so unbounded
+  // parallelism for a large spreadsheet could exhaust the function's
+  // maxInstances (10) and start failing requests instead of queuing them.
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
+
+  static const int _maxConcurrentCreates = 5;
 
   Future<String?> pickExcelFile() async {
     try {
@@ -108,100 +129,57 @@ class ExcelImportService {
     }).where((row) => row.values.any((v) => v.isNotEmpty)).toList();
   }
 
-  Future<String> _generateStudentCode(String teacherId) async {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    String code;
-    bool exists;
-    do {
-      code = 'STU-';
-      for (int i = 0; i < 6; i++) {
-        code += chars[_random.nextInt(chars.length)];
-      }
-      final snapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
-          .where('studentCode', isEqualTo: code)
-          .limit(1)
-          .get();
-      exists = snapshot.docs.isNotEmpty;
-    } while (exists);
-    return code;
-  }
-
-  static String hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
   Future<ExcelImportResult> importStudents({
     required String organizationId,
     required String classId,
     required List<MappedStudent> students,
-    String createdBy = '',
+    // ignore: avoid_unused_constructor_parameters
+    String createdBy = '', // No longer used — createStudent derives the
+    // creator from the authenticated caller's request.auth.uid server-side.
+    // Kept as a parameter so excel_import_screen.dart doesn't need an
+    // unrelated signature change as part of this fix.
   }) async {
-    try {
-      int successCount = 0;
-      int failCount = 0;
-      final List<String> errors = [];
+    int successCount = 0;
+    int failCount = 0;
+    final List<String> errors = [];
 
-      const batchSize = 450;
-      for (int i = 0; i < students.length; i += batchSize) {
-        final batch = _firestore.batch();
-        final chunk = students.skip(i).take(batchSize);
+    Future<void> createOne(MappedStudent student) async {
+      try {
+        final password = student.password.isNotEmpty
+            ? student.password
+            : PasswordHasher.instance.generateTemporaryPassword(); // P0-7: was defaultStudentPassword
 
-        for (final student in chunk) {
-          try {
-            final studentCode = await _generateStudentCode(organizationId);
-            final docRef = _firestore.collection(AppConstants.studentsCollection).doc();
+        await _functions.httpsCallable('createStudent').call<Map<String, dynamic>>({
+          'organizationId': organizationId,
+          'classId': classId,
+          'fullName': student.name,
+          'password': password,
+          'email': student.email.isNotEmpty ? student.email : null,
+          'phone': student.phone.isNotEmpty ? student.phone : null,
+        });
 
-            final password = student.password.isNotEmpty
-                ? student.password
-                : PasswordHasher.instance.generateTemporaryPassword();  // P0-7: was defaultStudentPassword
-            final passwordHash = hashPassword(password);
-
-            batch.set(docRef, {
-              'organizationId': organizationId,
-              'role': AppConstants.roleStudent,
-              'classId': classId,
-              'fullName': student.name,
-              'studentCode': studentCode,
-              'passwordHash': passwordHash,
-              'password': password,
-              'phone': student.phone,
-              'email': student.email,
-              'isActive': true,
-              'createdBy': createdBy,
-              'createdAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-            successCount++;
-          } catch (e) {
-            failCount++;
-            errors.add('${student.name} - $e');
-          }
-        }
-        await batch.commit();
+        successCount++;
+      } catch (e) {
+        failCount++;
+        errors.add('${student.name} - $e');
       }
-
-      final countSnapshot = await _firestore
-          .collection(AppConstants.studentsCollection)
-          .where('classId', isEqualTo: classId)
-          .count()
-          .get();
-
-      await _firestore
-          .collection(AppConstants.classesCollection)
-          .doc(classId)
-          .update({'studentCount': countSnapshot.count});
-
-      return ExcelImportResult(
-        successCount: successCount,
-        failCount: failCount,
-        errors: errors,
-      );
-    } catch (e) {
-      rethrow;
     }
+
+    // Process in fixed-size windows so at most _maxConcurrentCreates
+    // callable invocations are in flight at once.
+    for (int i = 0; i < students.length; i += _maxConcurrentCreates) {
+      final window = students.skip(i).take(_maxConcurrentCreates);
+      await Future.wait(window.map(createOne));
+    }
+
+    // createStudent already updates the class's studentCount server-side
+    // per call, so no separate count-and-update step is needed here.
+
+    return ExcelImportResult(
+      successCount: successCount,
+      failCount: failCount,
+      errors: errors,
+    );
   }
 }
 

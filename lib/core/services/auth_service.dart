@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -26,23 +24,13 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Hash a password using SHA-256.
-  ///
-  /// C-02 PATCH (DEPRECATED): Server-side password storage now uses scrypt
-  /// (see functions/src/utils/passwordHash.ts). This client-side SHA-256
-  /// helper is kept ONLY for backward compatibility with the legacy student
-  /// login flow (lib/features/auth/data/auth_service.dart:233) which
-  /// compares against the stored `passwordHash` field directly.
-  ///
-  /// Once the `studentLogin` Cloud Function is implemented (per FORENSIC-9
-  /// recommended architecture), this helper should be removed entirely and
-  /// the client should never see or compute a password hash.
-  static String hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
+  // P0-12 PATCH: static hashPassword() removed. It was dead code — its own
+  // doc comment claimed it existed for backward compatibility with
+  // lib/features/auth/data/auth_service.dart:233, but that file no longer
+  // exists in the codebase. loginStudent() (below) already authenticates
+  // via FirebaseAuth.signInWithEmailAndPassword() directly, never comparing
+  // a client-computed hash against a stored passwordHash field. Server-side
+  // password hashing lives in functions/src/utils/passwordHash.ts (scrypt).
   /// A9 PATCH: Best-effort rollback of an orphaned Firebase Auth account.
   ///
   /// Called from the catch block of every registration method that creates

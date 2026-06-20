@@ -2,69 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:klasivo/core/services/auth_service.dart';
 
 void main() {
-  // ─── hashPassword ──────────────────────────────────────────────────────────
-
-  group('AuthService.hashPassword', () {
-    test('produces consistent SHA-256 hash for same input', () {
-      final hash1 = AuthService.hashPassword('mypassword123');
-      final hash2 = AuthService.hashPassword('mypassword123');
-
-      expect(hash1, equals(hash2));
-    });
-
-    test('produces different hashes for different inputs', () {
-      final hash1 = AuthService.hashPassword('password1');
-      final hash2 = AuthService.hashPassword('password2');
-
-      expect(hash1, isNot(equals(hash2)));
-    });
-
-    test('returns a 64-character hex string (SHA-256)', () {
-      final hash = AuthService.hashPassword('test');
-
-      // SHA-256 produces 32 bytes = 64 hex characters
-      expect(hash.length, 64);
-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
-    });
-
-    test('handles empty password', () {
-      final hash = AuthService.hashPassword('');
-
-      // SHA-256 of empty string is a well-known value
-      expect(hash.length, 64);
-      expect(hash, equals('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'));
-    });
-
-    test('handles special characters in password', () {
-      final hash = AuthService.hashPassword('p@ssw0rd!#\$%');
-
-      expect(hash.length, 64);
-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
-    });
-
-    test('handles Arabic characters in password', () {
-      final hash = AuthService.hashPassword('كلمةمرور');
-
-      expect(hash.length, 64);
-      expect(hash, matches(RegExp(r'^[a-f0-9]{64}$')));
-    });
-
-    test('handles very long password', () {
-      final longPassword = 'a' * 1000;
-      final hash = AuthService.hashPassword(longPassword);
-
-      expect(hash.length, 64);
-    });
-
-    test('default student password produces expected hash', () {
-      // From AppConstants: defaultStudentPassword = '123456'
-      final hash = AuthService.hashPassword('123456');
-
-      // Verify it's deterministic
-      expect(hash, equals(AuthService.hashPassword('123456')));
-      expect(hash.length, 64);
-    });
-  });
+  // P0-12 PATCH: AuthService.hashPassword() and its tests removed. The
+  // method was dead code with no production caller (its doc comment pointed
+  // at lib/features/auth/data/auth_service.dart, which no longer exists).
+  // Password verification now happens via Firebase Auth directly
+  // (AuthService.loginStudent uses signInWithEmailAndPassword), and password
+  // hashing for storage happens server-side via scrypt
+  // (functions/src/utils/passwordHash.ts).
 
   // ─── AuthProviders ─────────────────────────────────────────────────────────
 

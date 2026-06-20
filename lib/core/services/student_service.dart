@@ -1,9 +1,7 @@
 import 'dart:math';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../config/app_constants.dart';
@@ -18,12 +16,9 @@ class StudentService {
       FirebaseFunctions.instanceFor(region: 'us-central1');
   final Random _random = Random();
 
-  /// Hash a password using SHA-256
-  static String hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
+  // P0-9 PATCH: static hashPassword() removed. Password hashing now happens
+  // server-side via the changeUserPassword callable (scrypt, see
+  // functions/src/utils/passwordHash.ts). See updateStudent() below.
 
   Future<String> generateStudentCode(String organizationId) async {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -180,20 +175,6 @@ class StudentService {
       if (phone != null) data['phone'] = phone;
       if (grade != null) data['grade'] = grade;
       if (isActive != null) data['isActive'] = isActive;
-      if (password != null && password.isNotEmpty) {
-        data['passwordHash'] = hashPassword(password);
-
-        try {
-          final studentDoc = await _firestore
-              .collection(AppConstants.usersCollection)
-              .doc(studentId)
-              .get();
-          final authEmail = studentDoc.data()?['authEmail'] as String?;
-          if (authEmail != null) {
-            // Firebase Admin SDK would be needed for server-side password update
-          }
-        } catch (_) {}
-      }
 
       await SentryFirestoreHelper.docUpdate(
         collection: AppConstants.usersCollection,
@@ -202,6 +183,30 @@ class StudentService {
         flow: 'student_update',
         step: 'updateStudent',
       );
+
+      // P0-9 PATCH: Password changes now go through the changeUserPassword
+      // callable instead of computing a client-side SHA-256 hash and writing
+      // it directly to Firestore. The callable hashes with scrypt server-side
+      // (functions/src/utils/passwordHash.ts), enforces PASSWORD_RESET_ROLES
+      // and org-boundary checks, and updates Firebase Auth + the Firestore
+      // passwordHash field atomically. Run after the doc update above so a
+      // failed password reset doesn't also roll back unrelated profile edits.
+      if (password != null && password.isNotEmpty) {
+        try {
+          await _functions.httpsCallable('changeUserPassword').call({
+            'newPassword': password,
+            'targetUserId': studentId,
+          });
+        } catch (e, st) {
+          await KlasivoObservability.reportError(
+            e,
+            st,
+            reason: 'Student password reset failed',
+            tags: {'flow': 'student_update', 'studentId': studentId},
+          );
+          rethrow;
+        }
+      }
     } catch (e, st) {
       await KlasivoObservability.reportError(
         e,
