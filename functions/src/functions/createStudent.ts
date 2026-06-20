@@ -35,7 +35,9 @@ import * as Sentry from '@sentry/node';
 import { verifyOrgBoundary, STAFF_ROLES, buildCustomClaims, type KlasivoRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
 import { queueEmail } from '../services/queueService';
-import { hashPassword } from '../utils/passwordHash';  // C-02 PATCH: scrypt
+// P1-2 (data-exposure-v2): hashPassword import removed — Firebase Auth is source of truth.
+// Students authenticate via studentCode + password (verified through Firebase Auth),
+// not via a stored passwordHash field on the user doc.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -474,7 +476,7 @@ export const createStudent = onCall(
         // ─── 6. Generate Student Code ────────────────────────────────────
         const studentCode = await generateStudentCode(db, organizationId);
         const authEmail = generateAuthEmail(studentCode);
-        const passwordHash = hashPassword(password);
+        // P1-2: passwordHash removed — Firebase Auth is source of truth
 
         // ─── 7. Create Firebase Auth Account (Admin SDK) ─────────────────
         let authUser: admin.auth.UserRecord;
@@ -515,7 +517,6 @@ export const createStudent = onCall(
             authEmail,
             email: email || null,
             phone: phone || null,
-            passwordHash,
             classId,
             photoUrl: null,
             isActive: true,

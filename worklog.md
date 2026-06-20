@@ -6490,3 +6490,78 @@ Stage Summary:
     2. getExamInstance in exam_service.dart is also dead (0 callers) — flagged for future cleanup, not in this commit's scope.
     3. Sprint 1 deploy still pending: firebase deploy --only functions,firestore:rules,firestore:indexes
     4. flutter analyze + flutter test must be run locally to confirm zero breakage before deploy.
+
+---
+Task ID: security-patches-apply
+Agent: main (Security patches — apply 5 patch sets from upstream)
+Task: Apply 5 security patch scripts uploaded to download/patches/ by user (https://github.com/Strike87/Klasivo/tree/main/download/patches). Patches address ~30 P1/P2 security issues across authorization, data exposure, RBAC, and exam flow. Verify, fix what the patches miss, commit, and report.
+
+Work Log:
+- Fetched origin/main and checked out download/patches/ — 8 files (5 patch scripts + v1 superseded by v2 + Students_Screen_Analysis.md + worklog summary of findings).
+- Read all 5 patch scripts to map their scope:
+    1. apply-auth-fixes.py            — 5 P1 authorization issues (assignRole cross-tenant, setPermissionOverrides cross-tenant, payments create open to students, organizationId mutation on update, tenantId 'default' shared across orgs)
+    2. apply-7-auth-fixes.py          — 5 P1 + 2 P2 (forged submission grades, answer post-submission edits, parent self-approval, teacher scope bypass, password change without recent auth, org archival batch limit [already handled], org deletion orphans 30+ collections)
+    3. apply-data-exposure-fixes-v2.py — 6 issues (questions correctAnswer readable by students, passwordHash downloadable, scope array self-expansion, unauthenticated invite enumeration, draft exam visibility, client-side org creation) + P2-2b abuse controls on registerOwner CF
+    4. apply-exam-flow-fixes.py       — 5 exam-flow issues (answer autosave missing ownership fields, client-side grading blocked by rules [moved to gradeSubmission CF], assignment submission same pattern [flagged manual], tests bypass rules [roadmap])
+    5. apply-rbac-fixes.py            — 7 RBAC issues (assignRole hierarchy, PermissionService scope bypass on override, messaging participant mismatch, message injection, router hardcoded roles, storage rules missing staff roles, admin org listing by ownership)
+- Wrote scripts/apply-security-patches.py — combined runner that execs each patch script's patch-only portion (strips per-script commit/build/push) so we can review + commit once.
+- Pre-flight: working tree was dirty (patches dir staged from `git checkout origin/main`). Committed patches dir + .gitignore exception (download/* ignored, !download/patches/ tracked) + runner script as commit 70b466a.
+- Ran combined runner: 27 fixes applied across 5 scripts. 2 patches skipped:
+    * data-exposure-v2 P1-1 (questions read restrict to staff) — pattern drift (the apply-auth-fixes P1-4 patch had already changed the questions match block's `update` line to `safeStaffUpdateWithOrgGuard()`, so the v2 P1-1 pattern didn't match)
+    * rbac P1-1 (assignRole hierarchy check) — false-positive "already fixed" skip due to collision: the `"P1-1" not in content` guard saw the apply-auth-fixes P1-1 comment ("P1-1 PATCH: Verify target user belongs...") and skipped, even though the rbac P1-1 fix (different — adds `roleRank(callerRole) <= roleRank(oldRole)`) was NOT applied.
+- Investigated 4 TypeScript build errors after initial patch run:
+    * functions/src/api/index.ts:865 — `req.userClaims` doesn't exist (rbac P2-3 patch referenced a non-existent field). Fixed: use `req.userOrgId` (populated by auth middleware line 112).
+    * functions/src/api/index.ts:867 — `firebaseAdmin.firestore.FieldValue.documentId()` — `firebaseAdmin` not imported. Fixed first to `admin.firestore.FieldValue.documentId()`, then to `admin.firestore.FieldPath.documentId()` (FieldValue has no documentId() static method; FieldPath does).
+    * functions/src/functions/registerOwner.ts:61 — `auth` used before declaration (P2-2b patch inserted `await auth.getUserByEmail()` before `const auth = getAuth()`). Fixed: moved the duplicate-email check + org-name validation to AFTER `const auth = getAuth(); const db = getFirestore();` so auth is in scope.
+    * functions/src/functions/registerOwner.ts:61 — same as above (block-scoped variable used before assignment).
+- Investigated Dart-side breakage:
+    * lib/core/services/submission_service.dart:244 — `_functions.httpsCallable('gradeSubmission').call(...)` referenced but `_functions` field never declared. Root cause: exam-flow P1-3 patch's `if "_functions" not in content:` guard ran AFTER the patch had already added `_functions.httpsCallable()` to the file content, so the guard was always False and the field declaration was never inserted. Fixed: manually added `final FirebaseFunctions _functions = FirebaseFunctions.instance;` field to the class.
+    * lib/features/student_exams/pages/exam_taking_screen.dart:241,265 — calls to `saveAnswer()` and `bulkSaveAnswers()` didn't pass the new required `studentId` + `organizationId` params (added by exam-flow P1-2 patch). Fixed: updated both call sites to read `ref.read(userIdProvider)` and `ref.read(organizationIdProvider)` (same providers already used elsewhere in the same file at lines 80 and 124).
+- Manually applied the 2 skipped patches:
+    * data-exposure-v2 P1-1 (questions read restrict to staff): applied to firestore.rules questions match block. PRESERVED the stricter `safeStaffUpdateWithOrgGuard()` on `update` (the patch's `isStaffExcludingObserverInSameOrg()` would have been a regression — loses immutability guard).
+    * rbac P1-1 (assignRole hierarchy): added `if (callerRole !== 'super_admin' && roleRank(callerRole) <= roleRank(oldRole))` check after the existing apply-auth-fixes P1-1 block (where `oldRole` is already in scope).
+- Manually added missing helper definitions to firestore.rules (CRITICAL — without these, `firebase deploy --only firestore:rules` would fail):
+    * `function preservesOrgAndAuditFields()` — was called by safeStaffUpdateWithOrgGuard but never defined. apply-auth-fixes P1-4 patch was supposed to add it, but the patch's `old_helper` pattern expected `isStaffExcludingObserverInSameOrg()` inside `safeStaffUpdate()` — the actual code uses `isStaffInSameOrg()`, so the pattern didn't match. Added helper manually with the correct `isStaffInSameOrg()` base.
+    * `function safeStaffUpdateWithOrgGuard()` — same root cause, same manual fix.
+    * `function isStaffExcludingObserver()` + `function isStaffExcludingObserverInSameOrg()` — referenced by data-exposure-v2 patches but never defined. Added as aliases for `isStaff()` and `isStaffInSameOrg()` (which already exclude observer — `isStaffIncludingObserver()` is the separate "include observer" variant).
+- Cleaned up unused imports:
+    * functions/src/functions/createStudent.ts:38 — `import { hashPassword }` was no longer called after data-exposure-v2 P1-2 removed `const passwordHash = hashPassword(password);`. Removed import, replaced with explanatory comment.
+    * functions/src/functions/changeUserPassword.ts:8 — `import { hashPassword, needsRehash }` was no longer called after P1-2. Removed import, replaced with explanatory comment. Also updated stale "// Update passwordHash in Firestore" comment to reflect reality (no passwordHash update — only `mustChangePassword: false`).
+- Verified lib/features/submissions/data/submission_service.dart is dead code (0 importers in lib/ or test/). The exam-flow P1-2 patch modified its saveAnswer/bulkSaveAnswers signatures anyway. Modifications are harmless (file is dead) but noted for future cleanup.
+- Wrote scripts/verify-security-patches.py — 47-check verifier covering: (1) patch markers in correct files, (2) no undefined helper refs in firestore.rules (with negative lookbehind for `-` to avoid matching "null-safety (" false positive), (3) no live `tenantId: 'default'` in CFs, (4) no live `passwordHash` in createStudent.ts .set() payload, (5) no callers of patched saveAnswer/bulkSaveAnswers missing new params, (6) gradeSubmission CF exists + exported, (7) storage.rules braces balanced + helpers defined, (8) functions `npm run build` passes (tsc returns 0).
+- Ran verifier — ALL 47 CHECKS PASS. TypeScript build clean.
+- flutter analyze could not run (Flutter not in container — same constraint as Phases 1-5+). Verification is import-graph + symbol + tsc based.
+
+Stage Summary:
+- 5 patch sets applied + 7 manual fixes for patch bugs (2 skipped patches, 4 TS errors, 1 missing _functions field, 1 caller-update needed) + 3 missing firestore.rules helper definitions + 2 stale-import cleanups + 1 stale-comment fix.
+- 19 files changed, 659 insertions(+), 82 deletions(-). Net: +577 LOC (security gains vastly outweigh).
+- Files modified:
+    * firestore.rules (201 LOC delta) — 6 new helper functions, 31 update rules tightened, 4 read rules restricted, 4 create rules restricted, 1 create rule blocked, 1 update rule clarified
+    * functions/src/functions/gradeSubmission.ts (117 LOC NEW) — server-side exam grading CF
+    * functions/src/functions/assignRole.ts (+23) — target-org check + hierarchy check
+    * functions/src/functions/setPermissionOverrides.ts (+9) — target-org check
+    * functions/src/functions/registerOwner.ts (+16/-7) — tenantId=orgId, email duplicate check, org name validation
+    * functions/src/functions/registerParent.ts (+6/-2) — tenantId='' (set when linked)
+    * functions/src/functions/createStudent.ts (+7/-3) — passwordHash removed, hashPassword import removed
+    * functions/src/functions/changeUserPassword.ts (+26/-9) — recent auth check, passwordHash removed, hashPassword/needsRehash imports removed
+    * functions/src/functions/deleteStudent.ts (+13) — teacher classIds scope check
+    * functions/src/functions/onUserDeleted.ts (+12) — 30+ missing collections added to cascade
+    * functions/src/api/index.ts (+14/-3) — org listing by membership not ownership
+    * functions/src/index.ts (+1) — gradeSubmission export
+    * lib/core/rbac/permission_service.dart (+9/-2) — scope check before override return
+    * lib/core/services/submission_service.dart (+27/-3) — answer autosave fields, submit CF call, _functions field
+    * lib/features/submissions/data/submission_service.dart (+6) — same autosave fields (DEAD FILE, harmless)
+    * lib/features/student_exams/pages/exam_taking_screen.dart (+8) — saveAnswer/bulkSaveAnswers callers updated
+    * lib/main.dart (+8/-4) — managementRoles.contains replaces hardcoded teacher/owner checks
+    * storage.rules (+12/-2) — isStaff() helper includes all 8 staff roles, isTeacherOrOwner back-compat alias
+    * scripts/verify-security-patches.py (226 LOC NEW) — 47-check verifier
+- TypeScript build: ✅ PASSES (tsc returns 0)
+- Post-patch verifier: ✅ 47/47 checks pass
+- Backup branch: backup-before-security-patches-20260620-202653 (created by runner before any patches applied)
+- OUTSTANDING (deferred to user / future sprints):
+    1. **DEPLOY**: `firebase deploy --only functions,firestore:rules,firestore:indexes,storage` — patches have ZERO effect until deployed.
+    2. **POST-DEPLOY MIGRATION**: Delete `passwordHash` field from existing user docs (new writes no longer include it, but old docs still have it). Script needed: `node scripts/migrate-remove-password-hash.js` (NOT yet written — recommend writing before deploy).
+    3. **CALLER UPGRADES for gradeSubmission CF**: The new CF reads questions' `correctAnswer` field directly. Verify exam_taking_screen.dart's submit flow now waits for CF result before showing score. Currently the Dart side `print`s failure and proceeds (submission marked submitted-but-ungraded — teacher can grade manually).
+    4. **ASSIGNMENT SUBMISSION CF**: apply-exam-flow-fixes.py P1-4 flagged — assignment submission has same client-side grading issue. Needs new `gradeAssignmentSubmission` CF (same pattern as gradeSubmission). NOT in this commit's scope.
+    5. **TESTS**: 410 Flutter tests have 40 known failures including stale assertions + 2 compilation errors (worklog from patches author). Tests use FakeFirebaseFirestore (no rules enforcement). Sprint 5 S5-02 covers rules-unit-testing harness. NOT in this commit's scope.
+    6. **DEAD FILE CLEANUP**: lib/features/submissions/data/submission_service.dart has 0 importers — patches modified it harmlessly but it should be deleted in a future cleanup sweep.

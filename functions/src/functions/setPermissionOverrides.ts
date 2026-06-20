@@ -139,6 +139,15 @@ export const setPermissionOverrides = onCall(
     const userData = userDoc.data()!;
     const targetRole = userData.role || 'unknown';
 
+    // P1-2 PATCH: Verify target user belongs to the same org as caller.
+    const targetOrgId = userData.organizationId || '';
+    if (targetOrgId !== callerOrgId) {
+      throw new HttpsError(
+        'permission-denied',
+        `Target user is in a different organization (${targetOrgId} vs ${callerOrgId}).`,
+      );
+    }
+
     // Admin cannot set overrides for super_admin or owner
     if (callerRole === 'admin' && ['super_admin', 'owner'].includes(targetRole)) {
       throw new HttpsError(

@@ -55,9 +55,21 @@ export const registerOwner = onCall(
       if (data.password.length < 6) {
         throw new HttpsError('invalid-argument', 'Password must be at least 6 characters.');
       }
+      if (data.organizationName.trim().length < 3) {
+        throw new HttpsError('invalid-argument', 'Organization name must be at least 3 characters.');
+      }
 
       const auth = getAuth();
       const db = getFirestore();
+
+      // P2-2: Abuse controls — prevent duplicate emails.
+      // (Run AFTER const auth = getAuth() so auth is in scope.)
+      try {
+        await auth.getUserByEmail(data.email.trim().toLowerCase());
+        throw new HttpsError('already-exists', 'An account with this email already exists.');
+      } catch (e: any) {
+        if (e.code === 'already-exists') throw e;
+      }
 
       let authUser;
       let orgId: string | undefined;
@@ -89,7 +101,7 @@ export const registerOwner = onCall(
           phone: data.phone || null,
           role: 'owner',
           organizationId: orgId,
-          tenantId: 'default',
+          tenantId: orgId,  // P1-5: org-specific tenant (was 'default' — shared across orgs)
           isActive: true,
           hasCompletedSetup: false,
           authProvider: 'email',
@@ -102,7 +114,7 @@ export const registerOwner = onCall(
         await auth.setCustomUserClaims(authUser.uid, {
           role: 'owner',
           organizationId: orgId,
-          tenantId: 'default',
+          tenantId: orgId,  // P1-5: org-specific tenant (was 'default' — shared across orgs)
           roleVersion: 1,
         });
 

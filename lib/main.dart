@@ -611,7 +611,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+          if (KlasivoRole.managementRoles.contains(userRole)) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
@@ -634,7 +634,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
           }
-          if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+          if (KlasivoRole.managementRoles.contains(userRole)) {
             return '/dashboard';
           }
           if (userRole == AppConstants.roleStudent) return '/student';
@@ -671,7 +671,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           }
         }
 
-        if ((userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) &&
+        if (KlasivoRole.managementRoles.contains(userRole) &&
             isOnDashboard) {
           return null;
         }
@@ -682,7 +682,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         }
 
-        if (userRole == AppConstants.roleTeacher || userRole == AppConstants.roleOwner) {
+        if (KlasivoRole.managementRoles.contains(userRole)) {
           return '/dashboard';
         }
         if (userRole == AppConstants.roleStudent) return '/student';

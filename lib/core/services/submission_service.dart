@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import 'exam_stats_service.dart';
 import 'notification_service.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class SubmissionService {
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // ─── Start a new submission (when student begins an exam) ───────────────
@@ -54,6 +56,8 @@ class SubmissionService {
     required String submissionId,
     required String questionId,
     required String answer,
+    required String studentId,  // P1-2: required by rules
+    required String organizationId,  // P1-2: required by isIncomingSameOrg()
   }) async {
     try {
       // Check if answer already exists
@@ -79,6 +83,8 @@ class SubmissionService {
           'submissionId': submissionId,
           'questionId': questionId,
           'answer': answer,
+          'studentId': studentId,  // P1-2: required by rules
+          'organizationId': organizationId,  // P1-2: required by isIncomingSameOrg()
           'isCorrect': false,
           'marksAwarded': 0,
           'updatedAt': FieldValue.serverTimestamp(),
@@ -94,6 +100,8 @@ class SubmissionService {
   Future<void> bulkSaveAnswers({
     required String submissionId,
     required List<Map<String, String>> answers,
+    required String studentId,  // P1-2: required by rules
+    required String organizationId,  // P1-2: required by isIncomingSameOrg()
   }) async {
     try {
       final batch = _firestore.batch();
@@ -217,21 +225,32 @@ class SubmissionService {
           totalMarks > 0 ? ((score / totalMarks) * 100).round() : 0;
 
       // Update submission
+      // P1-3: Only write fields the student is allowed to update.
+      // Grading fields (score, percentage, status, totalMarks) are set by
+      // the gradeSubmission Cloud Function — not the client.
       batch.update(
         _firestore
             .collection(AppConstants.submissionsCollection)
             .doc(submissionId),
         {
-          'status': AppConstants.submissionStatusSubmitted,
           'submittedAt': FieldValue.serverTimestamp(),
           'timeSpent': timeSpent,
-          'totalMarks': totalMarks,
-          'score': score,
-          'percentage': percentage,
         },
       );
 
       await batch.commit();
+
+      // P1-3: Call gradeSubmission Cloud Function to do the grading
+      try {
+        await _functions.httpsCallable('gradeSubmission').call({
+          'submissionId': submissionId,
+          'examId': examId,
+        });
+      } catch (e) {
+        // Grading failed — submission is marked as submitted but ungraded
+        // The teacher can grade manually later
+        print('Auto-grading failed: $e');
+      }
 
       // Update precomputed exam stats (Phase D: uses ExamStatsService)
       try {

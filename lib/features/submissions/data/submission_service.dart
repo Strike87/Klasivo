@@ -54,6 +54,8 @@ class SubmissionService {
     required String submissionId,
     required String questionId,
     required String answer,
+    required String studentId,  // P1-2: required by rules
+    required String organizationId,  // P1-2: required by isIncomingSameOrg()
   }) async {
     try {
       // Check if answer already exists
@@ -79,6 +81,8 @@ class SubmissionService {
           'submissionId': submissionId,
           'questionId': questionId,
           'answer': answer,
+          'studentId': studentId,  // P1-2: required by rules
+          'organizationId': organizationId,  // P1-2: required by isIncomingSameOrg()
           'isCorrect': false,
           'marksAwarded': 0,
           'updatedAt': FieldValue.serverTimestamp(),
@@ -94,6 +98,8 @@ class SubmissionService {
   Future<void> bulkSaveAnswers({
     required String submissionId,
     required List<Map<String, String>> answers,
+    required String studentId,  // P1-2: required by rules
+    required String organizationId,  // P1-2: required by isIncomingSameOrg()
   }) async {
     try {
       final batch = _firestore.batch();

@@ -5,7 +5,8 @@ import * as Sentry from '@sentry/node';
 
 import { verifyOrgBoundary, PASSWORD_RESET_ROLES, isHigherRole } from '../utils/rbac';
 import { initSentry, withIsolatedScope } from '../config/sentry';
-import { hashPassword, needsRehash } from '../utils/passwordHash';  // C-02 PATCH
+// P1-2 (data-exposure-v2): hashPassword + needsRehash imports removed —
+// Firebase Auth is source of truth; no passwordHash stored on user docs.
 
 interface ChangePasswordData {
   currentPassword?: string;
@@ -13,8 +14,9 @@ interface ChangePasswordData {
   targetUserId?: string;  // Only for admin resetting another user's password
 }
 
-// C-02 PATCH: hashPassword is now imported from ../utils/passwordHash.ts.
-// needsRehash() is used to migrate legacy SHA-256 hashes to scrypt on next change.
+// P1-2 (data-exposure-v2): passwordHash no longer stored on user docs.
+// Firebase Auth is the source of truth for passwords. Students authenticate
+// via studentCode + password (verified through Firebase Auth).
 
 export const changeUserPassword = onCall(
   {
@@ -61,6 +63,19 @@ export const changeUserPassword = onCall(
     // If admin resetting someone else's password, check permissions and org boundary
     if (isAdminReset) {
       const callerRole = (request.auth.token.role as string) || '';
+
+      // P1-5: Enforce recent authentication for password changes
+      // Check that the caller's ID token was issued within the last 5 minutes
+      const tokenIssuedAt = (request.auth.token.iat as number) || 0;
+      const now = Math.floor(Date.now() / 1000);
+      const maxAge = 5 * 60; // 5 minutes
+      if (tokenIssuedAt === 0 || (now - tokenIssuedAt) > maxAge) {
+        throw new HttpsError(
+          'permission-denied',
+          'Password changes require recent authentication. Please re-authenticate and try again.',
+        );
+      }
+
       if (!PASSWORD_RESET_ROLES.includes(callerRole as any)) {
         throw new HttpsError('permission-denied', 'Insufficient permissions to reset passwords.');
       }
@@ -100,7 +115,7 @@ export const changeUserPassword = onCall(
 
     // ─── Student (student_code auth) ────────────────────────────────────
     if (authProvider === 'student_code') {
-      const passwordHash = hashPassword(newPassword);
+      // P1-2: passwordHash removed — Firebase Auth is source of truth
 
       // Update Firebase Auth password if student has an auth account
       try {
@@ -115,8 +130,7 @@ export const changeUserPassword = onCall(
 
       // Update passwordHash in Firestore
       await db.collection('users').doc(effectiveTargetId).update({
-        passwordHash: passwordHash,
-        mustChangePassword: false,
+                mustChangePassword: false,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 

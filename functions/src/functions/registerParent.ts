@@ -71,7 +71,7 @@ export const registerParent = onCall(
           phone: data.phone || null,
           role: 'parent',
           organizationId: '',  // Empty string (not null) — passes 'is string' rule
-          tenantId: 'default',
+          tenantId: '',  // P1-5: will be set when parent links to student's org
           isActive: true,
           authProvider: 'email',
           createdAt: FieldValue.serverTimestamp(),
@@ -83,7 +83,7 @@ export const registerParent = onCall(
         await auth.setCustomUserClaims(authUser.uid, {
           role: 'parent',
           organizationId: '',
-          tenantId: 'default',
+          tenantId: '',  // P1-5: will be set when parent links to student's org
           roleVersion: 1,
         });
 
@@ -107,7 +107,7 @@ export const registerParent = onCall(
               await auth.setCustomUserClaims(authUser.uid, {
                 role: 'parent',
                 organizationId: studentOrgId,
-                tenantId: 'default',
+                tenantId: '',  // P1-5: will be set when parent links to student's org
                 roleVersion: 2,
               });
 

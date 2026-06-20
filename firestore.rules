@@ -91,6 +91,17 @@ service cloud.firestore {
       return isStaffInSameOrg();
     }
 
+    // P1-1 (data-exposure-v2) PATCH: Explicit aliases for staff-only checks.
+    // isStaff() already excludes observer — these names make intent obvious
+    // at call sites in read/create/update/delete rules.
+    function isStaffExcludingObserver() {
+      return isStaff();
+    }
+
+    function isStaffExcludingObserverInSameOrg() {
+      return isStaffInSameOrg();
+    }
+
     // Helper: Check if user is an owner (or super_admin — full enforcement
     // of super_admin restriction happens in assignRole.ts, not here).
     function isOwner() {
@@ -138,8 +149,12 @@ service cloud.firestore {
     function studentSafeSubmissionUpdate() {
       return isAuth() &&
         resource.data.studentId == request.auth.uid &&
-        // Block modification of grading fields
-        !request.resource.data.diff(resource).affectedKeys().hasAny(['score', 'grade', 'totalScore', 'percentage', 'status', 'gradedBy', 'gradedAt', 'isGraded']);
+        // P1-3: Block grading fields — only the gradeSubmission CF can write these
+        !request.resource.data.diff(resource).affectedKeys().hasAny([
+          'score', 'grade', 'totalScore', 'percentage', 'status',
+          'gradedBy', 'gradedAt', 'isGraded'
+        ]);
+      // Allowed: submittedAt, timeSpent, violationCount
     }
 
     // ─── D20: Immutable-field preservation helpers ─────────────────────────
@@ -168,6 +183,26 @@ service cloud.firestore {
       return isStaffInSameOrg() && preservesImmutableFields();
     }
 
+    // P1-4 PATCH: Immutable org/audit fields on update — prevents cross-tenant doc moves.
+    // Staff cannot change organizationId, tenantId, createdAt, or createdBy on update.
+    // Without this, a staff member could move a doc into another tenant by editing
+    // the organizationId field (the isInSameOrg() check passes for the OLD org, but
+    // the NEW org is what the doc becomes accessible through).
+    function preservesOrgAndAuditFields() {
+      return !request.resource.data.diff(resource).affectedKeys().hasAny([
+        'organizationId', 'tenantId', 'createdAt', 'createdBy'
+      ]);
+    }
+
+    // P1-4 PATCH: Stricter update guard — staff + same org + immutable fields
+    // + immutable org/audit fields. Use this instead of safeStaffUpdate() on
+    // any collection where cross-tenant doc-move is a concern (most collections).
+    function safeStaffUpdateWithOrgGuard() {
+      return isStaffInSameOrg() &&
+        preservesImmutableFields() &&
+        preservesOrgAndAuditFields();
+    }
+
     // Safe owner update — owner + same org + immutable audit fields preserved.
     // Owner CAN flip isArchived (that's the unarchive path).
     function safeOwnerUpdate() {
@@ -188,8 +223,10 @@ service cloud.firestore {
       // C-03/C-11 PATCH: Restrict reads to self OR same-org.
       // Previous rule (allow read: if isAuth()) let any authed user in any
       // org read any user doc by ID -> cross-tenant PII + passwordHash leak.
+      // P1-2: Students/parents can only read OWN doc. Staff can read all same-org.
       allow read: if isAuth() &&
-        (request.auth.uid == userId || isInSameOrg());
+        (request.auth.uid == userId ||
+         (isInSameOrg() && isStaffExcludingObserver()));
       allow create: if isAuth() && request.auth.uid == userId &&
         // New user doc must NOT self-assign a privileged role.
         // Allowed roles on self-create: student, parent, teacher (pending approval).
@@ -201,7 +238,14 @@ service cloud.firestore {
         request.resource.data.organizationId is string;
       allow update: if isAuth() && request.auth.uid == userId &&
         // D1: Block self-mutation of privilege fields.
-        !request.resource.data.diff(resource).affectedKeys().hasAny(['role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy']) &&
+        !request.resource.data.diff(resource).affectedKeys().hasAny([
+          'role', 'organizationId', 'tenantId', 'isArchived', 'archivedAt', 'archivedBy',
+          // P1-3: Scope arrays immutable from client
+          'campusIds', 'stageIds', 'classIds', 'subjectIds',
+          'scopeAccessLevel', 'permissionOverrides', 'roleVersion',
+          'isActive', 'status', 'studentCode', 'authEmail',
+          'fcmToken', 'fcmTokenUpdatedAt'
+        ]) &&
         // D20: Audit fields immutable from client.
         !request.resource.data.diff(resource).affectedKeys().hasAny(['createdAt', 'createdBy']);
       allow delete: if false;  // C-08: NEVER allow client deletes on users
@@ -223,7 +267,7 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -231,7 +275,7 @@ service cloud.firestore {
     match /stages/{stageId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -239,7 +283,7 @@ service cloud.firestore {
     match /grades/{gradeId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -247,31 +291,35 @@ service cloud.firestore {
     match /groups/{groupId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
     // ====== Exams Collection ======
     match /exams/{examId} {
-      allow read: if isAuth() && isInSameOrg();
+      // P2-1: Staff can read all. Students can only read published exams.
+      allow read: if isAuth() && isInSameOrg() &&
+        (isStaffExcludingObserver() || resource.data.status == 'published');
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
     // ====== Questions Collection ======
     match /questions/{questionId} {
-      allow read: if isAuth() && isInSameOrg();
-      allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
-      allow delete: if isTeacherOrOwnerInSameOrg();
+      // P1-1 (data-exposure-v2): Staff only. Students see questions via
+      // exam_instances (which strips correctAnswer) — never the questions docs.
+      allow read: if isAuth() && isInSameOrg() && isStaffExcludingObserver();
+      allow create: if isStaffExcludingObserver() && isIncomingSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability (already staff-only)
+      allow delete: if isStaffExcludingObserverInSameOrg();
     }
 
     // ====== Question Bank Collection ======
     match /question_banks/{questionId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -289,7 +337,14 @@ service cloud.firestore {
       allow create: if isAuth() && isIncomingSameOrg() &&
         // D12: Students can only create submissions for themselves.
         (isStaff() ||
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
+         (isStudent() && request.resource.data.studentId == request.auth.uid &&
+          // P1-1: Students cannot forge grading fields on create
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['score', 'grade', 'totalScore', 'percentage', 'status',
+             'gradedBy', 'gradedAt', 'isGraded', 'passed', 'feedback']
+          ))) &&
+        // P1-1: Staff creates also cannot set grading fields (grading is via update only)
+        (isStaff() || isStudent());
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() || studentSafeSubmissionUpdate());
       allow delete: if false;
@@ -305,12 +360,22 @@ service cloud.firestore {
           parentHasAccessToStudent(resource.data.studentId)));
       allow create: if isAuth() && isIncomingSameOrg() &&
         (isStaff() ||
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
+         (isStudent() && request.resource.data.studentId == request.auth.uid &&
+          // P1-1: Students cannot forge grading fields on create
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['score', 'percentage', 'totalScore', 'status',
+             'gradedBy', 'gradedAt', 'isGraded', 'passed']
+          ))) &&
+        (isStaff() || isStudent());
       // Students can update their own answers (before submission), teachers can grade
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
-          !request.resource.data.diff(resource).affectedKeys().hasAny(['isCorrect', 'score', 'gradedBy', 'gradedAt'])));
+          // P1-2: Students cannot edit answers or grading fields (answers are immutable once written)
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['answer', 'isCorrect', 'score', 'gradedBy', 'gradedAt',
+             'isCorrect', 'pointsAwarded', 'feedback']
+          )));
       allow delete: if false;
     }
 
@@ -326,7 +391,13 @@ service cloud.firestore {
           parentHasAccessToStudent(resource.data.studentId)));
       allow create: if isAuth() && isIncomingSameOrg() &&
         (isStaff() ||
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
+         (isStudent() && request.resource.data.studentId == request.auth.uid &&
+          // P1-1: Students cannot forge grading fields on create
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['score', 'percentage', 'totalScore', 'status',
+             'gradedBy', 'gradedAt', 'isGraded', 'passed']
+          ))) &&
+        (isStaff() || isStudent());
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
@@ -378,9 +449,9 @@ service cloud.firestore {
       // every org's metadata (ownerId, name, slug, plan, billing).
       // Invite code lookup should go through invite_codes collection, not here.
       allow read: if isAuth() && isInSameOrg();
-      // C-12 PATCH: Only self-owner can create. Prevents spam org creation.
-      allow create: if isAuth() &&
-        request.resource.data.ownerId == request.auth.uid;
+      // P2-2: Block ALL client-side org creation. Server-only via registerOwner CF.
+      // Previous rule allowed any authenticated user to create unlimited orgs.
+      allow create: if false;
       // C-08 PATCH: Only the org owner (or super_admin via Cloud Function)
       // can update. Teacher/owner is no longer enough — teachers shouldn't
       // be able to mutate org metadata. Additionally, the `shutdownRequested`
@@ -407,8 +478,8 @@ service cloud.firestore {
     // through the redeemInviteCode Cloud Function (Phase 2 TRACK-4) OR
     // through the authenticated client flow in registerTeacherWithInvite.
     match /invite_codes/{codeId} {
-      allow read: if (isAuth() && isInSameOrg()) ||
-        resource.data.isUsed == false;
+      // P1-4: Require auth + same-org for ALL reads (was: unauthenticated for unused codes)
+      allow read: if isAuth() && isInSameOrg();
       allow create: if isStaff() && isIncomingSameOrg();
       allow update: if safeStaffUpdate();
       allow delete: if isOwnerInSameOrg();
@@ -418,7 +489,7 @@ service cloud.firestore {
     match /subjects/{subjectId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -426,7 +497,7 @@ service cloud.firestore {
     match /group_members/{memberId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -434,7 +505,7 @@ service cloud.firestore {
     match /teacher_assignments/{assignmentId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -463,8 +534,13 @@ service cloud.firestore {
          (resource.data.recipientId != null && resource.data.recipientId == request.auth.uid) ||
          (resource.data.senderId != null && resource.data.senderId == request.auth.uid) ||
          (resource.data.participants != null && resource.data.participants.hasAny([request.auth.uid])));
+      // P1-4 PATCH: Verify sender is a participant in the referenced conversation
       allow create: if isAuth() && isIncomingSameOrg() &&
-        request.resource.data.senderId == request.auth.uid;
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.conversationId != null &&
+        exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)) &&
+        get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId))
+          .data.participants.hasAny([request.auth.uid]);
       allow update: if isAuth() && isInSameOrg() &&
         resource.data.senderId == request.auth.uid &&
         !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'createdAt', 'senderId', 'recipientId']);
@@ -503,7 +579,7 @@ service cloud.firestore {
     match /search_keywords/{keywordId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -511,7 +587,7 @@ service cloud.firestore {
     match /deep_links/{linkId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -523,7 +599,7 @@ service cloud.firestore {
     match /assignments/{assignmentId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -537,7 +613,13 @@ service cloud.firestore {
           parentHasAccessToStudent(resource.data.studentId)));
       allow create: if isAuth() && isIncomingSameOrg() &&
         (isStaff() ||
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
+         (isStudent() && request.resource.data.studentId == request.auth.uid &&
+          // P1-1: Students cannot forge grading fields on create
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['score', 'percentage', 'totalScore', 'status',
+             'gradedBy', 'gradedAt', 'isGraded', 'passed']
+          ))) &&
+        (isStaff() || isStudent());
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&
@@ -552,7 +634,7 @@ service cloud.firestore {
          (isParent() && resource.data.studentId != null &&
           parentHasAccessToStudent(resource.data.studentId)));
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -573,7 +655,7 @@ service cloud.firestore {
     match /gradebook_categories/{categoryId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -607,7 +689,11 @@ service cloud.firestore {
          // Parent can update only the status/linkedAt fields on their own link
          // (used during parent-link redemption flow).
          (resource.data.parentId == request.auth.uid &&
-          !request.resource.data.diff(resource).affectedKeys().hasAny(['organizationId', 'studentId', 'generatedBy', 'code', 'createdAt', 'createdBy'])));
+          // P1-3: Parents cannot approve their own link (only staff can)
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['organizationId', 'studentId', 'generatedBy', 'code',
+             'createdAt', 'createdBy', 'status', 'approvedBy', 'approvedAt']
+          )));
       allow delete: if isStaffInSameOrg();
     }
 
@@ -615,7 +701,7 @@ service cloud.firestore {
     match /exam_templates/{templateId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -627,7 +713,7 @@ service cloud.firestore {
     match /calendar_events/{eventId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -635,7 +721,7 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -643,7 +729,7 @@ service cloud.firestore {
     match /academic_years/{yearId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -663,7 +749,7 @@ service cloud.firestore {
     match /resources/{resourceId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -671,7 +757,7 @@ service cloud.firestore {
     match /materials/{materialId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -679,7 +765,7 @@ service cloud.firestore {
     match /lessons/{lessonId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -687,7 +773,7 @@ service cloud.firestore {
     match /lesson_plans/{planId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -695,7 +781,7 @@ service cloud.firestore {
     match /progress_tracking/{progressId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -703,7 +789,7 @@ service cloud.firestore {
     match /moderation_queue/{itemId} {
       allow read: if isTeacherOrOwner() && isInSameOrg();
       allow create: if isAuth() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -715,7 +801,7 @@ service cloud.firestore {
     match /units/{unitId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwner() && isIncomingSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -763,7 +849,7 @@ service cloud.firestore {
     // ====== Tenants Collection ======
     match /tenants/{tenantId} {
       allow read: if isAuth() && isInSameTenant();
-      allow create: if isAuth();
+      allow create: if false;  // P1-5: Server-only (no client creates tenants)
       allow update: if isAuth() && isInSameTenant() && isTenantAdmin();
       allow delete: if false;
     }
@@ -823,7 +909,7 @@ service cloud.firestore {
       allow read: if isAuth() && isInSameOrg() &&
         (isTeacherOrOwner() || isCampusManager());
       allow create: if isTeacherOrOwnerInSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -832,7 +918,8 @@ service cloud.firestore {
       allow read: if isAuth() && isInSameOrg() &&
         (isTeacherOrOwner() || isCampusManager() ||
          (isParent() && resource.data.parentId == request.auth.uid));
-      allow create: if isAuth() && isIncomingSameOrg();
+      // P1-3 PATCH: Only staff can create payment records (was open to any org member)
+      allow create: if isStaffExcludingObserverInSameOrg();
       allow update: if isTeacherOrOwnerInSameOrg();
       allow delete: if false;
     }
@@ -841,7 +928,7 @@ service cloud.firestore {
     match /transport_routes/{routeId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwnerInSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -851,7 +938,7 @@ service cloud.firestore {
         (isTeacherOrOwner() || isCampusManager() ||
          (isParent() && resource.data.parentId == request.auth.uid));
       allow create: if isTeacherOrOwnerInSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -895,7 +982,7 @@ service cloud.firestore {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isAuth() && isInSameOrg() &&
         (isStaff() || request.resource.data.userId == request.auth.uid);
-      allow update: if isStaffInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if false;
     }
 
@@ -903,7 +990,7 @@ service cloud.firestore {
     match /scheduled_classes/{classId} {
       allow read: if isAuth() && isInSameOrg();
       allow create: if isTeacherOrOwnerInSameOrg();
-      allow update: if isTeacherOrOwnerInSameOrg();
+      allow update: if safeStaffUpdateWithOrgGuard();  // P1-4: org immutability
       allow delete: if isTeacherOrOwnerInSameOrg();
     }
 
@@ -987,7 +1074,13 @@ service cloud.firestore {
           parentHasAccessToStudent(resource.data.studentId)));
       allow create: if isAuth() && isIncomingSameOrg() &&
         (isStaff() ||
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
+         (isStudent() && request.resource.data.studentId == request.auth.uid &&
+          // P1-1: Students cannot forge grading fields on create
+          !request.resource.data.diff(resource).affectedKeys().hasAny(
+            ['score', 'percentage', 'totalScore', 'status',
+             'gradedBy', 'gradedAt', 'isGraded', 'passed']
+          ))) &&
+        (isStaff() || isStudent());
       allow update: if isAuth() && isInSameOrg() &&
         (safeStaffUpdate() ||
          (isStudent() && resource.data.studentId == request.auth.uid &&

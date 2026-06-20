@@ -91,7 +91,14 @@ class PermissionService {
     if (_permissionOverrides[permission] == false) return false;
 
     // 2. Check explicit allow (overrides)
-    if (_permissionOverrides[permission] == true) return true;
+    // P1-2 PATCH: Scope is checked BEFORE returning true on override.
+    // Previous code returned true immediately, bypassing scope validation.
+    if (_permissionOverrides[permission] == true) {
+      if (scopeType != null && scopeId != null) {
+        return validateScope(scopeType: scopeType, scopeId: scopeId);
+      }
+      return true;
+    }
 
     // 3. Check role-based permissions (with hierarchy)
     if (!RoleResolver.roleHasPermission(_role, permission)) return false;

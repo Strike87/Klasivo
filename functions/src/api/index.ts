@@ -858,10 +858,18 @@ app.get(
 
       let query = db.collection('organizations').orderBy('createdAt', 'desc').limit(limit);
 
-      // C-09 PATCH: Only super_admin sees all orgs. Owners and admins see only their own.
-      // Previous rule checked !== 'admin' (let admin see all, blocked super_admin) - inverted.
+      // C-09 + P2-3 PATCH: super_admin sees all. Non-super_admin see orgs they're a member of.
       if (req.userRole !== 'super_admin') {
-        query = query.where('ownerId', '==', req.user!.uid);
+        // P2-3: Filter by the user's organizationId (membership), not ownerId (ownership).
+        // Previous code filtered by ownerId — an admin who didn't create the org saw nothing.
+        // req.userOrgId is populated by the auth middleware (line 112) from the user doc.
+        const userOrgId = req.userOrgId;
+        if (userOrgId) {
+          query = query.where(admin.firestore.FieldPath.documentId(), '==', userOrgId);
+        } else {
+          // No orgId in user doc — fall back to ownerId
+          query = query.where('ownerId', '==', req.user!.uid);
+        }
       }
 
       const snapshot = await query.get();

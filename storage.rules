@@ -21,10 +21,18 @@ service firebase.storage {
   }
 
   // Helper: Check if user is a teacher, owner, or admin
-  function isTeacherOrOwner() {
+  // P2-2 PATCH: Include ALL staff roles (was: only teacher/owner/admin)
+  function isStaff() {
     return isAuth() &&
       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-      (getUserRole() == 'teacher' || getUserRole() == 'owner' || getUserRole() == 'admin');
+      (getUserRole() in ['super_admin', 'owner', 'admin', 'campus_manager',
+                         'stage_manager', 'academic_supervisor', 'teacher',
+                         'assistant_teacher']);
+  }
+
+  // Back-compat alias
+  function isTeacherOrOwner() {
+    return isStaff();
   }
 
   // Helper: Check if the orgId in the storage path matches the user's org

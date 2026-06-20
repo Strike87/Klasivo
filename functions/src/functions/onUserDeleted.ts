@@ -80,6 +80,18 @@ async function deleteOrganizationData(orgId: string): Promise<void> {
     'users', 'stages', 'classes', 'subjects', 'groups', 'group_members',
     'teacher_assignments', 'exams', 'question_banks', 'invite_codes',
     'assignments', 'assignment_submissions', 'attendance', 'conversations',
+    // P2-2: Added missing collections to prevent orphaned records
+    'stages', 'classes', 'grades', 'campuses', 'subjects',
+    'calendar_events', 'announcements', 'resources', 'materials',
+    'lessons', 'lesson_plans', 'progress_tracking', 'units',
+    'search_keywords', 'deep_links', 'scheduled_classes',
+    'session_analytics', 'recordings', 'livekit_rooms',
+    'feature_flags', 'permission_overrides', 'fee_structures',
+    'payments', 'transport_routes', 'transport_assignments',
+    'notifications', 'parent_links', 'analytics_events',
+    'analytics_cache', 'content_progress', 'staff_approvals',
+    'class_recordings', 'gradebook', 'gradebook_entries',
+    'gradebook_categories', 'groups', 'group_members',
     'messages', 'analytics_cache', 'notifications',
     // v1.7 Feature-Complete
     'gradebook', 'gradebook_categories', 'gradebook_entries', 'parent_links',

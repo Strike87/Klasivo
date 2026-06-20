@@ -129,6 +129,29 @@ export const assignRole = onCall(
     }
     const oldRole = userDoc.data()?.role || 'unknown';
 
+    // P1-1 PATCH: Verify target user belongs to the same org as caller.
+    // Previous code checked caller's org but never verified target's org.
+    const targetOrgId = userDoc.data()?.organizationId || '';
+    const callerOrgId = (callerClaims.organizationId as string) || '';
+    if (targetOrgId !== callerOrgId) {
+      throw new HttpsError(
+        'permission-denied',
+        `Target user is in a different organization (${targetOrgId} vs ${callerOrgId}).`,
+      );
+    }
+
+    // P1-1 (rbac) PATCH: Caller must also be strictly higher than the target's
+    // CURRENT role. The D3 check above only prevents promoting someone above
+    // your own rank; this prevents demoting someone who is at or above your
+    // rank (e.g. an admin (70) demoting an owner (80) — privilege escalation).
+    // Applies to non-super_admin only.
+    if (callerRole !== 'super_admin' && roleRank(callerRole) <= roleRank(oldRole)) {
+      throw new HttpsError(
+        'permission-denied',
+        `Cannot modify a user with equal or higher role (caller=${callerRole}, target=${oldRole}).`,
+      );
+    }
+
     // ─── Owner Self-Demotion Protection ────────────────────────────────
     if (callerUid === targetUserId && oldRole === 'owner' && newRole !== 'owner') {
       throw new HttpsError(

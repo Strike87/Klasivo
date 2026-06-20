@@ -230,6 +230,8 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
 
     try {
       final submissionService = ref.read(submissionServiceProvider);
+      final studentId = ref.read(userIdProvider) ?? '';
+      final organizationId = ref.read(organizationIdProvider) ?? '';
 
       final answersList = _answers.entries
           .map((e) => {
@@ -241,6 +243,8 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
       await submissionService.bulkSaveAnswers(
         submissionId: _submissionId!,
         answers: answersList,
+        studentId: studentId,
+        organizationId: organizationId,
       );
 
       // Update time spent
@@ -262,10 +266,14 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen>
 
     try {
       final submissionService = ref.read(submissionServiceProvider);
+      final studentId = ref.read(userIdProvider) ?? '';
+      final organizationId = ref.read(organizationIdProvider) ?? '';
       await submissionService.saveAnswer(
         submissionId: _submissionId!,
         questionId: questionId,
         answer: answer,
+        studentId: studentId,
+        organizationId: organizationId,
       );
     } catch (_) {
       // Silent fail — will be saved on next auto-save

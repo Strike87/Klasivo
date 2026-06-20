@@ -125,6 +125,19 @@ export const deleteStudent = onCall(
         );
       }
 
+      // P1-4: Teachers can only delete students in their own class
+      if (callerRole === 'teacher') {
+        const callerDoc = await db.collection('users').doc(callerUid).get();
+        const callerClassIds = callerDoc.data()?.['classIds'] as string[] || [];
+        const targetClassId = userData.classId || '';
+        if (!targetClassId || !callerClassIds.includes(targetClassId)) {
+          throw new HttpsError(
+            'permission-denied',
+            'Teachers can only delete students in their own classes.',
+          );
+        }
+      }
+
       // ─── Soft-delete: mark user doc as archived ────────────────────────
       // Soft-delete preserves referential integrity for submissions, answers,
       // exam_instances, attendance, gradebook, etc. Hard-delete is reserved
