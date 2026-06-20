@@ -1,0 +1,74 @@
+# Phase 1 candidate delete list
+# Source: download/scaffold-investigation-report.md
+# Exclusions applied:
+#   - Bucket C (4 same-named provider files) — deferred to Phase 2 per task spec
+#   - All of lib/features/livekit/ (protected)
+#   - All of lib/features/user_management/ (protected)
+#   - All of lib/features/staff_approval/ (protected, incl. domain/domain.dart which report marked DELETE)
+#   - All NEEDS-HUMAN-DECISION items (none in DELETE list anyway)
+#   - All KEEP / KEEP-AS-REFERENCE / KEEP-AND-WIRE-UP items
+#
+# Format: <relative-path-from-repo-root>
+lib/features/organizations/domain/organization_model.dart
+lib/features/organizations/providers/organization_providers.dart
+lib/features/assignments/application/application.dart
+lib/features/assignments/data/assignment_repository.dart
+lib/features/assignments/data/data.dart
+lib/features/assignments/domain/assignment_model.dart
+lib/features/assignments/domain/domain.dart
+lib/features/assignments/providers/assignment_providers.dart
+lib/features/assignments/providers/providers.dart
+lib/features/auth/data/auth_repository.dart
+lib/features/auth/data/data.dart
+lib/features/auth/domain/auth_model.dart
+lib/features/auth/domain/auth_providers.dart
+lib/features/auth/domain/auth_state.dart
+lib/features/auth/domain/domain.dart
+lib/features/auth/providers/providers.dart
+lib/features/exams/application/application.dart
+lib/features/exams/data/data.dart
+lib/features/exams/data/exam_repository.dart
+lib/features/exams/domain/domain.dart
+lib/features/exams/domain/exam_model.dart
+lib/features/exams/providers/exam_generated_providers.dart
+lib/features/exams/providers/exam_providers.dart
+lib/features/exams/providers/providers.dart
+lib/features/classes/domain/class_model.dart
+lib/features/students/domain/student_model.dart
+lib/features/submissions/data/submission_repository.dart
+lib/features/submissions/domain/submission_model.dart
+lib/features/submissions/providers/submission_providers.dart
+# Bucket B true stubs (24 files — academic, analytics, attendance, lms, messaging, parent)
+lib/features/academic/application/application.dart
+lib/features/academic/data/data.dart
+lib/features/academic/domain/domain.dart
+lib/features/academic/providers/providers.dart
+lib/features/analytics/application/application.dart
+lib/features/analytics/data/data.dart
+lib/features/analytics/domain/domain.dart
+lib/features/analytics/providers/providers.dart
+lib/features/attendance/application/application.dart
+lib/features/attendance/data/data.dart
+lib/features/attendance/domain/domain.dart
+lib/features/attendance/providers/providers.dart
+lib/features/lms/application/application.dart
+lib/features/lms/data/data.dart
+lib/features/lms/domain/domain.dart
+lib/features/lms/providers/providers.dart
+lib/features/messaging/application/application.dart
+lib/features/messaging/data/data.dart
+lib/features/messaging/domain/domain.dart
+lib/features/messaging/providers/providers.dart
+lib/features/parent/application/application.dart
+lib/features/parent/data/data.dart
+lib/features/parent/domain/domain.dart
+lib/features/parent/providers/providers.dart
+# Bucket B broken/incomplete mini-barrels unique to classes/students/submissions (8 files)
+lib/features/classes/data/data.dart
+lib/features/classes/domain/domain.dart
+lib/features/classes/providers/providers.dart
+lib/features/students/domain/domain.dart
+lib/features/students/providers/providers.dart
+lib/features/submissions/data/data.dart
+lib/features/submissions/domain/domain.dart
+lib/features/submissions/providers/providers.dart
