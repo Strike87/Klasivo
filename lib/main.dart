@@ -1154,6 +1154,44 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/student',
             builder: (context, state) => const StudentDashboard(),
           ),
+          GoRoute(
+            path: '/student/settings',
+            builder: (context, state) => const StudentSettingsScreen(),
+          ),
+          GoRoute(
+            path: '/student/exams',
+            builder: (context, state) => const StudentExamListScreen(),
+            routes: [
+              GoRoute(
+                path: ':examId/take',
+                builder: (context, state) {
+                  final examId = state.pathParameters['examId']!;
+                  return ExamTakingScreen(examId: examId);
+                },
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/student/results',
+            builder: (context, state) => const StudentResultsScreen(),
+            routes: [
+              GoRoute(
+                path: ':submissionId',
+                builder: (context, state) {
+                  final submissionId = state.pathParameters['submissionId']!;
+                  return StudentResultDetailScreen(submissionId: submissionId);
+                },
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/student/scan-qr',
+            builder: (context, state) => const QrScanScreen(),
+          ),
+          GoRoute(
+            path: '/student/notifications',
+            builder: (context, state) => const NotificationCenterScreen(),
+          ),
         ],
       ),
 
@@ -1188,47 +1226,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // ─── Student Settings Route ──────────────────────────────────────
-      GoRoute(
-        path: '/student/settings',
-        builder: (context, state) => const StudentSettingsScreen(),
-      ),
-
-      // ─── Student Deep Routes (outside shell for full-screen) ─────────
-      GoRoute(
-        path: '/student/exams',
-        builder: (context, state) => const StudentExamListScreen(),
-        routes: [
-          GoRoute(
-            path: ':examId/take',
-            builder: (context, state) {
-              final examId = state.pathParameters['examId']!;
-              return ExamTakingScreen(examId: examId);
-            },
-          ),
-        ],
-      ),
-      GoRoute(
-        path: '/student/results',
-        builder: (context, state) => const StudentResultsScreen(),
-        routes: [
-          GoRoute(
-            path: ':submissionId',
-            builder: (context, state) {
-              final submissionId = state.pathParameters['submissionId']!;
-              return StudentResultDetailScreen(submissionId: submissionId);
-            },
-          ),
-        ],
-      ),
-      GoRoute(
-        path: '/student/scan-qr',
-        builder: (context, state) => const QrScanScreen(),
-      ),
-      GoRoute(
-        path: '/student/notifications',
-        builder: (context, state) => const NotificationCenterScreen(),
-      ),
     ],
   );
 });
