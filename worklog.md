@@ -5425,3 +5425,55 @@ NEXT STEPS (awaiting user decision):
   - Update parent_register_screen.dart to call registerParentViaCF instead of registerParent
   - Add roleVersion increment to syncClaims.ts (manual fix flagged by Day 2 script)
   - After Sprint 1 fully verified: proceed to 14-category UX audit (download/ux-audit/UX-AUDIT-PROMPT.md)
+
+---
+Task ID: p0-8-to-12
+Agent: main (super-z)
+Task: Apply the P0-8 through P0-12 security patch diff the user pasted (kill client-side password hashing + remove dead QR enrollment code).
+
+Work Log:
+- Saved the user-supplied unified diff to scripts/p0-8-12.patch for traceability.
+- `git apply --check` failed with "corrupt patch at line 236" — patch hunk header line counts were wrong (likely mangled by chat rendering of em-dashes and whitespace stripping on context lines).
+- `git apply --recount --check` also failed: leading whitespace on context lines had been partially stripped during chat rendering.
+- Switched strategy: applied all 6 file changes manually via MultiEdit / Write instead of via git apply. This is more reliable for chat-pasted diffs and lets me verify each file's final state in isolation.
+- Per-file changes:
+  * auth_service.dart: removed `import 'dart:convert';` and `import 'package:crypto/crypto.dart';` (only used by hashPassword). Replaced the static hashPassword() method + its deprecated-doc-comment block with a P0-12 explanatory comment pointing at the now-removed file the old comment referenced.
+  * password_hasher.dart: added `import 'dart:math';`, a static `_secureRandom = Random.secure()` field, and switched both for-loops in generateTemporaryPassword() from `(random + i * 7919) % letters.length` to `_secureRandom.nextInt(letters.length)`. Updated doc comments + migration history block. Added a blank line after the import (the diff had no blank line, but Dart convention requires it).
+  * student_service.dart: removed `import 'dart:convert';` and `import 'package:crypto/crypto.dart';`. Removed static hashPassword(). Moved the password-change branch in updateStudent() to AFTER the SentryFirestoreHelper.docUpdate() call, and replaced the client-side `data['passwordHash'] = hashPassword(password)` write with a `_functions.httpsCallable('changeUserPassword').call({newPassword, targetUserId})` invocation wrapped in try/catch with KlasivoObservability.reportError.
+  * excel_import_service.dart: full rewrite via Write tool (changes were ~100 lines). Removed imports: `dart:convert`, `dart:math`, `cloud_firestore`, `crypto`, `app_constants`. Added import: `cloud_functions`. Removed fields `_firestore` and `_random`. Removed methods `_generateStudentCode` and `hashPassword`. Replaced the importStudents() body: was a batch.set() loop writing plaintext 'password' + client-SHA-256 'passwordHash' to Firestore (without creating Auth accounts — students couldn't log in); now calls `_functions.httpsCallable('createStudent').call<Map<String, dynamic>>({organizationId, classId, fullName, password, email?, phone?})` per row with bounded concurrency of 5 (Future.wait over windows of _maxConcurrentCreates). The createdBy parameter is kept as a no-op for backwards API compatibility with excel_import_screen.dart.
+  * qr_enrollment_service.dart: full rewrite via Write tool. Removed imports: `dart:convert`, `dart:math`, `package:sentry_flutter/sentry_flutter.dart`, `sentry_service.dart`. Removed 4 dead methods: generateEnrollmentQRData, parseEnrollmentQRData, enrollViaQR, _generateStudentCode (zero callers anywhere in lib/ — verified earlier). Added two P0-11 explanatory comment blocks. Kept validateQRData() and getClassInfoFromQR() unchanged.
+  * test/core/services/auth_service_test.dart: removed the entire `group('AuthService.hashPassword', ...)` block (8 tests, 63 lines). Replaced with a P0-12 explanatory comment.
+- Wrote scripts/check_brackets.py to verify bracket balance on all 6 modified files (since flutter is not installed in this environment). All 6 files passed: parens=+0, braces=+0, brackets=+0.
+- Searched lib/ and test/ for residual callers of removed methods: `AuthService.hashPassword`, `StudentService.hashPassword`, `ExcelImportService.hashPassword`, `enrollViaQR`, `generateEnrollmentQRData`, `parseEnrollmentQRData` — all return zero matches (only match is the P0-12 explanatory comment in auth_service_test.dart, which is fine).
+- Verified the new CF call payloads match the server-side callable signatures:
+  * changeUserPassword.ts line 42: `const { newPassword, targetUserId } = request.data;` — matches my `{newPassword, targetUserId}` payload.
+  * createStudent.ts line 389: `const { organizationId, classId, fullName, password, email, phone } = request.data;` — matches my `{organizationId, classId, fullName, password, email?, phone?}` payload.
+- defaultInstitutionId reference count dropped from 27 → 25 (qr_enrollment_service.dart had 2 DANGEROUS refs that are now gone with the removed methods). Remaining: 1 DANGEROUS (question_bank_service.dart line 21), 24 SAFE/default-only.
+- Staged 8 files (6 source + 2 scripts: p0-8-12.patch, check_brackets.py) and committed.
+
+Stage Summary:
+- Commit on main: f0d012d fix(security): P0-8..P0-12 — kill client-side password hashing + dead QR code
+- 8 files changed, 964 insertions(+), 410 deletions(-). Net code delta: -249 lines (the +964 includes the 754-line patch file + 90-line check_brackets.py script; pure source delta is -249).
+- 5 security hardening items applied:
+  * P0-8: CSPRNG-based temp password generation (was DateTime-seeded, deterministic under bulk-import)
+  * P0-9: Student password reset now goes through changeUserPassword CF (was client-side SHA-256 written directly to Firestore)
+  * P0-10: Excel bulk import now creates Auth accounts via createStudent CF (was direct Firestore batch write that never created Auth accounts — students couldn't log in)
+  * P0-11: 4 dead QR enrollment methods removed (zero callers; also fixes 2 of the 27 defaultInstitutionId DANGEROUS refs)
+  * P0-12: Dead AuthService.hashPassword() + 8-test group removed (doc comment referenced a file that no longer exists)
+- Bracket balance verified on all 6 modified files. flutter analyze could NOT be run (flutter not installed in this environment) — user must run `flutter analyze` locally before pushing.
+- Local main is now 3 commits ahead of origin/main: f0d012d, 9bd52bf (worklog-only), and 637d998 (Day 2-4 patch).
+
+POST-COMMIT VERIFICATION (user must run before pushing):
+  □ 1. flutter analyze — verify no analyzer warnings/errors on the 6 changed files
+  □ 2. flutter test test/core/services/auth_service_test.dart — verify the trimmed test file still compiles and passes
+  □ 3. flutter build apk --release — verify the release build succeeds
+  □ 4. Manual: test student password reset from the admin UI — should now invoke changeUserPassword CF (check Cloud Functions logs)
+  □ 5. Manual: test Excel bulk student import — should now invoke createStudent CF per row (check CF logs for ~5 concurrent invocations)
+  □ 6. Manual: test student first-login after Excel import — should now succeed (previously failed because no Auth account existed)
+
+KNOWN REMAINING ITEMS (not in scope of this patch):
+  - 1 DANGEROUS defaultInstitutionId ref: question_bank_service.dart:21
+  - Dead code: exam_service.dart:309 createExamInstance (recommend DELETE)
+  - syncClaims.ts: add roleVersion increment (Day 2 followup)
+  - owner_register_screen.dart / parent_register_screen.dart: switch to registerOwnerViaCF / registerParentViaCF
+  - Convert ShellRoute → StatefulShellRoute.indexedStack (deferred Issue 2)
