@@ -5047,3 +5047,54 @@ POST-PUSH VERIFICATION (manual, before deploying):
   □ 4. After all tests pass → Sprint 1 COMPLETE → proceed to 14-category UX audit (saved at download/ux-audit/UX-AUDIT-PROMPT.md)
 
 NO CLIENT-SIDE CHANGES — this commit only touches Cloud Functions TypeScript. No `flutter pub get` or Play Store rebuild required for this commit. The user can proceed directly to `firebase deploy` once ready.
+
+
+---
+Task ID: student-shell-routing-fix
+Agent: main (GLM)
+Task: Apply student shell routing fix — move all 6 /student/* routes inside StudentShell ShellRoute so students don't see OwnerDashboard when navigating back from deep links.
+
+Work Log:
+- Verified current state of lib/main.dart before applying:
+  * StudentShell block at lines 1150-1158 (6-space indent) — wrapped ONLY /student route
+  * 5 additional /student/* routes declared OUTSIDE the shell at lines 1191-1231, in two comment-marked blocks: "Student Settings Route" and "Student Deep Routes (outside shell for full-screen)"
+  * All 6 required screen classes are imported in main.dart (StudentDashboard, StudentSettingsScreen, StudentExamListScreen, ExamTakingScreen, StudentResultsScreen, StudentResultDetailScreen, QrScanScreen, NotificationCenterScreen)
+  * StudentResultDetailScreen is defined in the already-imported student_results_screen.dart (line 314) — no new import needed
+- Saved the user-supplied Windows-targeted script as scripts/apply-student-shell-fix.py with Linux adaptations:
+  * Non-interactive (removed `input("Push to origin? (y/n)")` prompt)
+  * Works from /home/z/my-project
+  * Replaced the user's fragile verification step (which used `find()` with hardcoded `shell_start + 200` offset) with a proper bracket-depth scanner that walks forward from ShellRoute( until matching close paren
+  * Kept the user's two-stage pattern matching (exact match → flexible regex fallback) for the old_shell block
+  * Kept the user's two-block removal strategy (one for "Student Settings Route" comment + GoRoute, one for "Student Deep Routes" comment + 4 GoRoutes) — verified both blocks matched exactly against the file's actual content
+- Ran the script:
+  * Replaced StudentShell block with new version containing all 6 student routes — [OK]
+  * Removed duplicate top-level "Student Settings Route" block — [OK]
+  * Removed duplicate top-level "Student Deep Routes" block (containing 4 routes) — [OK]
+- Verified the result:
+  * 6 /student route references in file (same as before — no duplicates added)
+  * All 6 are inside StudentShell block (char-span scan confirms)
+  * 0 /student routes remain outside StudentShell
+  * Bracket balance: () = 474/474, [] = 52/52, {} = 102/102 — all balanced
+  * File ends cleanly with router's closing `], );` and `});`
+- Could not run `flutter analyze` (no dart toolchain in this env), but the structural verification above is the strongest possible static check available here.
+- Staged lib/main.dart + scripts/apply-student-shell-fix.py. Commit 1bf4955 created.
+- Fetched origin/main before pushing — local main was 2 commits ahead (390dcc1 auto-commit + 1bf4955 my fix). Pushed both to origin/main successfully.
+
+Stage Summary:
+- Commit on origin/main: 1bf4955 fix(routing): move all student routes inside StudentShell
+- 2 files changed, 320 insertions(+), 41 deletions(-)
+- Backup branch: backup-before-student-shell-20260620-130748
+- Rollback: `git reset --hard backup-before-student-shell-20260620-130748`
+- All 6 student routes now properly nested inside StudentShell — bottom nav will persist across all student screens, and students will no longer see teacher/owner actions when navigating back from deep links.
+
+POST-PUSH VERIFICATION (manual):
+  □ 1. flutter pub get → build & publish new client to Play Store
+  □ 2. Login as student
+  □ 3. Tap each bottom nav tab (Home, Exams, Inbox, Settings) — confirm bottom nav persists
+  □ 4. Confirm NO teacher/owner actions appear (no 'New Exam', 'New Class' buttons)
+  □ 5. Navigate to /student/exams → tap an exam → take exam → tap back → still in StudentShell with bottom nav
+  □ 6. Navigate to /student/results → tap a result → view detail → back → still in StudentShell
+
+NO FIREBASE DEPLOY REQUIRED — purely a client-side routing change in main.dart. The Cloud Functions + Firestore rules are unchanged.
+
+NOTE: This fix is SEPARATE from the deferred Issue 2 (ShellRoute → StatefulShellRoute.indexedStack) mentioned in earlier commits. The Issue 2 fix would additionally preserve tab state (e.g., scroll position) when switching tabs. This commit only ensures the bottom nav persists and the wrong shell doesn't appear — it does NOT preserve tab state. If users report flickering/lost state when switching tabs after this fix is deployed, apply Issue 2's StatefulShellRoute.indexedStack conversion as a follow-up.
