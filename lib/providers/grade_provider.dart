@@ -11,7 +11,9 @@ final gradeServiceProvider = Provider<GradeService>((ref) => GradeService());
 
 final gradesByStageStreamProvider =
     StreamProvider.family<QuerySnapshot, String>((ref, stageId) {
-  return ref.read(gradeServiceProvider).getGradesByStageStream(stageId);
+  final orgId = ref.watch(currentOrganizationIdProvider);
+  if (orgId == null || orgId.isEmpty) return const Stream.empty();
+  return ref.read(gradeServiceProvider).getGradesByStageStream(stageId, organizationId: orgId);
 });
 
 final gradesByStageListProvider =

@@ -99,12 +99,15 @@ class StageService {
 
   /// Hard-delete: removes the stage and all its classes.
   /// Use only for cleanup / admin purposes. Prefer [archiveStage] for normal flow.
-  Future<void> deleteStage(String stageId) async {
+  Future<void> deleteStage(String stageId, {required String organizationId}) async {
     try {
-      // Soft-delete all classes in this stage first
+      // Soft-delete all classes in this stage first.
+      // MUST filter by organizationId — firestore.rules require isInSameOrg()
+      // on every classes read, and rules are not filters.
       final classesSnapshot = await _firestore
           .collection(AppConstants.classesCollection)
           .where('stageId', isEqualTo: stageId)
+          .where('organizationId', isEqualTo: organizationId)
           .get();
 
       final batch = _firestore.batch();
@@ -147,11 +150,12 @@ class StageService {
   }
 
   /// Get class count for a stage
-  Future<int> getClassCount(String stageId) async {
+  Future<int> getClassCount(String stageId, {required String organizationId}) async {
     try {
       final snapshot = await _firestore
           .collection(AppConstants.classesCollection)
           .where('stageId', isEqualTo: stageId)
+          .where('organizationId', isEqualTo: organizationId)
           .where('isArchived', isEqualTo: false)
           .count()
           .get();

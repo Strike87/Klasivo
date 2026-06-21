@@ -22,6 +22,7 @@ class NotificationCenterScreen extends ConsumerWidget {
     final notifications = ref.watch(notificationsProvider);
     final unreadCount = ref.watch(unreadNotificationsProvider);
     final userId = ref.watch(currentUserIdProvider);
+    final orgId = ref.watch(currentOrganizationIdProvider);
     final paginationService = ref.watch(paginationServiceProvider);
 
     return Scaffold(
@@ -59,6 +60,12 @@ class NotificationCenterScreen extends ConsumerWidget {
           descending: true,
           filters: [
             if (userId != null) QueryFilter.equalTo('userId', userId),
+            // REQUIRED by firestore.rules: isInSameOrg() checks
+            // resource.data.organizationId == getUserOrgId().
+            // Without this filter, the query is rejected with
+            // permission-denied (rules are not filters).
+            if (orgId != null && orgId.isNotEmpty)
+              QueryFilter.equalTo('organizationId', orgId),
           ],
         ),
         padding: const EdgeInsets.all(16),

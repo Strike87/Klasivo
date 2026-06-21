@@ -990,6 +990,26 @@ class AuthService {
         'useCount': FieldValue.increment(1),
       });
 
+      // Sync custom claims server-side (role + organizationId).
+      // Without this, getIdTokenResult() returns empty claims →
+      // rbacInitProvider returns early → RBAC state never populated →
+      // UI permission checks fail. The syncClaims CF sets claims AND
+      // increments roleVersion to trigger client-side token refresh.
+      try {
+        await FirebaseFunctions.instance
+            .httpsCallable('syncClaims')
+            .call({});
+      } catch (e) {
+        // Non-fatal: claims will be synced on next app open via
+        // rbacInitProvider. Log but don't fail registration.
+        Sentry.addBreadcrumb(Breadcrumb(
+          category: 'registration',
+          message: 'STEP_3_SYNC_CLAIMS_FAILED',
+          data: {'uid': user.uid, 'error': e.toString()},
+          level: SentryLevel.warning,
+        ));
+      }
+
       transaction.status = const SpanStatus.ok();
 
       return {

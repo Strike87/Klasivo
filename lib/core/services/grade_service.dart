@@ -37,10 +37,15 @@ class GradeService {
     }
   }
 
-  Stream<QuerySnapshot> getGradesByStageStream(String stageId) {
+  Stream<QuerySnapshot> getGradesByStageStream(String stageId, {required String organizationId}) {
     return _firestore
         .collection(AppConstants.classesCollection)
         .where('stageId', isEqualTo: stageId)
+        // REQUIRED by firestore.rules: isInSameOrg() checks
+        // resource.data.organizationId == getUserOrgId().
+        // Without this filter, the query is rejected with
+        // permission-denied (rules are not filters).
+        .where('organizationId', isEqualTo: organizationId)
         .orderBy('name')
         .snapshots();
   }

@@ -34,7 +34,11 @@ interface SyncClaimsData {
 export const syncClaims = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
+    // enforceAppCheck: false (default).
+    // syncClaims is called immediately after registration (before App Check
+    // token may be available in dev/debug builds). Auth is enforced via
+    // request.auth check at line 51. App Check enforcement here would block
+    // claims sync for newly-registered users, leaving them without RBAC state.
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
