@@ -6779,3 +6779,38 @@ Stage Summary:
   5. Test parent registration
   6. Test role changes - claims should refresh within 5s
   7. Test dashboard shows correct name/email (not null)
+
+---
+Task ID: final-wiring-v5-confirmed
+Agent: Super Z (main)
+Task: User confirmed v5 is approved; no further automated patches needed
+
+Work Log:
+- User reviewed v5 against actual auth_service.dart + both register screens
+- Confirmed all 4 critical bugs from v4 are fixed:
+  1. organizationName passed (was TODO-only -> compile failure)
+  2. result['fullName'] / result['email'] / result['hasCompletedSetup'] replaced
+  3. Receiver-preserving regex (handles authService. and ref.read(...))
+  4. syncClaims uses admin.firestore() directly (no db scope dependency)
+- StatefulShellRoute (Step 4) correctly skipped - manual QA in separate session
+- User will run v5 on Windows: cd C:\Users\Strik\Klasivo; python apply-final-wiring-v5.py
+- After deploy (firebase deploy --only functions,firestore:rules,firestore:indexes):
+  * Test owner registration (CF, org = owner name)
+  * Test parent registration (CF)
+  * Verify dashboard shows name/email (not null)
+  * Verify role change -> claims refresh within 5s (no re-login)
+
+Stage Summary:
+- Final automated patch set: /home/z/my-project/download/patches/apply-final-wiring-v5.py
+- Patch series for this work stream:
+  * apply-final-wiring-v3.py (user-supplied, audited)
+  * apply-final-wiring-v4.py (corrected v3 bugs)
+  * apply-final-wiring-v5.py (corrected v4 per user audit - FINAL)
+- Remaining manual work (separate session):
+  * Step 4: StatefulShellRoute conversion
+    - Refactor TeacherShell to accept StatefulNavigationShell
+    - Call navigationShell.goBranch(index) on tab tap
+    - Use navigationShell.currentIndex for active-tab highlight
+    - Convert each ShellRoute -> StatefulShellRoute.indexedStack
+    - One StatefulBranch per tab
+    - Manual QA on tab switching (Dashboard -> Academic -> People -> back -> no reload)
