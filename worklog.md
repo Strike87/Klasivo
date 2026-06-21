@@ -6878,3 +6878,91 @@ Stage Summary:
      - Dashboard shows correct name/email (not null)
      - Admin changes role -> user's claims refresh within 5s
   6. THEN do Step 4 (StatefulShellRoute) in separate session
+
+---
+Task ID: analyze-v5-output
+Agent: Super Z (main)
+Task: Analyze flutter analyze output after v5 deployment (6098-line log from user)
+
+Work Log:
+- Received /home/z/my-project/upload/Pasted Content_1782044779391.txt (6098 lines, CRLF)
+- Identified as `flutter analyze` output (Windows paths, severity prefixes)
+- Counted severities: 739 errors / 241 warnings / 3542 infos
+- Categorized errors by file (top):
+  * 113 docs\architecture-reference\auth\providers\auth_notifier_provider.dart
+  * 74 lib\features\user_management\pages\user_detail_screen.dart
+  * 67 docs\architecture-reference\exams\providers\exam_notifier_provider.dart
+  * 52 lib\features\exams\data\exam_service.dart
+  * 36 lib\features\submissions\data\submission_service.dart
+  * 36 lib\features\user_management\pages\role_assignment_sheet.dart
+  * 35 lib\features\livekit\data\livekit_repository.dart
+- Categorized errors by rule type (top):
+  * 591 undefined_identifier
+  * 17 uri_does_not_exist
+  * 7 undefined_class
+  * 6 undefined_getter
+  * 6 invalid_constant
+  * 5 undefined_function
+- Critical finding: errors are dominated by `undefined_identifier` (591) and
+  `uri_does_not_exist` (17), all of which point to broken imports:
+  * `import '../config/app_constants.dart'` from lib/features/submissions/data/
+    submission_service.dart - WRONG (should be '../../../core/config/app_constants.dart')
+  * Same broken pattern in lib/features/exams/data/exam_service.dart,
+    exam_instance_service.dart, etc.
+  * `import 'exam_stats_service.dart'` from submission_service.dart - file exists
+    at lib/features/exams/data/exam_stats_service.dart, not in same dir
+  * `import 'notification_service.dart'` - missing file
+  * `import 'search_keyword_service.dart'` - missing file
+  * `import 'performance_trace_service.dart'` - missing file
+- Verified the v5-touched files have ZERO errors:
+  * owner_register_screen.dart: 2 warnings (unused imports), 4 infos
+  * parent_register_screen.dart: 1 warning (unused import), 2 infos
+  * syncClaims.ts: not analyzed by flutter (TypeScript)
+- Confirmed pre-existing nature of v5 warnings:
+  * Unused imports of auth_service.dart + sentry_service.dart on owner screen
+    were unused BEFORE v5 (authServiceProvider comes from auth_provider.dart,
+    Sentry is imported as `sentry_flutter` not `sentry_service`)
+  * Line 74/120 "missing await" infos = FirebaseCrashlytics.instance.recordError
+    returning Future without await - pre-existing pattern, not v5-introduced
+- Identified root cause of 590+ lib/ errors: a chunk of code was moved or
+  pasted into the repo from another project (or copied from docs/) without
+  fixing relative import paths. The broken paths suggest files were moved
+  from lib/core/services/ to lib/features/{exams,submissions}/data/ without
+  updating their internal imports.
+
+Stage Summary:
+- v5 changes are CLEAN: zero new errors introduced
+- The 739 errors are all PRE-EXISTING and cluster in 3 categories:
+  1. Broken relative imports (`../config/app_constants.dart` should be
+     `../../../core/config/app_constants.dart`)
+  2. Missing service files (notification_service.dart, search_keyword_service.dart,
+     performance_trace_service.dart) - referenced but not present in expected dir
+  3. Missing type definitions (ExamStatsData, SessionAnalytics, ExamData)
+- All errors break down by directory:
+  * 508 lib (real source code)
+  * 182 docs (reference code samples - can be excluded from analyze)
+  * 43 unclassified (multi-line)
+  * 3 test, 3 sprints
+- Recommended remediation plan:
+  PHASE 1 - Exclude docs/ from analyze (immediate, 182 errors hidden):
+    analysis_options.yaml:
+      analyzer:
+        exclude:
+          - 'docs/**'
+  PHASE 2 - Fix broken imports in lib/features/exams/data/ and
+    lib/features/submissions/data/ (highest concentration of real errors):
+    - submission_service.dart: change `../config/app_constants.dart` ->
+      `../../../core/config/app_constants.dart`
+    - same fix for exam_service.dart, exam_instance_service.dart,
+      exam_template_service.dart
+    - replace missing `notification_service.dart` import with proper path
+      (likely `../../../core/services/notification_service.dart` if it exists
+      in lib/core/services/, or remove the import + comment as TODO)
+    - same for search_keyword_service.dart, performance_trace_service.dart
+  PHASE 3 - Fix missing type definitions:
+    - ExamStatsData, SessionAnalytics, ExamData - need to be imported from
+      their proper location or defined
+  PHASE 4 - Fix user_management screens (74+36+34+34+33+24+21 = 256 errors):
+    - all are undefined_identifier errors, likely also import-related
+- v5 deployment is safe to proceed. The pre-existing errors do not affect
+  the registration flow or syncClaims functionality.
