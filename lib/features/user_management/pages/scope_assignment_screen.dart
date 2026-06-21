@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/theme.dart';
+import '../../../core/tokens/tokens.dart';
 import '../../../core/rbac/roles.dart';
 import '../../../core/rbac/scope_access_level.dart';
 import '../../../core/rbac/permissions.dart';
