@@ -32,7 +32,11 @@ interface RegisterOwnerData {
 export const registerOwner = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    enforceAppCheck: true,
+    // enforceAppCheck: false (default) — registration is a pre-auth public endpoint.
+    // App Check tokens cannot be reliably minted before Firebase Auth sign-in,
+    // so enforceAppCheck:true returns UNAUTHENTICATED to legitimate sign-ups.
+    // Abuse is mitigated by: input validation, Firebase Auth rate limits on
+    // createUser, and the email-duplicate guard below.
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
