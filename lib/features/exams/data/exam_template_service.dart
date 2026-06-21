@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../config/app_constants.dart';
+import '../../../core/config/app_constants.dart';
 
 class ExamTemplateService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

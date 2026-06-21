@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../config/app_constants.dart';
+import '../../../core/config/app_constants.dart';
 
 /// Service for managing exam instances - per-student snapshots of exams
 /// with randomized question order for anti-cheating.

@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../config/app_constants.dart';
+import '../../../core/config/app_constants.dart';
 import 'notification_service.dart' as notif_service;
 import 'search_keyword_service.dart';
 import 'performance_trace_service.dart';

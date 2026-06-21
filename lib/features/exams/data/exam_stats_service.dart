@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import '../config/app_constants.dart';
+import '../../../core/config/app_constants.dart';
 import 'performance_trace_service.dart';
 
 class ExamStatsService {
