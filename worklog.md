@@ -7037,3 +7037,28 @@ Stage Summary:
      - Other design-token usages without tokens.dart import
   4. Optional: dedupe lib/features/exams/data/*.dart vs lib/core/services/exam_*.dart
      (3 files are identical duplicates, 1 differs by ~76 lines)
+
+---
+Task ID: reg-fix-appcheck
+Agent: Super Z (main)
+Task: Fix "unauthenticated" error when creating parent account
+
+Work Log:
+- Inspected lib/features/parent/pages/parent_register_screen.dart — confirmed it calls authService.registerParentViaCF() which calls the registerParent Cloud Function via httpsCallable
+- Inspected functions/src/functions/registerParent.ts — found enforceAppCheck: true
+- Inspected functions/src/functions/registerOwner.ts — same anti-pattern (enforceAppCheck: true)
+- Inspected lib/main.dart — confirmed FirebaseAppCheck is activated with Play Integrity (Android) + App Attest (iOS), but tokens can't be reliably minted pre-auth
+- Root cause: App Check enforcement on pre-auth registration endpoints rejects legitimate sign-ups with UNAUTHENTICATED when the device can't mint a valid App Check token (common in dev/debug, or when app isn't fully registered in Firebase Console → App Check)
+- Fix: removed enforceAppCheck: true from both registerParent and registerOwner Cloud Functions (defaults to false). Documented rationale inline.
+- Defensive improvement: added email-duplicate guard to registerParent (matching registerOwner's existing defense) — calls auth.getUserByEmail first, throws 'already-exists' HttpsError instead of letting Firebase Auth throw raw 'email-already-exists'
+- Verified TypeScript build (npm run build in functions/) — clean, no errors
+- Committed: 3fbf855 fix(functions): disable enforceAppCheck on registration CFs
+- Pushed to origin/main
+- Could not deploy from server (no Firebase login) — user needs to run `firebase deploy --only functions:registerParent,functions:registerOwner` from their authenticated environment
+
+Stage Summary:
+- Files changed: functions/src/functions/registerParent.ts, functions/src/functions/registerOwner.ts
+- Commit: 3fbf855 (pushed to origin/main)
+- Pending user action: pull + deploy the two functions
+- After deploy: parent registration should work; owner registration (which may also have been silently broken) will also work
+- Note: this is the THIRD rules/security-related breakage from the P1-4 patch (1. invite_codes reads → fixed in 02e97c2, 2. users/{uid} create for owner → fixed in ebfa4e1 by switching to CF, 3. enforceAppCheck on the CF itself → fixed in 3fbf855). The pattern is: each tightening layer exposed the next. Suggest a regression test that exercises all 4 registration flows (owner email, teacher email+invite, parent email, student via CF) end-to-end before any future security patch is merged.
