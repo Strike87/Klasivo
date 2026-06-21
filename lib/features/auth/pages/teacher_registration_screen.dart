@@ -257,11 +257,13 @@ class _TeacherRegistrationScreenState
                     hint: "e.g. Lincoln High School",
                     prefixIcon: Icons.business_outlined,
                     validator: (value) {
-                      if (_isOwnerFlow && (value == null || value.trim().isEmpty)) {
-                        return 'Organization name is required';
-                      }
-                      if (_isOwnerFlow && value.trim().length < 3) {
-                        return 'Organization name must be at least 3 characters';
+                      if (_isOwnerFlow) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Organization name is required';
+                        }
+                        if (value.trim().length < 3) {
+                          return 'Organization name must be at least 3 characters';
+                        }
                       }
                       return null;
                     },
