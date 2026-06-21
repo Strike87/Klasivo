@@ -9,84 +9,53 @@ import '../../../widgets/klasivo_badge.dart';
 
 // ─── Teacher/Owner Navigation Shell ──────────────────────────────────────────
 
-class TeacherShell extends ConsumerStatefulWidget {
-  final Widget child;
+class TeacherShell extends ConsumerWidget {
+  final StatefulNavigationShell shell;
 
-  const TeacherShell({Key? key, required this.child}) : super(key: key);
-
-  @override
-  ConsumerState<TeacherShell> createState() => _TeacherShellState();
-}
-
-class _TeacherShellState extends ConsumerState<TeacherShell> {
-  int _currentIndex = 0;
+  const TeacherShell({super.key, required this.shell});
 
   static const List<_NavDestination> _destinations = [
     _NavDestination(
       label: 'Dashboard',
       icon: Icons.space_dashboard_outlined,
       selectedIcon: Icons.space_dashboard_rounded,
-      route: '/dashboard',
     ),
     _NavDestination(
       label: 'Academic',
       icon: Icons.school_outlined,
       selectedIcon: Icons.school_rounded,
-      route: '/academic',
     ),
     _NavDestination(
       label: 'People',
       icon: Icons.people_outline_rounded,
       selectedIcon: Icons.people_rounded,
-      route: '/people',
     ),
     _NavDestination(
       label: 'Inbox',
       icon: Icons.inbox_outlined,
       selectedIcon: Icons.inbox_rounded,
-      route: '/inbox',
     ),
     _NavDestination(
       label: 'Settings',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings_rounded,
-      route: '/settings',
     ),
   ];
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncIndexWithRoute();
-  }
-
-  void _syncIndexWithRoute() {
-    final location = GoRouterState.of(context).matchedLocation;
-    final newIndex = _destinations.indexWhere((d) => location.startsWith(d.route));
-    if (newIndex != -1 && newIndex != _currentIndex) {
-      setState(() => _currentIndex = newIndex);
-    }
-  }
-
-  void _onTabTap(int index) {
-    if (index == _currentIndex) return;
-    setState(() => _currentIndex = index);
-    context.go(_destinations[index].route);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final unreadNotifs = ref.watch(unreadNotificationsProvider);
     final userName = ref.watch(userNameProvider) ?? 'User';
 
     return Scaffold(
-      body: widget.child,
+      body: shell,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: _onTabTap,
-        destinations: _destinations.asMap().entries.map((entry) {
-          final index = entry.key;
-          final dest = entry.value;
+        selectedIndex: shell.currentIndex,
+        onDestinationSelected: (index) => shell.goBranch(
+          index,
+          initialLocation: index == shell.currentIndex,
+        ),
+        destinations: _destinations.map((dest) {
           final isInbox = dest.label == 'Inbox';
 
           return NavigationDestination(
@@ -134,12 +103,10 @@ class _NavDestination {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
-  final String route;
 
   const _NavDestination({
     required this.label,
     required this.icon,
     required this.selectedIcon,
-    required this.route,
   });
 }

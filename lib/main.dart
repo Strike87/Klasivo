@@ -758,37 +758,275 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ParentLinkScreen(),
       ),
 
-      // ─── Teacher/Owner Shell Navigation ──────────────────────────────
-      ShellRoute(
-        builder: (context, state, child) => TeacherShell(child: child),
-        routes: [
-          // Dashboard
-          GoRoute(
-            path: '/dashboard',
-            builder: (context, state) => const OwnerDashboard(),
-          ),
-
-          // Academic
-          GoRoute(
-            path: '/academic',
-            builder: (context, state) => const StageListScreen(),
+      // ─── Teacher/Owner Shell Navigation (StatefulShellRoute.indexedStack) ──
+      // Phase 1 refactor: replaces the old ShellRoute + A8 patch ShellRoute
+      // with a single StatefulShellRoute.indexedStack. Each tab gets its own
+      // branch navigator, preserving scroll/form state across tab switches.
+      // The legacy /teacher/** routes are folded into the Academic branch
+      // (sibling of /academic), eliminating the A8 patch workaround.
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            TeacherShell(shell: navigationShell),
+        branches: [
+          // ── Branch 0: Dashboard ───────────────────────────────────────
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'stages/:stageId/classes',
-                builder: (context, state) {
-                  final stageId = state.pathParameters['stageId']!;
-                  return ClassListScreen(stageId: stageId);
-                },
+                path: '/dashboard',
+                builder: (context, state) => const OwnerDashboard(),
+              ),
+            ],
+          ),
+
+          // ── Branch 1: Academic (includes legacy /teacher/** routes) ───
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/academic',
+                builder: (context, state) => const StageListScreen(),
                 routes: [
                   GoRoute(
-                    path: 'create',
+                    path: 'stages/:stageId/classes',
                     builder: (context, state) {
-                      final stageId = state.extra as String? ??
-                          state.pathParameters['stageId'] ?? '';
-                      return ClassFormScreen(
-                        isEditing: false,
-                        stageId: stageId,
-                      );
+                      final stageId = state.pathParameters['stageId']!;
+                      return ClassListScreen(stageId: stageId);
+                    },
+                    routes: [
+                      GoRoute(
+                        path: 'create',
+                        builder: (context, state) {
+                          final stageId = state.extra as String? ??
+                              state.pathParameters['stageId'] ?? '';
+                          return ClassFormScreen(
+                            isEditing: false,
+                            stageId: stageId,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              // ─── Legacy Teacher Routes (folded from A8 patch) ────────
+              // These were previously in a separate ShellRoute (A8 patch)
+              // to keep TeacherShell mounted. StatefulShellRoute.indexedStack
+              // handles this natively, so they now live as siblings of
+              // /academic within the Academic branch.
+              GoRoute(
+                path: '/teacher',
+                builder: (context, state) => const TeacherDashboard(),
+                routes: [
+                  GoRoute(
+                    path: 'classes',
+                    builder: (context, state) => const ClassListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'create',
+                        builder: (context, state) {
+                          final stageId = state.extra as String?;
+                          return ClassFormScreen(isEditing: false, stageId: stageId);
+                        },
+                      ),
+                      GoRoute(
+                        path: 'edit/:classId',
+                        builder: (context, state) {
+                          final classData = state.extra as ClassData?;
+                          return ClassFormScreen(isEditing: true, classData: classData);
+                        },
+                      ),
+                      GoRoute(
+                        path: ':classId/students',
+                        builder: (context, state) {
+                          final classId = state.pathParameters['classId']!;
+                          return StudentListScreen(classId: classId);
+                        },
+                        routes: [
+                          GoRoute(
+                            path: 'create',
+                            builder: (context, state) {
+                              final classId = state.pathParameters['classId']!;
+                              return StudentFormScreen(classId: classId, isEditing: false);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'edit/:studentId',
+                            builder: (context, state) {
+                              final classId = state.pathParameters['classId']!;
+                              final studentData = state.extra as StudentData?;
+                              return StudentFormScreen(classId: classId, isEditing: true, studentData: studentData);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'import',
+                            builder: (context, state) {
+                              final classId = state.pathParameters['classId']!;
+                              return ExcelImportScreen(classId: classId);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'qr',
+                            builder: (context, state) {
+                              final classId = state.pathParameters['classId']!;
+                              return QrGenerateScreen(classId: classId);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'groups',
+                            builder: (context, state) {
+                              final classId = state.pathParameters['classId']!;
+                              return GroupListScreen(classId: classId);
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'students',
+                    builder: (context, state) => const AllStudentsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'exams',
+                    builder: (context, state) => const ExamListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'create',
+                        builder: (context, state) => const ExamFormScreen(isEditing: false),
+                      ),
+                      GoRoute(
+                        path: 'edit/:examId',
+                        builder: (context, state) {
+                          final examData = state.extra as ExamData?;
+                          return ExamFormScreen(isEditing: true, examData: examData);
+                        },
+                      ),
+                      GoRoute(
+                        path: ':examId',
+                        builder: (context, state) {
+                          final examId = state.pathParameters['examId']!;
+                          return ExamDetailScreen(examId: examId);
+                        },
+                        routes: [
+                          GoRoute(
+                            path: 'questions',
+                            builder: (context, state) {
+                              final examId = state.pathParameters['examId']!;
+                              return QuestionBuilderScreen(examId: examId);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'results',
+                            builder: (context, state) {
+                              final examId = state.pathParameters['examId']!;
+                              return ExamResultsScreen(examId: examId);
+                            },
+                          ),
+                          GoRoute(
+                            path: 'instances',
+                            builder: (context, state) {
+                              final examId = state.pathParameters['examId']!;
+                              return ExamInstancesScreen(examId: examId);
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'stages',
+                    builder: (context, state) => const StageListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':stageId/classes',
+                        builder: (context, state) {
+                          final stageId = state.pathParameters['stageId']!;
+                          return ClassListScreen(stageId: stageId);
+                        },
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'question-bank',
+                    builder: (context, state) => const QuestionBankScreen(),
+                  ),
+
+                  // ─── Calendar ───────────────────────────────────────────
+                  GoRoute(
+                    path: 'calendar',
+                    builder: (context, state) => const CalendarScreen(),
+                  ),
+
+                  // ─── Academic Years ─────────────────────────────────────
+                  GoRoute(
+                    path: 'academic-years',
+                    builder: (context, state) => const AcademicYearListScreen(),
+                  ),
+
+                  // ─── v1.7 New Routes ────────────────────────────────────
+                  GoRoute(
+                    path: 'assignments',
+                    builder: (context, state) => const AssignmentListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'create',
+                        builder: (context, state) => const AssignmentFormScreen(isEditing: false),
+                      ),
+                      GoRoute(
+                        path: ':assignmentId',
+                        builder: (context, state) {
+                          final assignmentId = state.pathParameters['assignmentId']!;
+                          return AssignmentDetailScreen(assignmentId: assignmentId);
+                        },
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'gradebook',
+                    builder: (context, state) => const GradebookScreen(),
+                  ),
+                  GoRoute(
+                    path: 'attendance',
+                    builder: (context, state) => const AttendanceScreen(),
+                  ),
+
+                  // ─── Existing v1.6 Routes ───────────────────────────────
+                  GoRoute(
+                    path: 'notifications',
+                    builder: (context, state) => const NotificationCenterScreen(),
+                  ),
+                  GoRoute(
+                    path: 'analytics',
+                    builder: (context, state) => const TeacherAnalyticsDashboard(),
+                  ),
+                  GoRoute(
+                    path: 'reports',
+                    builder: (context, state) => const ReportGenerationScreen(),
+                  ),
+                  GoRoute(
+                    path: 'integrity',
+                    builder: (context, state) => const ExamIntegrityDashboard(),
+                  ),
+
+                  // ─── Audit Log (Owners Only) ────────────────────────────
+                  GoRoute(
+                    path: 'audit-log',
+                    builder: (context, state) => const AuditLogScreen(),
+                  ),
+
+                  // ─── Moderation Queue ───────────────────────────────────
+                  GoRoute(
+                    path: 'moderation',
+                    builder: (context, state) => const ModerationQueueScreen(),
+                  ),
+
+                  // ─── Progress Tracking ──────────────────────────────────
+                  GoRoute(
+                    path: 'progress',
+                    builder: (context, state) {
+                      final classId = state.uri.queryParameters['classId'] ?? '';
+                      final className = state.uri.queryParameters['className'] ?? 'Class';
+                      return ProgressTrackingScreen(classId: classId, className: className);
                     },
                   ),
                 ],
@@ -796,75 +1034,91 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // People
-          GoRoute(
-            path: '/people',
-            builder: (context, state) => const AllStudentsScreen(),
-          ),
-
-          // Inbox (Messages + Notifications + Announcements)
-          GoRoute(
-            path: '/inbox',
-            builder: (context, state) => const NotificationCenterScreen(),
+          // ── Branch 2: People ──────────────────────────────────────────
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'notifications',
+                path: '/people',
+                builder: (context, state) => const AllStudentsScreen(),
+              ),
+            ],
+          ),
+
+          // ── Branch 3: Inbox (Messages + Notifications + Announcements) ─
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/inbox',
                 builder: (context, state) => const NotificationCenterScreen(),
-              ),
-              GoRoute(
-                path: 'notifications/:id',
-                builder: (context, state) {
-                  final notificationId = state.pathParameters['id']!;
-                  return NotificationDetailScreen(notificationId: notificationId);
-                },
-              ),
-              GoRoute(
-                path: 'messages',
-                builder: (context, state) => const ConversationListScreen(),
                 routes: [
                   GoRoute(
-                    path: ':conversationId',
+                    path: 'notifications',
+                    builder: (context, state) => const NotificationCenterScreen(),
+                  ),
+                  GoRoute(
+                    path: 'notifications/:id',
                     builder: (context, state) {
-                      final conversationId = state.pathParameters['conversationId']!;
-                      return ChatScreen(conversationId: conversationId);
+                      final notificationId = state.pathParameters['id']!;
+                      return NotificationDetailScreen(
+                          notificationId: notificationId);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'messages',
+                    builder: (context, state) => const ConversationListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':conversationId',
+                        builder: (context, state) {
+                          final conversationId =
+                              state.pathParameters['conversationId']!;
+                          return ChatScreen(conversationId: conversationId);
+                        },
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'announcements',
+                    builder: (context, state) => const AnnouncementListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'announcements/create',
+                    builder: (context, state) =>
+                        const AnnouncementFormScreen(isEditing: false),
+                  ),
+                  GoRoute(
+                    path: 'announcements/:id',
+                    builder: (context, state) {
+                      final id = state.pathParameters['id']!;
+                      return AnnouncementDetailScreen(announcementId: id);
                     },
                   ),
                 ],
               ),
-              GoRoute(
-                path: 'announcements',
-                builder: (context, state) => const AnnouncementListScreen(),
-              ),
-              GoRoute(
-                path: 'announcements/create',
-                builder: (context, state) => const AnnouncementFormScreen(isEditing: false),
-              ),
-              GoRoute(
-                path: 'announcements/:id',
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return AnnouncementDetailScreen(announcementId: id);
-                },
-              ),
             ],
           ),
 
-          // Settings
-          GoRoute(
-            path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
+          // ── Branch 4: Settings ────────────────────────────────────────
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'organization',
-                builder: (context, state) => const OrganizationSettingsScreen(),
-              ),
-              GoRoute(
-                path: 'profile',
-                builder: (context, state) => const ProfileSettingsScreen(),
-              ),
-              GoRoute(
-                path: 'feature-flags',
-                builder: (context, state) => const FeatureFlagsScreen(),
+                path: '/settings',
+                builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'organization',
+                    builder: (context, state) =>
+                        const OrganizationSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'profile',
+                    builder: (context, state) => const ProfileSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'feature-flags',
+                    builder: (context, state) => const FeatureFlagsScreen(),
+                  ),
+                ],
               ),
             ],
           ),
@@ -910,241 +1164,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
-      // ─── A8 PATCH: Teacher Routes wrapped in ShellRoute ──────────────
-      // Previous code registered /teacher/** as a top-level GoRoute SIBLING
-      // of the ShellRoute, so navigating to /teacher/classes unmounted
-      // TeacherShell → bottom nav disappeared on 30+ call sites.
-      // Fix: wrap the entire /teacher subtree in its own ShellRoute with
-      // the same TeacherShell builder. URLs are preserved (ShellRoute does
-      // not add a path prefix), and the bottom nav now persists across all
-      // /teacher/** screens.
-      // NOTE: Navigating between /dashboard (original ShellRoute) and
-      // /teacher/** (this ShellRoute) will rebuild the shell once. This is
-      // acceptable — the bottom nav remains present, which is the fix.
-      ShellRoute(
-        builder: (context, state, child) => TeacherShell(child: child),
-        routes: [
-      // ─── Legacy Teacher Routes (still functional, deep link compatible) ──
-      GoRoute(
-        path: '/teacher',
-        builder: (context, state) => const TeacherDashboard(),
-        routes: [
-          GoRoute(
-            path: 'classes',
-            builder: (context, state) => const ClassListScreen(),
-            routes: [
-              GoRoute(
-                path: 'create',
-                builder: (context, state) {
-                  final stageId = state.extra as String?;
-                  return ClassFormScreen(isEditing: false, stageId: stageId);
-                },
-              ),
-              GoRoute(
-                path: 'edit/:classId',
-                builder: (context, state) {
-                  final classData = state.extra as ClassData?;
-                  return ClassFormScreen(isEditing: true, classData: classData);
-                },
-              ),
-              GoRoute(
-                path: ':classId/students',
-                builder: (context, state) {
-                  final classId = state.pathParameters['classId']!;
-                  return StudentListScreen(classId: classId);
-                },
-                routes: [
-                  GoRoute(
-                    path: 'create',
-                    builder: (context, state) {
-                      final classId = state.pathParameters['classId']!;
-                      return StudentFormScreen(classId: classId, isEditing: false);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'edit/:studentId',
-                    builder: (context, state) {
-                      final classId = state.pathParameters['classId']!;
-                      final studentData = state.extra as StudentData?;
-                      return StudentFormScreen(classId: classId, isEditing: true, studentData: studentData);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'import',
-                    builder: (context, state) {
-                      final classId = state.pathParameters['classId']!;
-                      return ExcelImportScreen(classId: classId);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'qr',
-                    builder: (context, state) {
-                      final classId = state.pathParameters['classId']!;
-                      return QrGenerateScreen(classId: classId);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'groups',
-                    builder: (context, state) {
-                      final classId = state.pathParameters['classId']!;
-                      return GroupListScreen(classId: classId);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'students',
-            builder: (context, state) => const AllStudentsScreen(),
-          ),
-          GoRoute(
-            path: 'exams',
-            builder: (context, state) => const ExamListScreen(),
-            routes: [
-              GoRoute(
-                path: 'create',
-                builder: (context, state) => const ExamFormScreen(isEditing: false),
-              ),
-              GoRoute(
-                path: 'edit/:examId',
-                builder: (context, state) {
-                  final examData = state.extra as ExamData?;
-                  return ExamFormScreen(isEditing: true, examData: examData);
-                },
-              ),
-              GoRoute(
-                path: ':examId',
-                builder: (context, state) {
-                  final examId = state.pathParameters['examId']!;
-                  return ExamDetailScreen(examId: examId);
-                },
-                routes: [
-                  GoRoute(
-                    path: 'questions',
-                    builder: (context, state) {
-                      final examId = state.pathParameters['examId']!;
-                      return QuestionBuilderScreen(examId: examId);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'results',
-                    builder: (context, state) {
-                      final examId = state.pathParameters['examId']!;
-                      return ExamResultsScreen(examId: examId);
-                    },
-                  ),
-                  GoRoute(
-                    path: 'instances',
-                    builder: (context, state) {
-                      final examId = state.pathParameters['examId']!;
-                      return ExamInstancesScreen(examId: examId);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'stages',
-            builder: (context, state) => const StageListScreen(),
-            routes: [
-              GoRoute(
-                path: ':stageId/classes',
-                builder: (context, state) {
-                  final stageId = state.pathParameters['stageId']!;
-                  return ClassListScreen(stageId: stageId);
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'question-bank',
-            builder: (context, state) => const QuestionBankScreen(),
-          ),
-
-          // ─── Calendar ─────────────────────────────────────────────────
-          GoRoute(
-            path: 'calendar',
-            builder: (context, state) => const CalendarScreen(),
-          ),
-
-          // ─── Academic Years ─────────────────────────────────────────────
-          GoRoute(
-            path: 'academic-years',
-            builder: (context, state) => const AcademicYearListScreen(),
-          ),
-
-          // ─── v1.7 New Routes ──────────────────────────────────────────
-          GoRoute(
-            path: 'assignments',
-            builder: (context, state) => const AssignmentListScreen(),
-            routes: [
-              GoRoute(
-                path: 'create',
-                builder: (context, state) => const AssignmentFormScreen(isEditing: false),
-              ),
-              GoRoute(
-                path: ':assignmentId',
-                builder: (context, state) {
-                  final assignmentId = state.pathParameters['assignmentId']!;
-                  return AssignmentDetailScreen(assignmentId: assignmentId);
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'gradebook',
-            builder: (context, state) => const GradebookScreen(),
-          ),
-          GoRoute(
-            path: 'attendance',
-            builder: (context, state) => const AttendanceScreen(),
-          ),
-
-          // ─── Existing v1.6 Routes ────────────────────────────────────
-          GoRoute(
-            path: 'notifications',
-            builder: (context, state) => const NotificationCenterScreen(),
-          ),
-          GoRoute(
-            path: 'analytics',
-            builder: (context, state) => const TeacherAnalyticsDashboard(),
-          ),
-          GoRoute(
-            path: 'reports',
-            builder: (context, state) => const ReportGenerationScreen(),
-          ),
-          GoRoute(
-            path: 'integrity',
-            builder: (context, state) => const ExamIntegrityDashboard(),
-          ),
-
-          // ─── Audit Log (Owners Only) ──────────────────────────────────
-          GoRoute(
-            path: 'audit-log',
-            builder: (context, state) => const AuditLogScreen(),
-          ),
-
-          // ─── Moderation Queue ──────────────────────────────────────────
-          GoRoute(
-            path: 'moderation',
-            builder: (context, state) => const ModerationQueueScreen(),
-          ),
-
-          // ─── Progress Tracking ───────────────────────────────────────
-          GoRoute(
-            path: 'progress',
-            builder: (context, state) {
-              final classId = state.uri.queryParameters['classId'] ?? '';
-              final className = state.uri.queryParameters['className'] ?? 'Class';
-              return ProgressTrackingScreen(classId: classId, className: className);
-            },
-          ),
-        ],
-      ),
-        ], // end of ShellRoute routes (A8 patch)
-      ), // end of ShellRoute (A8 patch)
 
       // ─── Student Shell Navigation ────────────────────────────────────
       ShellRoute(
