@@ -479,8 +479,25 @@ service cloud.firestore {
     // through the redeemInviteCode Cloud Function (Phase 2 TRACK-4) OR
     // through the authenticated client flow in registerTeacherWithInvite.
     match /invite_codes/{codeId} {
-      // P1-4: Require auth + same-org for ALL reads (was: unauthenticated for unused codes)
+      // Authenticated users: full read access within their org.
       allow read: if isAuth() && isInSameOrg();
+
+      // P1-4 FIX (registration flow): Unauthenticated users may read ONLY
+      // unused, non-expired invite codes. This is required because
+      // registerTeacherWithInvite / registerParent / redeemInviteCode all
+      // call validateInviteCode() BEFORE the Auth account is created —
+      // the user has no auth token yet, so isAuth() fails and the original
+      // P1-4 patch broke the entire registration flow.
+      //
+      // Security: this exposes only unused, non-expired codes (no PII —
+      // redeemed codes are blocked). Code redemption (isUsed flip, usedBy
+      // write) still requires auth and goes through the authenticated
+      // registerTeacherWithInvite / redeemInviteCode Cloud Function flow.
+      allow read: if !isAuth() &&
+        resource.data.isUsed == false &&
+        (resource.data.expiresAt == null ||
+         request.time < resource.data.expiresAt);
+
       allow create: if isStaff() && isIncomingSameOrg();
       allow update: if safeStaffUpdate();
       allow delete: if isOwnerInSameOrg();
