@@ -40,20 +40,26 @@ class _ParentRegisterScreenState extends ConsumerState<ParentRegisterScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
-      final result = await authService.registerParent(
+      final result = await authService.registerParentViaCF(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         fullName: _nameController.text.trim(),
       );
 
+      // v5: ViaCF returns {success: bool} - check before proceeding
+      if (result['success'] != true) {
+        final error = result['error'] ?? 'Registration failed';
+        throw Exception(error);
+      }
+
       await saveParentAuthData(
-        name: result['fullName'],
-        userId: result['id'],
-        email: result['email'],
+        name: _nameController.text.trim(),  // v5: ViaCF doesn't return fullName
+        userId: result['uid'],  // v5: ViaCF returns 'uid' not 'id'
+        email: _emailController.text.trim(),  // v5: ViaCF doesn't return email
         organizationId: result['organizationId'],
         hasCompletedSetup: false,
         authProvider: 'password',
-      
+
         ref: ref,);
 
       if (mounted) {

@@ -119,6 +119,13 @@ export const syncClaims = onCall(
     const customClaims = buildCustomClaims(role, organizationId);
     await admin.auth().setCustomUserClaims(targetUserId, customClaims);
 
+    // v5: Increment roleVersion to trigger client-side claims refresh
+    // (rbacInitProvider listener picks this up and calls getIdTokenResult(true))
+    await admin.firestore().collection('users').doc(targetUserId).set(
+      { roleVersion: admin.firestore.FieldValue.increment(1) },
+      { merge: true }
+    );
+
     // ─── Audit Log ──────────────────────────────────────────────────────
     await db.collection('audit_logs').add({
       organizationId: organizationId,

@@ -43,17 +43,24 @@ class _OwnerRegisterScreenState extends ConsumerState<OwnerRegisterScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
-      final result = await authService.registerOwner(
+      final result = await authService.registerOwnerViaCF(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         fullName: _nameController.text.trim(),
+        organizationName: _nameController.text.trim(),  // v5: org name (can change in setup)
       );
+
+      // v5: ViaCF returns {success: bool} - check before proceeding
+      if (result['success'] != true) {
+        final error = result['error'] ?? 'Registration failed';
+        throw Exception(error);
+      }
 
       await saveTeacherAuthData(
         role: AppConstants.roleOwner,
-        name: result['fullName'],
-        userId: result['id'],
-        email: result['email'],
+        name: _nameController.text.trim(),  // v5: ViaCF doesn't return fullName
+        userId: result['uid'],  // v5: ViaCF returns 'uid' not 'id'
+        email: _emailController.text.trim(),  // v5: ViaCF doesn't return email
         organizationId: result['organizationId'],
         hasCompletedSetup: false,
         authProvider: 'password',
