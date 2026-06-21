@@ -6663,3 +6663,61 @@ Stage Summary:
   4. Commit + push + deploy
   5. THEN do Step 4 (StatefulShellRoute) manually with TeacherShell refactor + per-tab
      StatefulBranch + manual QA on tab switching
+
+---
+Task ID: final-wiring-audit-v3-v4
+Agent: Super Z (main)
+Task: Audit "Final Wiring v3" Python script (4 steps, Step 4 skipped)
+
+Work Log:
+- Read v3 script: same 3-step pattern as v2 with ViaCF signature handling
+- Step 1 (owner_register_screen -> registerOwnerViaCF):
+  * CRITICAL: regex `r"final result = await \w+\.registerOwner\("` uses \w+ which
+    doesn't match `ref.read(authServiceProvider).registerOwner(` (Riverpod pattern)
+    - \w+ only matches word chars, not dots/parens
+    - If screen uses Riverpod, regex silently fails - no ViaCF rename
+  * CRITICAL: even if regex matches, replacement hardcodes `await authService.registerOwnerViaCF(`
+    - Throws away original receiver - if original was `ref.read(authServiceProvider)`,
+      new code references undefined `authService` variable -> compile error
+  * CRITICAL: `organizationName: _nameController.text.trim()` hack
+    - Names the org after the owner's personal name (e.g. "John Smith" org)
+    - Comment says "can change in setup" but if no setup screen, permanent data bug
+  * Minor: `content.replace("result['id']", "result['uid']")` is global (no count=1)
+    - Probably safe (no real substring collisions in field names) but should use regex
+- Step 2 (parent_register_screen -> registerParentViaCF):
+  * Same receiver-hardcoding bug as Step 1
+  * Same `result['id']` global replace issue
+  * Success check insertion assumes `saveTeacherAuthData(` exists in parent screen
+    - If parent screen calls `saveParentAuthData(` or writes Firestore directly,
+      success check is silently skipped -> parent registration can fail silently
+- Step 3 (syncClaims roleVersion):
+  * CRITICAL: uses `db.collection('users')` but doesn't verify `db` is in scope
+    - v2 had a warning for this; v3 dropped the warning
+    - If `const db = ...` not defined near top of syncClaims.ts, won't compile
+  * Fixed paren counting from v2 (starts at "setCustomUserClaims(" not "auth().")
+  * Trailing whitespace skip too aggressive: `while ... in ' \t\r\n;'` skips newlines
+    - Might skip past intended insertion point if blank line follows the `;`
+- Step 4 (StatefulShellRoute): correctly SKIPPED, same as v2
+
+Stage Summary:
+- Saved corrected script: /home/z/my-project/download/patches/apply-final-wiring-v4.py
+- v4 corrections:
+  1. Receiver-preserving regex: `r"(\b\w+(?:\.[a-zA-Z_]\w*)*(?:\([^)]*\))?)\.registerOwner\("`
+     - Matches both `authService.registerOwner(` AND `ref.read(authServiceProvider).registerOwner(`
+     - Captures the full receiver as group(1), preserves it in the replacement
+  2. Step 3 uses `admin.firestore().collection('users')` directly (no `db` scope dependency)
+  3. Step 1 does NOT auto-pass organizationName from _nameController
+     - Inserts a TODO comment instead so developer wires up a proper form field
+  4. Success check inserted BEFORE first await after ViaCF call
+     - Uses paren counting to find end of ViaCF call, skips trailing `;` and newline
+     - Works regardless of whether screen calls saveTeacherAuthData or something else
+  5. `result['id']` -> `result['uid']` uses `re.subn(r"result\['id'\](?![a-zA-Z])", ...)`
+     - Word boundary prevents corrupting `result['idToken']` or `result['identity']`
+  6. Pre-flight check: verifies registerOwnerViaCF and registerParentViaCF exist
+     on AuthService before applying any changes
+- Recommended user workflow:
+  1. Run apply-final-wiring-v4.py from repo root (pre-flight will check ViaCF existence)
+  2. If functions build fails - check error, likely ViaCF signature mismatch
+  3. After deploy: manually add _orgNameController field to owner_register_screen
+     and pass organizationName properly (remove TODO comment)
+  4. THEN do Step 4 (StatefulShellRoute) manually with TeacherShell refactor
