@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/app_constants.dart';
-import 'exam_stats_service.dart';
-import 'notification_service.dart';
+import '../../../core/services/exam_stats_service.dart';
+import '../../../core/services/notification_service.dart';
 
 class SubmissionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

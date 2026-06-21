@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/config/app_constants.dart';
-import 'performance_trace_service.dart';
+import '../../../core/services/performance_trace_service.dart';
 
 class ExamStatsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

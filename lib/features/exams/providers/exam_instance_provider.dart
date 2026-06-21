@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../core/services/exam_instance_service.dart';
-import '../core/services/qr_enrollment_service.dart';
+import '../../../core/services/exam_instance_service.dart';
+import '../../../core/services/qr_enrollment_service.dart';
 
 // ==================== EXAM INSTANCE PROVIDERS ====================
 

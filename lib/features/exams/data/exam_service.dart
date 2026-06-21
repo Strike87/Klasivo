@@ -1,9 +1,9 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/config/app_constants.dart';
-import 'notification_service.dart' as notif_service;
-import 'search_keyword_service.dart';
-import 'performance_trace_service.dart';
+import '../../../core/services/notification_service.dart' as notif_service;
+import '../../../core/services/search_keyword_service.dart';
+import '../../../core/services/performance_trace_service.dart';
 
 class ExamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
