@@ -6721,3 +6721,61 @@ Stage Summary:
   3. After deploy: manually add _orgNameController field to owner_register_screen
      and pass organizationName properly (remove TODO comment)
   4. THEN do Step 4 (StatefulShellRoute) manually with TeacherShell refactor
+
+---
+Task ID: final-wiring-audit-v4-v5
+Agent: Super Z (main)
+Task: Apply user's audit of v4 (organizationName compile failure + null-return keys)
+
+Work Log:
+- User audited v4 against actual code (auth_service.dart + both register screens)
+- User confirmed v4's strengths:
+  * Pre-flight check for ViaCF methods - works
+  * Receiver-preserving regex - works (both screens use authService.registerOwner()
+    so receiver is preserved correctly)
+  * result['id'] -> result['uid'] with word boundary - correct
+  * Success check insertion - good approach
+  * syncClaims uses admin.firestore() directly - safe
+  * StatefulShellRoute skipped - correct
+- User found 1 CRITICAL compile-blocking bug:
+  * registerOwnerViaCF signature has `required String organizationName` (line 123)
+  * v4 only added a TODO comment, didn't pass the param
+  * Dart refuses to compile -> guaranteed build failure
+- User found 2 runtime data bugs:
+  * registerOwnerViaCF returns {success, uid, organizationId, role} - no fullName/email
+  * registerParentViaCF returns {success, uid, role} - no fullName/email
+  * Screens reference result['fullName'], result['email'], result['hasCompletedSetup']
+    - Dart Map returns null for missing keys (no crash)
+    - But user's name/email would be null in Hive -> broken dashboard
+- User reversed my earlier organizationName objection:
+  * I had flagged passing _nameController.text.trim() as a "permanent data bug"
+  * User decided: pragmatic - org name = owner name, user can change in setup screen
+  * Acceptable tradeoff for getting registration working
+
+Stage Summary:
+- Saved v5: /home/z/my-project/download/patches/apply-final-wiring-v5.py
+- v5 changes from v4:
+  1. Step 1 (owner): replaced TODO comment block with actual organizationName pass
+     - Uses regex `r"(fullName:\s*_nameController\.text\.trim\(\),)"` to find the
+       fullName line and append organizationName line after it (count=1)
+     - Fallback: if fullName pattern doesn't match, inserts before closing paren of
+       ViaCF call using paren counting
+  2. Step 1 (owner): added 3 new result key replacements:
+     - result['fullName'] -> _nameController.text.trim()
+     - result['email'] -> _emailController.text.trim()
+     - result['hasCompletedSetup'] (with ?? false / ?? true / bare) -> false
+  3. Step 2 (parent): added same 3 result key replacements
+     - Parent screen has the same null-key issue as owner screen
+  4. Commit message updated to reflect v5 changes vs v4
+- Order-of-operations safety:
+  - result['hasCompletedSetup'] ?? false -> false  (specific first)
+  - result['hasCompletedSetup'] ?? true -> false   (specific second)
+  - result['hasCompletedSetup'] -> false           (bare last - catches remaining)
+- Recommended user workflow:
+  1. Copy apply-final-wiring-v5.py to repo root and run it
+  2. Pre-flight will verify ViaCF methods exist
+  3. If functions build succeeds -> commit + push + deploy
+  4. Test owner registration - org will be named after owner's name
+  5. Test parent registration
+  6. Test role changes - claims should refresh within 5s
+  7. Test dashboard shows correct name/email (not null)
