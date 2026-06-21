@@ -7062,3 +7062,43 @@ Stage Summary:
 - Pending user action: pull + deploy the two functions
 - After deploy: parent registration should work; owner registration (which may also have been silently broken) will also work
 - Note: this is the THIRD rules/security-related breakage from the P1-4 patch (1. invite_codes reads → fixed in 02e97c2, 2. users/{uid} create for owner → fixed in ebfa4e1 by switching to CF, 3. enforceAppCheck on the CF itself → fixed in 3fbf855). The pattern is: each tightening layer exposed the next. Suggest a regression test that exercises all 4 registration flows (owner email, teacher email+invite, parent email, student via CF) end-to-end before any future security patch is merged.
+
+---
+Task ID: reg-test
+Agent: Super Z (main)
+Task: Add regression test exercising all registration flows (response to "Before any future security patch, suggest adding a regression test")
+
+Work Log:
+- Audited existing test infrastructure:
+  - test/integration/auth_flow_test.dart (1070 lines, uses FakeFirebaseFirestore + TestableAuthFlowService that simulates Firestore writes)
+  - test/core/services/auth_service_test.dart (minimal — only tests AuthProviders constants + generateWorkspaceSuggestions)
+  - No Firebase Auth mocks in pubspec; only fake_cloud_firestore + mocktail
+  - FirebaseFunctions.instance is a static singleton — mocking it would require adding firebase_functions_mock package
+- Chose STATIC CONTRACT TEST approach instead of runtime test:
+  - Pro: no live Firebase needed, fast, deterministic
+  - Pro: catches the exact pattern of bugs we hit (wrong CF name, wrong arg shape, enforceAppCheck:true, rules too tight/loose)
+  - Con: doesn't verify runtime behavior (acceptable — runtime tests would need emulator suite)
+- Created test/integration/registration_contract_test.dart (477 lines, 60 assertions, 6 groups):
+  - A1. registerOwnerViaCF → registerOwner CF (21 assertions): CF name, arg shape, return shape, role:owner via Admin SDK, rollback, email-duplicate guard, NO enforceAppCheck:true
+  - A2. registerParentViaCF → registerParent CF (22 assertions): same pattern + organizationId: '' (not null) + studentCode → parent_links linking
+  - A3. registerTeacherWithInvite (8 assertions): validate invite BEFORE Auth creation, role:teacher (never owner), rollback, marks code used
+  - A4. Student creation → createStudent CF (3 assertions)
+  - B. firestore.rules contract (7 assertions): users/{uid} create allows exactly {student,parent,teacher}; auth.uid == userId; organizationId is string; invite_codes !isAuth() reads; client delete forbidden; self-update blocks privilege escalation fields
+  - C. AppConstants role values (3 assertions): ensures 'owner'/'teacher'/'student'/'parent' literal strings stay in sync with rules + CFs
+- Hit 2 false negatives during initial verification:
+  - Order check searched whole file (registerWithEmail appears at line 192 in deprecated registerOwner); fixed to scope to method block
+  - Role check looked for 'role: AppConstants.roleTeacher' but actual code has 'role': AppConstants.roleTeacher (quoted map key); fixed
+- Verified all 60 assertions pass against current source via Python equivalent script (Flutter SDK not installed on server)
+- Committed: 72418a4 test(registration): add contract regression test for all registration flows
+- Pushed to origin/main
+
+Stage Summary:
+- New file: test/integration/registration_contract_test.dart (477 lines, 60 assertions)
+- Commit: 72418a4 (pushed to origin/main)
+- User should run: flutter test test/integration/registration_contract_test.dart
+- If any assertion fails in the future, the failure message points at the exact commit that introduced the pattern (02e97c2, ebfa4e1, 3fbf855) so the developer knows which contract was violated and why
+- This test would have caught all 3 of the P1-4 breakages BEFORE manual testing — exactly the regression net the user asked for
+- Limitations: static contract only (no runtime behavior verification). A follow-up could add:
+  1. functions/test/ with firebase-functions-test to verify CF internal logic (input validation, rollback actually fires, email-duplicate guard returns the right HttpsError code)
+  2. Emulator suite tests to verify rules actually allow/deny as intended under real Auth contexts
+  3. Widget tests with mocked AuthService to verify UI flow (form submission, error display, navigation on success)
