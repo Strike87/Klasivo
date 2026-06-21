@@ -6966,3 +6966,74 @@ Stage Summary:
     - all are undefined_identifier errors, likely also import-related
 - v5 deployment is safe to proceed. The pre-existing errors do not affect
   the registration flow or syncClaims functionality.
+
+---
+Task ID: analyze-cleanup-phases-1-5
+Agent: Super Z (main)
+Task: Execute 5-phase flutter analyze cleanup plan
+
+Work Log:
+- Verified clean working tree on commit cdd0f89 (post-v5)
+- Phase 1: Edited analysis_options.yaml
+  - Added 'docs/**', 'sprints/**', 'extracted/**' to analyzer.exclude
+  - Removed 3 dead lint rules: control_flow_in_finally_blocks, invariant_booleans,
+    prefer_equal_for_default_values
+  - Commit: 8dcfc59
+- Phase 2: Bulk-fixed broken app_constants.dart imports in 5 lib/features/ files
+  - lib/features/submissions/data/submission_service.dart
+  - lib/features/exams/data/{exam_service,exam_stats_service,exam_instance_service,
+    exam_template_service}.dart
+  - Old: '../config/app_constants.dart' (resolves to lib/features/<feature>/config/)
+  - New: '../../../core/config/app_constants.dart' (resolves to lib/core/config/)
+  - Left lib/core/services/*.dart untouched (their '../config/' is correct)
+  - Commit: e56de0a
+- Phase 3: Fixed broken service + provider imports in 7 files
+  - lib/features/submissions/data/submission_service.dart (bare-name services)
+  - lib/features/exams/data/{exam_service,exam_stats_service}.dart (bare-name services)
+  - lib/features/submissions/providers/submission_provider.dart (broken ../core/)
+  - lib/features/exams/providers/{exam_instance,exam_template,exam_stats}_provider.dart
+    (broken ../core/ + bare-name providers)
+  - All now use '../../../core/services/<svc>.dart' or '../../../providers/<p>.dart'
+  - Commit: 1196519
+- Phase 4: Fixed livekit_repository.dart domain model imports
+  - 7 imports changed from 'domain/<model>.dart' to '../domain/<model>.dart'
+  - Resolves LiveKitRoom, LiveKitAttendance, LiveKitChatMessage, LiveKitRaisedHand,
+    Recording, ScheduledClass, SessionAnalytics type errors
+  - Note: most "isn't a type" errors from original analyze were actually broken
+    imports (ExamStatsData, ExamInstanceService, etc.) — already fixed by Phase 3
+  - Commit: 532dc8c
+- Phase 5: Added tokens.dart import to 7 user_management pages
+  - All 256 errors in user_management/ were 'Undefined name AppColors'
+  - Root cause: lib/core/config/theme.dart does 'import' (not 'export') of
+    tokens/tokens.dart, so importing theme.dart alone doesn't bring AppColors
+    into scope
+  - Added 'import ../../../core/tokens/tokens.dart;' to each screen
+  - Commit: dafeb3d
+- All 5 commits pushed to origin/main
+- Functions build (tsc) stays clean throughout
+
+Stage Summary:
+- Total commits: 5 (one per phase) on top of v5
+- Files changed: 1 + 5 + 7 + 1 + 7 = 21 files
+- Lines: +42/-35 (net +7 — almost all changes are import path corrections)
+- Expected error reduction: 739 -> ~20 (97% reduction)
+  - Phase 1: -182 (docs/sprints excluded)
+  - Phase 2: -~100 (app_constants imports fixed)
+  - Phase 3: -~200 (service + provider imports fixed)
+  - Phase 4: -~35 (livekit domain imports fixed)
+  - Phase 5: -256 (AppColors resolved via tokens.dart import)
+  - Remaining ~20: pre-existing invalid_constant errors in lib/core/analytics/,
+    lib/core/feature_flags/, test/widgets/ — outside scope of this cleanup
+- Could not run flutter analyze locally (Flutter SDK not installed) but:
+  - All changes are minimal (import path corrections + 1 import added per file)
+  - All target files verified to exist at the new import paths
+  - Functions build (tsc) is clean after every phase
+- User should run 'flutter analyze' on Windows to verify the actual count
+- Remaining manual work for user:
+  1. git pull on Windows
+  2. flutter analyze (verify error count dropped to ~20)
+  3. If count is higher, look for:
+     - Other broken relative imports (same pattern: '../X' should be '../../../X')
+     - Other design-token usages without tokens.dart import
+  4. Optional: dedupe lib/features/exams/data/*.dart vs lib/core/services/exam_*.dart
+     (3 files are identical duplicates, 1 differs by ~76 lines)
