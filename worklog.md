@@ -6814,3 +6814,67 @@ Stage Summary:
     - Convert each ShellRoute -> StatefulShellRoute.indexedStack
     - One StatefulBranch per tab
     - Manual QA on tab switching (Dashboard -> Academic -> People -> back -> no reload)
+
+---
+Task ID: final-wiring-v5-applied
+Agent: Super Z (main)
+Task: Apply v5 changes to local Klasivo repo + commit + push
+
+Work Log:
+- User said "do it" after confirming v5 was approved
+- Discovered local Klasivo repo exists at /home/z/my-project/ (not Windows)
+- Verified pre-flight: registerOwnerViaCF (line 123) and registerParentViaCF
+  (line 1194) both exist on AuthService with required String organizationName
+- Found parent screen at lib/features/parent/pages/parent_register_screen.dart
+  (script's path guess lib/features/auth/pages/ was wrong - rglob fallback needed)
+- Discovered Google-flow preservation issue:
+  * registerOwnerWithGoogle calls _signInWithGoogle which returns 'id' (not 'uid')
+  * registerParentWithGoogle same - returns 'id' from _signInWithGoogle
+  * v5 script's re.subn(r"result\['id'\](?![a-zA-Z])", ...) has no count limit
+    - would replace ALL result['id'] occurrences including Google flow
+    - would break Google sign-in silently (userId becomes null)
+- Decided to apply v5 manually via Edit tool instead of running script
+  - scoped each replacement to email flow's saveTeacherAuthData / saveParentAuthData
+    call block only
+  - Google flow's result['id'] at line 96 (owner) / line 87 (parent) untouched
+- Applied 3 edits:
+  1. syncClaims.ts: inserted roleVersion increment after setCustomUserClaims
+     - used admin.firestore() directly (db is in scope but admin.firestore()
+       is more self-documenting)
+  2. owner_register_screen.dart: email flow (lines 44-68)
+     - registerOwner -> registerOwnerViaCF
+     - added organizationName: _nameController.text.trim()
+     - added success check
+     - result['fullName'] -> _nameController.text.trim()
+     - result['id'] -> result['uid']
+     - result['email'] -> _emailController.text.trim()
+  3. parent_register_screen.dart: email flow (lines 41-63)
+     - same set of changes as owner screen
+- Verified functions build: npm run build -> tsc -> clean (no errors)
+- Could not run flutter analyze (Flutter SDK not installed locally)
+  - but changes are minimal and type-compatible:
+    * method rename (verified ViaCF exists with compatible sig)
+    * required String param (organizationName is String, _nameController.text is String)
+    * Map indexing unchanged (result['uid'] is dynamic, same as result['id'])
+- Committed: f7b733d
+- Pushed: https://github.com/Strike87/Klasivo/commit/f7b733d
+
+Stage Summary:
+- v5 patch applied to local repo + pushed to GitHub
+- 3 files changed, 29 insertions(+), 9 deletions(-)
+- Google sign-in flows preserved (would have been broken by v5 script's
+  global result['id'] replacement)
+- Functions build clean
+- Remaining manual work for user:
+  1. Pull latest on Windows: git pull
+  2. Run flutter analyze to verify Dart compiles
+  3. Run flutter test (if any auth tests exist)
+  4. Deploy: firebase deploy --only functions,firestore:rules,firestore:indexes
+  5. Verify in prod:
+     - Owner registers via email -> succeeds (CF, org = owner name)
+     - Parent registers via email -> succeeds (CF)
+     - Owner registers via Google -> still works (untouched)
+     - Parent registers via Google -> still works (untouched)
+     - Dashboard shows correct name/email (not null)
+     - Admin changes role -> user's claims refresh within 5s
+  6. THEN do Step 4 (StatefulShellRoute) in separate session
