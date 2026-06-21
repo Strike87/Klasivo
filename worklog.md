@@ -7102,3 +7102,46 @@ Stage Summary:
   1. functions/test/ with firebase-functions-test to verify CF internal logic (input validation, rollback actually fires, email-duplicate guard returns the right HttpsError code)
   2. Emulator suite tests to verify rules actually allow/deny as intended under real Auth contexts
   3. Widget tests with mocked AuthService to verify UI flow (form submission, error display, navigation on success)
+
+---
+Task ID: fix-student-notif-classes
+Agent: Super Z (main)
+Task: Fix student creation unauthenticated, notifications permission-denied, classes disappearing
+
+Work Log:
+- Issue #1 (createStudent unauthenticated):
+  - Inspected functions/src/functions/createStudent.ts line 203: enforceAppCheck: true
+  - Same anti-pattern as registerOwner/registerParent (fixed in 3fbf855)
+  - Fix: removed enforceAppCheck: true. Auth still enforced via request.auth check.
+
+- Issue #2 (notifications permission-denied):
+  - Inspected NotificationCenterScreen pagination query: filtered by userId only
+  - firestore.rules /notifications: allow read: if isAuth() && isInSameOrg() && (isStaff() || resource.data.userId == request.auth.uid)
+  - isInSameOrg() checks resource.data.organizationId == getUserOrgId()
+  - Query without org filter → Firestore can't guarantee rule → permission-denied (rules are not filters)
+  - Fix: added QueryFilter.equalTo('organizationId', orgId) to pagination filters
+
+- Issue #3 (classes disappearing):
+  - Root cause A: GradeService.getGradesByStageStream queried classes by stageId only (no org filter)
+  - Same rules-are-not-filters issue → stream errors → error handler returns [] → classes "disappear"
+  - Also found: StageService.getClassCount and StageService.deleteStage cascade query missing org filter
+  - Fix: added organizationId parameter + filter to all three methods, updated callers
+  - Root cause B: registerTeacherWithInvite never called syncClaims CF
+  - Custom claims (role, organizationId) never set in Auth token
+  - rbacInitProvider returns early (!claims.isValid) → RBAC state never populated
+  - Fix: registerTeacherWithInvite now calls syncClaims CF after user doc creation (non-fatal on failure)
+  - Also removed enforceAppCheck: true from syncClaims CF (same pattern)
+
+- Verified TypeScript build (npm run build in functions/) — clean, no errors
+- Committed: 3050bfd
+- Pushed to origin/main
+
+Stage Summary:
+- 7 files changed: createStudent.ts, syncClaims.ts, auth_service.dart, grade_service.dart, stage_service.dart, notification_center_screen.dart, grade_provider.dart
+- Commit: 3050bfd (pushed to origin/main)
+- User actions:
+  1. git pull
+  2. flutter analyze (should be 0 errors)
+  3. firebase deploy --only functions:createStudent,functions:syncClaims
+  4. Test: create student, check notifications, check classes stability
+- Pattern: this is the FOURTH round of fixes for the P1-4 security tightening. The rules are correct, but the client queries were not org-scoped. Suggest a follow-up audit of ALL Firestore queries to ensure every one filters by organizationId when the collection has isInSameOrg() in its read rule.
