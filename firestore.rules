@@ -45,6 +45,18 @@ service cloud.firestore {
         resource.data.organizationId == getUserOrgId();
     }
 
+    // Helper: Check if user is in the same organization as a resource whose
+    // DOCUMENT ID IS the organization ID (e.g., organizations/{orgId}).
+    // Organizations docs don't carry an `organizationId` field — the doc ID
+    // is the org ID. Using isInSameOrg() on these docs always fails because
+    // `resource.data.organizationId` is null. This helper closes that gap.
+    function isInSameOrgById(orgId) {
+      return callerHasValidOrgId() &&
+        orgId is string &&
+        orgId.size() > 0 &&
+        orgId == getUserOrgId();
+    }
+
     // Helper: Check if the incoming write data belongs to the same org (D8 strict).
     function isIncomingSameOrg() {
       return callerHasValidOrgId() &&
@@ -449,7 +461,14 @@ service cloud.firestore {
       // Previous rule (allow read: if isAuth()) let any authed user enumerate
       // every org's metadata (ownerId, name, slug, plan, billing).
       // Invite code lookup should go through invite_codes collection, not here.
-      allow read: if isAuth() && isInSameOrg();
+      //
+      // P0-4 FIX: Use isInSameOrgById(orgId) instead of isInSameOrg().
+      // Organizations docs don't have an `organizationId` field — the doc ID
+      // IS the org ID. isInSameOrg() checks `resource.data.organizationId`
+      // which is null on org docs → always returns false → owners could
+      // neither read nor update their own org → completeOwnerSetup failed
+      // with cloud_firestore/permission-denied.
+      allow read: if isAuth() && isInSameOrgById(orgId);
       // P2-2: Block ALL client-side org creation. Server-only via registerOwner CF.
       // Previous rule allowed any authenticated user to create unlimited orgs.
       allow create: if false;
@@ -458,7 +477,7 @@ service cloud.firestore {
       // be able to mutate org metadata. Additionally, the `shutdownRequested`
       // field can ONLY be set by the owner (enforced here) — the 24h cooldown
       // is checked by the deleteOrganization Cloud Function before archival.
-      allow update: if isAuth() && isInSameOrg() &&
+      allow update: if isAuth() && isInSameOrgById(orgId) &&
         isOwner() &&
         // C-08: Block client mutation of audit fields
         !request.resource.data.diff(resource).affectedKeys()

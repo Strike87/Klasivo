@@ -862,6 +862,28 @@ class AuthService {
 
   // ─── Teacher Registration via Invite Code ──────────────────────────────────
 
+  /// P0-3 FIX: Register teacher via Cloud Function.
+  ///
+  /// Previous: this method did everything client-side (validate invite,
+  /// registerWithEmail, create user doc, flip invite_codes.isUsed). The
+  /// invite_codes update required `safeStaffUpdate()` which requires
+  /// `isStaffInSameOrg()` — but the newly-created teacher's custom claims
+  /// hadn't been synced yet (syncClaims runs AFTER the invite flip), so
+  /// the rules engine couldn't reliably verify org membership →
+  /// cloud_firestore/permission-denied.
+  ///
+  /// The CF (functions/src/functions/registerTeacher.ts) atomically:
+  ///   1. Looks up the invite code (Admin SDK bypasses rules)
+  ///   2. Validates: type='teacher', isUsed=false, not expired, under limit
+  ///   3. Creates the Firebase Auth account
+  ///   4. Creates the users/{uid} doc with role:'teacher' + organizationId
+  ///   5. Sets custom claims (role, organizationId, roleVersion)
+  ///   6. Atomically flips invite: isUsed=true, usedBy, usedAt, useCount++
+  ///   7. Writes an audit log
+  ///   8. Returns { uid, organizationId, role, fullName, email }
+  ///
+  /// After the CF succeeds, this method signs the user in with the provided
+  /// email + password so subsequent Firestore reads are authenticated.
   Future<Map<String, dynamic>> registerTeacherWithInvite({
     required String email,
     required String password,
@@ -874,166 +896,96 @@ class AuthService {
     );
 
     try {
-      // Validate invite code
-      final inviteService = InviteCodeService();
-      final codeData = await inviteService.validateInviteCode(inviteCode);
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('registerTeacher')
+          .call({
+        'email': email,
+        'password': password,
+        'fullName': fullName,
+        'inviteCode': inviteCode,
+      });
 
-      if (codeData == null) {
-        throw Exception('Invalid or expired invite code.');
+      final data = result.data as Map<String, dynamic>;
+      if (data['success'] != true) {
+        throw Exception(data['error'] ?? 'Teacher registration failed');
       }
 
-      if (codeData['type'] != AppConstants.inviteTypeTeacher) {
-        throw Exception('This invite code is not for teachers.');
-      }
+      final uid = data['uid'] as String;
+      final organizationId = data['organizationId'] as String;
 
-      final organizationId = codeData['organizationId'] as String;
-
-      // Create Firebase Auth account
-      final userCredential =
-          await FirebaseService.registerWithEmail(email, password);
-      final user = userCredential.user!;
+      // Sign in the newly created user so subsequent Firestore reads are
+      // authenticated (the CF uses Admin SDK which bypasses rules; the client
+      // now needs its own Auth session to read its own user doc).
+      await FirebaseService.loginWithEmail(email, password);
 
       Sentry.addBreadcrumb(Breadcrumb(
         category: 'registration',
-        message: 'STEP_1_AUTH_USER_CREATED',
-        data: {'uid': user.uid, 'email': email, 'role': 'teacher'},
+        message: 'TEACHER_REGISTRATION_VIA_CF_SUCCESS',
+        data: {
+          'uid': uid,
+          'organizationId': organizationId,
+          'email': email,
+        },
       ));
 
       await Sentry.configureScope((scope) {
-        scope.setUser(SentryUser(id: user.uid, email: email));
+        scope.setUser(SentryUser(id: uid, email: email));
         scope.setTag('role', 'teacher');
         scope.setTag('organizationId', organizationId);
       });
 
-      final isEmailVerified = user.emailVerified;
-
-      // Create user document with teacher role
-      Sentry.addBreadcrumb(Breadcrumb(
-        category: 'registration',
-        message: 'STEP_2_USER_DOC_CREATE_START',
-      ));
-
-      final createUserDocSpan = transaction.startChild('create_user_doc');
-
-      try {
-        await SentryFirestoreHelper.docSet(
-          collection: AppConstants.usersCollection,
-          docId: user.uid,
-          data: {
-            'organizationId': organizationId,
-            'role': AppConstants.roleTeacher,
-            'authProvider': AuthProviders.password,
-            'fullName': fullName,
-            'email': email,
-            'photoUrl': null,
-            'phoneNumber': null,
-            'isActive': true,
-            'isEmailVerified': isEmailVerified,
-            'hasCompletedSetup': true,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          flow: 'teacher_registration',
-          step: 'STEP_2_USER_DOC_CREATE',
-        );
-
-        KlasivoSentry.docIdAudit.logUserCreation(
-          flow: 'teacher_registration',
-          collection: AppConstants.usersCollection,
-          docIdStrategy: 'uid',
-          actualDocId: user.uid,
-          authUid: user.uid,
-        );
-
-        // Read-back verification for teacher registration
-        final verifyTeacherDoc = await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .get();
-        if (!verifyTeacherDoc.exists) {
-          await KlasivoObservability.reportMessage(
-            'STEP_2 TEACHER DOC SET SUCCEEDED BUT READ-BACK FAILED — '
-            'doc users/${user.uid} does not exist after .set()',
-            level: SentryLevel.error,
-            tags: {'flow': 'teacher_registration', 'step': 'STEP_2_READBACK'},
-          );
-        } else {
-          Sentry.addBreadcrumb(Breadcrumb(
-            category: 'registration',
-            message: 'STEP_2_USER_DOC_READBACK_VERIFIED',
-            data: {'uid': user.uid, 'docExists': true},
-          ));
-        }
-
-        createUserDocSpan.status = const SpanStatus.ok();
-      } catch (e, st) {
-        createUserDocSpan.status = const SpanStatus.internalError();
-        rethrow;
-      } finally {
-        await createUserDocSpan.finish();
-      }
-
-      Sentry.addBreadcrumb(Breadcrumb(
-        category: 'registration',
-        message: 'STEP_2_USER_DOC_CREATE_SUCCESS',
-        data: {'uid': user.uid},
-      ));
-
-      // Mark invite code as used
-      await _firestore
-          .collection(AppConstants.inviteCodesCollection)
-          .doc(codeData['id'])
-          .update({
-        'isUsed': true,
-        'usedBy': user.uid,
-        'usedAt': FieldValue.serverTimestamp(),
-        'useCount': FieldValue.increment(1),
-      });
-
-      // Sync custom claims server-side (role + organizationId).
-      // Without this, getIdTokenResult() returns empty claims →
-      // rbacInitProvider returns early → RBAC state never populated →
-      // UI permission checks fail. The syncClaims CF sets claims AND
-      // increments roleVersion to trigger client-side token refresh.
+      // Sync claims on the client (non-fatal — the CF already set claims
+      // server-side; this just refreshes the client's Auth token so the
+      // claims are visible to getIdTokenResult() immediately).
       try {
         await FirebaseFunctions.instance
             .httpsCallable('syncClaims')
             .call({});
       } catch (e) {
-        // Non-fatal: claims will be synced on next app open via
-        // rbacInitProvider. Log but don't fail registration.
         Sentry.addBreadcrumb(Breadcrumb(
           category: 'registration',
-          message: 'STEP_3_SYNC_CLAIMS_FAILED',
-          data: {'uid': user.uid, 'error': e.toString()},
+          message: 'STEP_POST_CF_SYNC_CLAIMS_FAILED',
+          data: {'uid': uid, 'error': e.toString()},
           level: SentryLevel.warning,
         ));
       }
 
       transaction.status = const SpanStatus.ok();
 
+      // Return the same shape as the old client-side flow so the
+      // TeacherRegistrationScreen doesn't need changes.
       return {
-        'id': user.uid,
+        'id': uid,
         'organizationId': organizationId,
         'role': AppConstants.roleTeacher,
         'authProvider': AuthProviders.password,
         'fullName': fullName,
         'email': email,
-        'isEmailVerified': isEmailVerified,
+        'isEmailVerified': false,
         'hasCompletedSetup': true,
       };
-    } catch (e) {
-      // A9 PATCH: Rollback orphaned Auth account on any failure.
-      // registerTeacherWithInvite creates the Auth account at registerWithEmail
-      // (line ~758) BEFORE writing the Firestore user doc. If the doc write or
-      // invite-code update fails, the Auth account is orphaned.
-      await _rollbackOrphanedAuthAccount(
-        flow: 'registerTeacherWithInvite',
-        originalError: e,
-        email: email,
-        password: password,
-      );
+    } on FirebaseFunctionsException catch (e, st) {
       transaction.status = const SpanStatus.internalError();
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Teacher registration CF failed',
+        tags: {
+          'flow': 'teacher_registration',
+          'cf': 'registerTeacher',
+          'code': e.code,
+        },
+      );
+      // Surface the CF's error message verbatim (it's user-friendly).
+      throw Exception(e.message ?? 'Teacher registration failed');
+    } catch (e, st) {
+      transaction.status = const SpanStatus.internalError();
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Teacher registration failed (non-CF error)',
+        tags: {'flow': 'teacher_registration'},
+      );
       rethrow;
     } finally {
       await transaction.finish();
@@ -1231,12 +1183,18 @@ class AuthService {
 
       final data = result.data as Map<String, dynamic>;
       final uid = data['uid'] as String;
+      // P0-5 FIX: propagate organizationId from the CF so the client can
+      // save it immediately. Previously this was dropped, leaving the
+      // parent with no org in Hive → GoRouter redirect loop on
+      // /auth/parent-link (parentPortal flag=false on free plan).
+      final organizationId = (data['organizationId'] as String?) ?? '';
 
       await _auth.signInWithEmailAndPassword(email: email, password: password);
 
       return {
         'success': true,
         'uid': uid,
+        'organizationId': organizationId,
         'role': 'parent',
       };
     } on FirebaseFunctionsException catch (e) {

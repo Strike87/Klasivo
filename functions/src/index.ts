@@ -68,11 +68,14 @@ export { deleteStudent } from './functions/deleteStudent';
 // Pre-auth callable that creates Auth + Firestore + claims atomically.
 export { redeemInviteCode } from './functions/redeemInviteCode';
 
-// P0-1/P0-2: Owner + Parent registration CFs (Day 3 patch).
-// Client-side writes were blocked by Firestore rules (role:'owner' not in
-// allowed self-create list; organizationId:null fails is-string check).
+// P0-1/P0-2/P0-3: Owner + Parent + Teacher registration CFs (Day 3+ patch).
+// Client-side writes were blocked by Firestore rules:
+//   - role:'owner' not in allowed self-create list
+//   - organizationId:null fails is-string check (parent)
+//   - invite_codes update requires safeStaffUpdate() which fails pre-claim-sync (teacher)
 export { registerOwner } from './functions/registerOwner';
 export { registerParent } from './functions/registerParent';
+export { registerTeacher } from './functions/registerTeacher';
 
 // ─── RBAC Functions (v2 — migrated from v1) ───────────────────
 export { assignRole } from './functions/assignRole';

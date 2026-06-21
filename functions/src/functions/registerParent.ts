@@ -99,6 +99,16 @@ export const registerParent = onCall(
           roleVersion: 1,
         });
 
+        // ─── Compute final organizationId for the return payload ────────
+        // If a studentCode was provided AND a matching student was found,
+        // the parent's orgId is updated to the student's orgId. Otherwise
+        // the parent has no org yet (empty string) — they'll link a student
+        // later via /auth/parent-link which sets the org via the link flow.
+        // Returning organizationId here lets the client save it immediately
+        // instead of leaving it null (which previously caused GoRouter to
+        // redirect parents away from /auth/parent-link into a redirect loop).
+        let finalOrganizationId = '';
+
         // If studentCode provided, create parent_link + update parent's org to match student's org
         if (data.studentCode) {
           const studentSnapshot = await db.collection('users')
@@ -110,6 +120,7 @@ export const registerParent = onCall(
             const studentDoc = studentSnapshot.docs[0];
             if (studentDoc) {
               const studentOrgId = studentDoc.data()['organizationId'] as string;
+              finalOrganizationId = studentOrgId;
 
               // Update parent's org to match student's org
               await db.collection('users').doc(authUser.uid).update({
@@ -135,7 +146,12 @@ export const registerParent = onCall(
           }
         }
 
-        return { success: true, uid: authUser.uid };
+        return {
+          success: true,
+          uid: authUser.uid,
+          organizationId: finalOrganizationId,
+          role: 'parent',
+        };
       } catch (error: unknown) {
         if (authUser) {
           try { await auth.deleteUser(authUser.uid); } catch {}

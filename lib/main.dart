@@ -593,6 +593,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isOnSplash = state.matchedLocation == '/';
       final isOnAuth = state.matchedLocation.startsWith('/auth');
+      final isOnParentLink = state.matchedLocation == '/auth/parent-link';
       final isOnWelcome = state.matchedLocation == '/welcome';
       final isOnDashboard = state.matchedLocation.startsWith('/dashboard') ||
           state.matchedLocation.startsWith('/academic') ||
@@ -629,7 +630,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // Auth screens → redirect if already logged in
-      if (isOnAuth) {
+      // EXCEPTION: /auth/parent-link — parents MUST visit this screen
+      // after registration to link their child. Redirecting them away to
+      // /parent triggers the parentPortal feature-flag gate on the free
+      // plan → /parent bounces back to /auth → infinite redirect loop →
+      // GoRouter shows "Page not found". Allow parents to stay on
+      // /auth/parent-link regardless of auth state.
+      if (isOnAuth && !isOnParentLink) {
         if (isLoggedIn && userRole.isNotEmpty) {
           if (userRole == AppConstants.roleOwner && !hasCompletedSetup) {
             return '/welcome';
@@ -662,8 +669,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         }
 
         // Parent portal requires parentPortal flag
-        if (state.matchedLocation.startsWith('/parent') ||
-            state.matchedLocation.startsWith('/auth/parent')) {
+        // EXCEPTION: /auth/parent-link is the post-registration child-linking
+        // screen. It MUST be accessible to all parents even on the free plan
+        // (where parentPortal=false), because without linking a child the
+        // parent has no organization and cannot use the app at all.
+        if ((state.matchedLocation.startsWith('/parent') ||
+            state.matchedLocation.startsWith('/auth/parent')) &&
+            !isOnParentLink) {
           final flagService = ref.read(featureFlagServiceProvider);
           if (!flagService.isEnabled(FeatureFlags.parentPortal)) {
             if (userRole == AppConstants.roleParent) return '/auth';

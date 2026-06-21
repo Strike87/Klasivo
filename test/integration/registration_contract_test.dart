@@ -258,78 +258,95 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════════════
   // A3. Teacher email/password + invite (client-side flow)
   // ═══════════════════════════════════════════════════════════════════════════
-  group('A3. registerTeacherWithInvite (client-side flow)', () {
+  group('A3. registerTeacherWithInvite (CF-based flow)', () {
     late String authServiceSrc;
+    late String cfSrc;
 
     setUpAll(() {
       authServiceSrc = _readProjectFile('lib/core/services/auth_service.dart');
+      cfSrc = _readProjectFile('functions/src/functions/registerTeacher.ts');
     });
 
-    test('flow validates invite code BEFORE creating Auth account', () {
-      // The order MUST be: validateInviteCode → registerWithEmail → write doc.
-      // If a future patch reorders this, we leak orphaned Auth accounts when
-      // the invite code is invalid.
-      //
-      // We scope the search to the method body (not the whole file) because
-      // the file contains other registration methods that also call
-      // registerWithEmail (e.g. the deprecated registerOwner at line ~192).
+    test('client calls CF named "registerTeacher"', () {
+      // P0-3 FIX: Teacher registration moved to a Cloud Function because the
+      // old client-side flow tried to flip invite_codes.isUsed before the
+      // teacher's custom claims were synced → cloud_firestore/permission-denied.
       final methodIdx = authServiceSrc
           .indexOf('Future<Map<String, dynamic>> registerTeacherWithInvite');
       expect(methodIdx, greaterThanOrEqualTo(0));
       final methodBlock =
           authServiceSrc.substring(methodIdx, methodIdx + 5000);
 
-      final validateIdx = methodBlock.indexOf('validateInviteCode(inviteCode)');
-      final authIdx =
-          methodBlock.indexOf('FirebaseService.registerWithEmail(email, password)');
-      expect(validateIdx, greaterThanOrEqualTo(0),
-          reason: 'registerTeacherWithInvite must call validateInviteCode');
-      expect(authIdx, greaterThanOrEqualTo(0),
-          reason: 'registerTeacherWithInvite must call registerWithEmail');
-      expect(validateIdx, lessThan(authIdx),
-          reason: 'Invite code must be validated BEFORE Auth account is created. '
-              'Reordering would orphan Auth accounts on invalid codes.');
+      expect(methodBlock, contains("httpsCallable('registerTeacher')"),
+          reason: 'Teacher registration must go through the registerTeacher CF');
     });
 
-    test('flow writes role:teacher (NOT owner/admin)', () {
-      // Teachers ARE in the allowed self-create list, so direct write is OK.
-      // This test exists to flag if someone changes the role to 'owner' or
-      // 'admin' here — that would break (correctly) under the rules.
+    test('client does NOT directly write to invite_codes collection', () {
+      // The CF handles invite-code flipping server-side (Admin SDK bypasses
+      // rules). If the client ever writes to invite_codes directly again,
+      // we'll reintroduce the permission-denied bug.
       final methodIdx = authServiceSrc
           .indexOf('Future<Map<String, dynamic>> registerTeacherWithInvite');
       expect(methodIdx, greaterThanOrEqualTo(0));
       final methodBlock =
-          authServiceSrc.substring(methodIdx, methodIdx + 4000);
+          authServiceSrc.substring(methodIdx, methodIdx + 5000);
 
-      // Map key is quoted in Dart: 'role': AppConstants.roleTeacher
-      expect(methodBlock, contains("'role': AppConstants.roleTeacher"),
-          reason: 'Teacher registration must write role:teacher');
-      expect(methodBlock, isNot(contains("'role': AppConstants.roleOwner")),
-          reason: 'Owner role must never be written from the client. Use registerOwnerViaCF.');
+      expect(methodBlock, isNot(contains('inviteCodesCollection')),
+          reason: 'Client must not directly touch invite_codes — CF does it');
+      expect(methodBlock, isNot(contains("'isUsed': true")),
+          reason: 'Client must not flip isUsed — CF does it');
     });
 
-    test('flow has rollback for orphaned Auth account', () {
+    test('client signs in the user after CF success', () {
+      // The CF creates the Auth account server-side (Admin SDK). The client
+      // must then sign in with email+password so subsequent Firestore reads
+      // are authenticated.
+      final methodIdx = authServiceSrc
+          .indexOf('Future<Map<String, dynamic>> registerTeacherWithInvite');
+      expect(methodIdx, greaterThanOrEqualTo(0));
+      final methodBlock =
+          authServiceSrc.substring(methodIdx, methodIdx + 5000);
+
+      expect(methodBlock, contains('FirebaseService.loginWithEmail'),
+          reason: 'Client must sign in the user after the CF creates the account');
+    });
+
+    test('CF writes role:teacher (NOT owner/admin)', () {
+      expect(cfSrc, contains("role: 'teacher'"),
+          reason: 'registerTeacher CF must write role:teacher to the user doc');
+      expect(cfSrc, isNot(contains("role: 'owner'")),
+          reason: 'Owner role must never be granted by registerTeacher CF');
+    });
+
+    test('CF has rollback for orphaned Auth account', () {
       // A9 PATCH: if the doc write fails after Auth account creation, the
-      // Auth account must be rolled back.
-      final methodIdx = authServiceSrc
-          .indexOf('Future<Map<String, dynamic>> registerTeacherWithInvite');
-      final methodBlock =
-          authServiceSrc.substring(methodIdx, methodIdx + 5000);
-
-      expect(methodBlock, contains('_rollbackOrphanedAuthAccount'),
-          reason: 'Teacher flow must roll back orphaned Auth accounts on failure');
+      // Auth account must be rolled back server-side.
+      expect(cfSrc, contains('auth.deleteUser'),
+          reason: 'registerTeacher CF must roll back orphaned Auth accounts');
     });
 
-    test('flow marks invite code as used after success', () {
-      final methodIdx = authServiceSrc
-          .indexOf('Future<Map<String, dynamic>> registerTeacherWithInvite');
-      final methodBlock =
-          authServiceSrc.substring(methodIdx, methodIdx + 5000);
+    test('CF marks invite code as used via transaction', () {
+      // The invite flip must be atomic (transaction) to prevent race
+      // conditions where two teachers redeem the same single-use code.
+      expect(cfSrc, contains('runTransaction'),
+          reason: 'registerTeacher CF must flip invite atomically');
+      expect(cfSrc, contains('isUsed'),
+          reason: 'CF must flip isUsed on the invite code');
+      expect(cfSrc, contains('usedBy'),
+          reason: 'CF must record who used the invite code');
+    });
 
-      expect(methodBlock, contains('isUsed'),
-          reason: 'Flow must mark the invite code as used');
-      expect(methodBlock, contains('usedBy'),
-          reason: 'Flow must record who used the invite code');
+    test('CF does NOT enforce App Check (pre-auth public endpoint)', () {
+      // Same pattern as registerOwner/registerParent (commit 3fbf855):
+      // enforceAppCheck:true returns UNAUTHENTICATED to legitimate sign-ups
+      // because App Check tokens can't be reliably minted before sign-in.
+      expect(cfSrc, isNot(contains('enforceAppCheck: true')),
+          reason: 'registerTeacher CF must not enforce App Check (pre-auth endpoint)');
+    });
+
+    test('CF validates invite type is teacher', () {
+      expect(cfSrc, contains("'teacher'"),
+          reason: 'CF must validate that the invite code type is teacher');
     });
   });
 
