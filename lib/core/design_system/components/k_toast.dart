@@ -242,11 +242,12 @@ class KToastOverlay {
     final (icon, iconColor, bgColor) = KToast._variantStyles(variant);
 
     late _ToastEntry toastEntry;
+    late OverlayEntry entry;
 
     // Construct `entry` first — its builder closure captures `toastEntry`
     // by reference, which is safe because the builder isn't invoked until
     // the overlay renders (after `toastEntry` is assigned below).
-    final entry = OverlayEntry(
+    entry = OverlayEntry(
       builder: (context) {
         final index = _activeToasts.indexOf(toastEntry);
         final topOffset = MediaQuery.of(context).padding.top +

@@ -25,7 +25,7 @@ class EnhancedFeatureFlag {
   final DateTime? activateAt; // Scheduled activation
   final DateTime? deactivateAt; // Scheduled deactivation
   final Map<String, bool> userOverrides; // userId → enabled
-  final DateTime updatedAt;
+  final DateTime? updatedAt;
 
   const EnhancedFeatureFlag({
     required this.key,

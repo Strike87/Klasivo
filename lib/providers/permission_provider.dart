@@ -11,7 +11,7 @@ import '../core/services/permission_service.dart';
 
 // ─── Permission Service Provider ──────────────────────────────────────────
 final permissionServiceProvider = Provider<PermissionService>((ref) {
-  return PermissionService();
+  return PermissionService.instance;
 });
 
 // ─── Current User Role Provider (from auth state) ────────────────────────
