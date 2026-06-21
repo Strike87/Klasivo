@@ -36,8 +36,8 @@ class EnhancedFeatureFlag {
     this.activateAt,
     this.deactivateAt,
     this.userOverrides = const {},
-    DateTime? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now();
+    this.updatedAt,
+  });
 
   /// Check if the flag is currently active (respects time windows).
   bool get isActive {

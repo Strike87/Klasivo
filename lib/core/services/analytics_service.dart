@@ -70,7 +70,7 @@ class AnalyticsService {
       // 2. Attendance stats
       Map<String, dynamic> attendanceStats = {'attendanceRate': 0.0, 'total': 0, 'absent': 0, 'late': 0};
       try {
-        Query attendanceQuery = _firestore
+        Query<Map<String, dynamic>> attendanceQuery = _firestore
             .collection(AppConstants.attendanceCollection)
             .where('organizationId', isEqualTo: organizationId)
             .where('studentId', isEqualTo: studentId);

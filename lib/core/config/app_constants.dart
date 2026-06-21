@@ -28,6 +28,7 @@ class AppConstants {
   static const String examsCollection = 'exams';
   static const String questionsCollection = 'questions';
   static const String questionBankCollection = 'question_banks';
+  static const String examTemplatesCollection = 'exam_templates';
   static const String examAttemptsCollection = 'exam_attempts';
   static const String submissionsCollection = 'submissions';
   static const String answersCollection = 'answers';

@@ -56,5 +56,7 @@ class RtlSupport {
 /// Extension on BuildContext for easy RTL access
 extension RtlContext on BuildContext {
   bool get isRtl => Directionality.of(this) == TextDirection.rtl;
+  // Alias for components that use the capitalized form `isRTL`.
+  bool get isRTL => Directionality.of(this) == TextDirection.rtl;
   TextDirection get textDirection => Directionality.of(this);
 }

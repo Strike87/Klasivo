@@ -20,7 +20,7 @@ class FirestoreService implements IFirebaseService {
     final snapshot =
         await native.FirebaseService.getDocument(collection, docId);
     if (!snapshot.exists) return null;
-    return snapshot.data();
+    return snapshot.data() as Map<String, dynamic>?;
   }
 
   @override

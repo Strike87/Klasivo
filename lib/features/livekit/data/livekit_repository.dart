@@ -440,10 +440,14 @@ class LiveKitRepository {
     required String participantIdentity,
     required String roomId,
   }) async {
-    KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_invoked', data: {
-      'roomName': roomName,
-      'roomId': roomId,
-    });
+    KlasivoSentry.breadcrumb.cloudFunction(
+      'removeParticipant',
+      status: 'invoked',
+      data: {
+        'roomName': roomName,
+        'roomId': roomId,
+      },
+    );
     try {
       final callable = _functions.httpsCallable('removeParticipant');
       final result = await callable.call<Map<String, dynamic>>({
@@ -451,14 +455,22 @@ class LiveKitRepository {
         'participantIdentity': participantIdentity,
         'roomId': roomId,
       });
-      KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_success', data: {
-        'roomId': roomId,
-      });
+      KlasivoSentry.breadcrumb.cloudFunction(
+        'removeParticipant',
+        status: 'succeeded',
+        data: {
+          'roomId': roomId,
+        },
+      );
       return result.data['success'] as bool? ?? false;
     } catch (e, st) {
-      KlasivoSentry.breadcrumb.cloudFunction('removeParticipant_failed', data: {
-        'roomId': roomId,
-      });
+      KlasivoSentry.breadcrumb.cloudFunction(
+        'removeParticipant',
+        status: 'failed',
+        data: {
+          'roomId': roomId,
+        },
+      );
       await Sentry.captureException(
         e,
         stackTrace: st,

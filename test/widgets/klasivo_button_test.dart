@@ -327,7 +327,7 @@ void main() {
 
     testWidgets('loading button appears disabled', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
           home: Scaffold(
             body: KlasivoButton(
               label: 'Loading',

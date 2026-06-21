@@ -38,7 +38,7 @@ class ExamSyncStatusIndicator extends StatefulWidget {
 }
 
 class _ExamSyncStatusIndicatorState extends State<ExamSyncStatusIndicator>
-    with SingleTickerProviderStateProvider {
+    with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
   late AnimationController _spinController;
   StreamSubscription<ExamSyncStatus>? _statusSub;

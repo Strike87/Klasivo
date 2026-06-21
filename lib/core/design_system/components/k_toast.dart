@@ -241,20 +241,12 @@ class KToastOverlay {
 
     final (icon, iconColor, bgColor) = KToast._variantStyles(variant);
 
-    late OverlayEntry entry;
     late _ToastEntry toastEntry;
 
-    void dismiss() {
-      entry.remove();
-      _activeToasts.remove(toastEntry);
-    }
-
-    toastEntry = _ToastEntry(
-      entry: entry, // will be set below
-      dismiss: dismiss,
-    );
-
-    entry = OverlayEntry(
+    // Construct `entry` first — its builder closure captures `toastEntry`
+    // by reference, which is safe because the builder isn't invoked until
+    // the overlay renders (after `toastEntry` is assigned below).
+    final entry = OverlayEntry(
       builder: (context) {
         final index = _activeToasts.indexOf(toastEntry);
         final topOffset = MediaQuery.of(context).padding.top +
@@ -275,13 +267,25 @@ class KToastOverlay {
             actionLabel: actionLabel,
             onAction: onAction != null
                 ? () {
-                    dismiss();
+                    _activeToasts.remove(toastEntry);
+                    entry.remove();
                     onAction();
                   }
                 : null,
-            onDismiss: dismiss,
+            onDismiss: () {
+              _activeToasts.remove(toastEntry);
+              entry.remove();
+            },
           ),
         );
+      },
+    );
+
+    toastEntry = _ToastEntry(
+      entry: entry,
+      dismiss: () {
+        _activeToasts.remove(toastEntry);
+        entry.remove();
       },
     );
 
@@ -291,7 +295,8 @@ class KToastOverlay {
     // Auto-dismiss
     Future.delayed(duration, () {
       if (_activeToasts.contains(toastEntry)) {
-        dismiss();
+        _activeToasts.remove(toastEntry);
+        entry.remove();
       }
     });
   }

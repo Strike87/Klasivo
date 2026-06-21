@@ -26,7 +26,7 @@ class SyncIndicator extends ConsumerStatefulWidget {
 }
 
 class _SyncIndicatorState extends ConsumerState<SyncIndicator>
-    with SingleTickerProviderStateProvider {
+    with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
   late AnimationController _spinController;
 

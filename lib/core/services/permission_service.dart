@@ -24,6 +24,11 @@ import '../config/app_constants.dart';
 class PermissionService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // ─── Singleton accessor for use in non-DI contexts (e.g., route guards) ──
+  static final PermissionService instance = PermissionService._();
+
+  PermissionService._();
+
   // ─── In-memory cache for custom permissions ─────────────────────────────
   static Map<String, List<CustomPermission>> _customPermissions = {};
 

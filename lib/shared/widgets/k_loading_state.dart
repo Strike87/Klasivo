@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/tokens/tokens.dart';
+import 'k_card.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KLASIVO LOADING STATE — Loading state with shimmer effect

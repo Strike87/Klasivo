@@ -58,7 +58,7 @@ class AnalyticsAggregator {
     int totalStudents = 0,
   }) {
     if (records.isEmpty) {
-      return const AttendanceAnalytics(totalStudents: totalStudents);
+      return AttendanceAnalytics(totalStudents: totalStudents);
     }
 
     int present = 0;
@@ -148,7 +148,7 @@ class AnalyticsAggregator {
 
     double totalScore = 0;
     double highest = double.negativeInfinity;
-    double lowest = double.positiveInfinity;
+    double lowest = double.infinity;
     int passedCount = 0;
     final scoreBySubject = <String, List<double>>{};
     final gradeDistribution = <String, int>{};
@@ -189,7 +189,7 @@ class AnalyticsAggregator {
       totalExams: totalExams,
       totalSubmissions: total,
       highestScore: highest == double.negativeInfinity ? 0 : highest,
-      lowestScore: lowest == double.positiveInfinity ? 0 : lowest,
+      lowestScore: lowest == double.infinity ? 0 : lowest,
     );
 
     _warehouse.put('exam_overall', analytics);

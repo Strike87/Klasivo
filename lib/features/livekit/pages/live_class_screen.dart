@@ -5,6 +5,9 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../../../core/config/app_constants.dart';
 import '../../../core/services/sentry_service.dart';
+import '../domain/livekit_attendance.dart';
+import '../domain/livekit_chat_message.dart';
+import '../domain/livekit_raised_hand.dart';
 import '../domain/livekit_room_model.dart';
 import '../providers/livekit_providers.dart';
 
