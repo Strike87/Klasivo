@@ -23,6 +23,7 @@ class _TeacherRegistrationScreenState
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _inviteCodeController = TextEditingController();
+  final _organizationNameController = TextEditingController();
   bool _obscurePassword = true;
   bool _isOwnerFlow = true; // true = Owner (no invite code), false = Teacher (needs invite code)
 
@@ -32,6 +33,7 @@ class _TeacherRegistrationScreenState
     _emailController.dispose();
     _passwordController.dispose();
     _inviteCodeController.dispose();
+    _organizationNameController.dispose();
     super.dispose();
   }
 
@@ -45,26 +47,38 @@ class _TeacherRegistrationScreenState
       final authService = ref.read(authServiceProvider);
 
       if (_isOwnerFlow) {
-        // Owner registration — creates workspace
-        final result = await authService.registerOwner(
+        // Owner registration via Cloud Function (P0-1 fix).
+        // The CF atomically creates: Auth account, organization doc, user doc
+        // (with role:'owner' via Admin SDK — bypasses Firestore rules that
+        // block client-side writes of role:'owner'), and custom claims.
+        // The deprecated client-side registerOwner() wrote role:'owner'
+        // directly from the device, which the P1-4 security tightening
+        // correctly blocks (only student/parent/teacher allowed on self-create).
+        final result = await authService.registerOwnerViaCF(
           email: _emailController.text.trim(),
           password: _passwordController.text,
           fullName: _nameController.text.trim(),
+          organizationName: _organizationNameController.text.trim(),
         );
+
+        if (result['success'] != true) {
+          throw Exception(result['error'] ?? 'Owner registration failed');
+        }
 
         await saveTeacherAuthData(
           role: AppConstants.roleOwner,
-          name: result['fullName'],
-          userId: result['id'],
-          email: result['email'],
+          name: _nameController.text.trim(),
+          userId: result['uid'],
+          email: _emailController.text.trim(),
           organizationId: result['organizationId'],
-          hasCompletedSetup: false,
+          hasCompletedSetup: true, // CF already created the org with name
           authProvider: 'password',
         
         ref: ref,);
 
         if (mounted) {
-          context.go('/welcome');
+          // Skip /welcome — org is already named via the CF.
+          context.go('/dashboard');
         }
       } else {
         // Teacher registration — needs invite code
@@ -106,28 +120,18 @@ class _TeacherRegistrationScreenState
       final authService = ref.read(authServiceProvider);
 
       if (_isOwnerFlow) {
-        // Owner Google registration
-        final result = await authService.registerOwnerWithGoogle();
-
-        await saveTeacherAuthData(
-          role: result['role'] ?? AppConstants.roleOwner,
-          name: result['fullName'] ?? 'User',
-          userId: result['id'],
-          email: result['email'] ?? '',
-          organizationId: result['organizationId'],
-          hasCompletedSetup: result['hasCompletedSetup'] ?? false,
-          authProvider: 'google',
-        
-        ref: ref,);
-
-        if (mounted) {
-          final hasCompletedSetup = result['hasCompletedSetup'] ?? true;
-          if (!hasCompletedSetup) {
-            context.go('/welcome');
-          } else {
-            context.go('/dashboard');
-          }
-        }
+        // Owner Google registration — TEMPORARILY DISABLED.
+        // The client-side registerOwnerWithGoogle() writes role:'owner'
+        // directly to Firestore, which is blocked by P1-4 security rules.
+        // Fixing this requires a new Cloud Function (registerOwnerWithGoogle)
+        // that accepts the already-authenticated Google user's UID and
+        // provisions the owner account server-side via Admin SDK.
+        // Tracked as follow-up task. For now, owners must use email/password.
+        ref.read(authErrorProvider.notifier).state =
+            'Google registration is temporarily unavailable for owners. '
+            'Please sign up with email and password.';
+        ref.read(authLoadingProvider.notifier).state = false;
+        return;
       } else {
         // Teacher Google registration — needs invite code
         if (_inviteCodeController.text.trim().isEmpty) {
@@ -149,7 +153,7 @@ class _TeacherRegistrationScreenState
           organizationId: result['organizationId'],
           hasCompletedSetup: result['hasCompletedSetup'] ?? true,
           authProvider: 'google',
-        
+
         ref: ref,);
 
         if (mounted) {
@@ -244,6 +248,26 @@ class _TeacherRegistrationScreenState
                   ),
                 ),
                 const SizedBox(height: KlasivoSpacing.xxl),
+
+                // ── Organization Name (Owner flow — shown FIRST) ──
+                if (_isOwnerFlow) ...[
+                  KlasivoTextField(
+                    label: 'Organization Name',
+                    controller: _organizationNameController,
+                    hint: "e.g. Lincoln High School",
+                    prefixIcon: Icons.business_outlined,
+                    validator: (value) {
+                      if (_isOwnerFlow && (value == null || value.trim().isEmpty)) {
+                        return 'Organization name is required';
+                      }
+                      if (_isOwnerFlow && value.trim().length < 3) {
+                        return 'Organization name must be at least 3 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: KlasivoSpacing.lg),
+                ],
 
                 // ── Invite Code (Teacher flow — shown FIRST) ──
                 if (!_isOwnerFlow) ...[
