@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../config/app_constants.dart';
 import 'sentry_service.dart';
 
@@ -49,7 +49,7 @@ class ParentLinkService {
       // the studentId as part of the key, and the helper checks existence of
       // `{parentId}_{studentId}`. The redemption flow (linkParentToStudent)
       // must create a NEW doc with the deterministic ID.
-      final linkDocId = '${generatedBy}_${studentId}';
+      final linkDocId = '$generatedBy\_$studentId';
       await _firestore
           .collection(AppConstants.parentLinksCollection)
           .doc(linkDocId)
@@ -81,6 +81,18 @@ class ParentLinkService {
   // ─── Parent-Student Linking ──────────────────────────────────────────────
 
   /// Link a parent to a student using a linking code.
+  ///
+  /// Delegates to the `linkParent` Cloud Function, which (server-side):
+  ///   - validates the code, atomically flips the link to 'approved'
+  ///   - writes the parent's organizationId + tenantId (the deadlock fix)
+  ///   - re-mints the parent's custom claims with the real org
+  ///   - writes the deterministic parent_links/{parentId}_{studentId} doc
+  ///     that parentHasAccessToStudent() requires
+  ///   - stamps parentId on the student doc
+  ///
+  /// The client cannot do any of the org/claims writes itself — they are all
+  /// rules-blocked for a parent. See functions/src/functions/linkParent.ts.
+  ///
   /// Returns the link data (studentId, studentName, organizationId).
   Future<Map<String, dynamic>> linkParentToStudent({
     required String code,
@@ -90,99 +102,52 @@ class ParentLinkService {
       KlasivoSentry.breadcrumb.registration('parent_link_started', data: {
         'parentId': parentId,
       });
-      // Look up the code in parentLinksCollection
-      final snapshot = await _firestore
-          .collection(AppConstants.parentLinksCollection)
-          .where('code', isEqualTo: code)
-          .where('status', isEqualTo: AppConstants.parentLinkPending)
-          .limit(1)
-          .get();
 
-      if (snapshot.docs.isEmpty) {
-        throw Exception('Invalid or already used linking code.');
-      }
-
-      final linkDoc = snapshot.docs.first;
-      final linkData = linkDoc.data();
-
-      // Check if the code has expired
-      final expiresAt = linkData['expiresAt'] as Timestamp?;
-      if (expiresAt != null && expiresAt.toDate().isBefore(DateTime.now())) {
-        throw Exception('This linking code has expired.');
-      }
-
-      final studentId = linkData['studentId'] as String;
-      final organizationId = linkData['organizationId'] as String;
-
-      // Update the link doc with parentId, status, linkedAt
-      await SentryFirestoreHelper.docUpdate(
-        collection: AppConstants.parentLinksCollection,
-        docId: linkDoc.id,
-        data: {
-          'parentId': parentId,
-          'status': AppConstants.parentLinkApproved,
-          'linkedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        flow: 'parent_link',
-        step: 'UPDATE_LINK_DOC',
-      );
-
-      // D10 PATCH: Also create a deterministic doc with ID `{parentId}_{studentId}`
-      // so the firestore.rules parentHasAccessToStudent() helper can look it up.
-      // The original code doc (auto-ID) is kept for audit; the deterministic doc
-      // is the one the rules helper queries. Both have the same data.
-      final deterministicId = '${parentId}_$studentId';
-      await _firestore
-          .collection(AppConstants.parentLinksCollection)
-          .doc(deterministicId)
-          .set({
-        'code': linkData['code'],
-        'organizationId': organizationId,
-        'studentId': studentId,
-        'generatedBy': linkData['generatedBy'],
-        'parentId': parentId,
-        'status': AppConstants.parentLinkApproved,
-        'expiresAt': linkData['expiresAt'],
-        'linkedAt': FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('linkParent')
+          .call<Map<String, dynamic>>({
+        'code': code,
       });
 
-      // Add parentId field to the student's doc in usersCollection
-      await SentryFirestoreHelper.docUpdate(
-        collection: AppConstants.usersCollection,
-        docId: studentId,
+      final data = result.data;
+      if (data['success'] != true) {
+        throw Exception(
+          (data['error'] as String?) ?? 'Parent linking failed.',
+        );
+      }
+
+      KlasivoSentry.breadcrumb.registration(
+        'parent_link_success',
         data: {
           'parentId': parentId,
-          'updatedAt': FieldValue.serverTimestamp(),
+          'studentId': data['studentId'],
+          'organizationId': data['organizationId'],
         },
-        flow: 'parent_link',
-        step: 'UPDATE_STUDENT_PARENT_ID',
       );
-
-      // Fetch student name for the return value
-      final studentDoc = await _firestore
-          .collection(AppConstants.usersCollection)
-          .doc(studentId)
-          .get();
-      final studentName = studentDoc.data()?['fullName'] as String? ?? '';
-
-      KlasivoSentry.breadcrumb.registration('parent_link_success', data: {
-        'parentId': parentId,
-        'studentId': studentId,
-      });
 
       return {
-        'studentId': studentId,
-        'studentName': studentName,
-        'organizationId': organizationId,
+        'studentId': data['studentId'] as String,
+        'studentName': data['studentName'] as String? ?? '',
+        'organizationId': data['organizationId'] as String,
       };
+    } on FirebaseFunctionsException catch (e, st) {
+      await KlasivoObservability.reportError(
+        e,
+        st,
+        reason: 'Parent-student linking CF failed',
+        tags: {
+          'flow': 'parent_link',
+          'parentId': parentId,
+          'code': e.code,
+        },
+      );
+      // Surface the CF's user-friendly message verbatim.
+      throw Exception(e.message ?? 'Parent linking failed.');
     } catch (e, st) {
       await KlasivoObservability.reportError(
         e,
         st,
-        reason: 'Parent-student linking failed',
+        reason: 'Parent-student linking failed (non-CF error)',
         tags: {'flow': 'parent_link', 'parentId': parentId},
       );
       rethrow;

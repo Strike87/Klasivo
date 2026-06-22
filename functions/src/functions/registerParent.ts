@@ -6,11 +6,16 @@
  * This CF:
  * 1. Creates Firebase Auth account
  * 2. Creates user doc with role:'parent' + organizationId:'' (empty string, not null)
- * 3. Sets custom claims
- * 4. If studentCode provided: links parent to student + updates orgId to match student
- * 5. Returns the new user's UID
+ * 3. Sets custom claims (organizationId:'' — filled in by linkParent when the
+ *    parent later links a child)
+ * 4. Returns the new user's UID
  *
- * Rollback: deletes Auth account on any failure.
+ * The parent's real organizationId + claims are written server-side by the
+ * linkParent Cloud Function when they redeem an 8-character linking code at
+ * /auth/parent-link. The client cannot write its own organizationId (D1) or
+ * mint claims (Admin SDK only).
+ *
+ * Rollback: deletes Auth account + user doc on any failure.
  */
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -23,7 +28,6 @@ interface RegisterParentData {
   password: string;
   fullName: string;
   phone?: string;
-  studentCode?: string;  // Optional: link to student immediately
 }
 
 export const registerParent = onCall(
@@ -76,14 +80,15 @@ export const registerParent = onCall(
           displayName: data.fullName.trim(),
         });
 
-        // Create user doc — organizationId will be set when parent links to a student
+        // Create user doc. organizationId stays empty until the parent links a
+        // child via linkParent (which writes the real org + re-mints claims).
         await db.collection('users').doc(authUser.uid).set({
           email: data.email.trim().toLowerCase(),
           fullName: data.fullName.trim(),
           phone: data.phone || null,
           role: 'parent',
           organizationId: '',  // Empty string (not null) — passes 'is string' rule
-          tenantId: '',  // P1-5: will be set when parent links to student's org
+          tenantId: '',  // Filled in by linkParent when the parent links a child
           isActive: true,
           authProvider: 'email',
           createdAt: FieldValue.serverTimestamp(),
@@ -91,74 +96,32 @@ export const registerParent = onCall(
           roleVersion: 1,
         });
 
-        // Set custom claims
+        // Set custom claims (organizationId empty until linkParent fills it).
         await auth.setCustomUserClaims(authUser.uid, {
           role: 'parent',
           organizationId: '',
-          tenantId: '',  // P1-5: will be set when parent links to student's org
+          tenantId: '',
           roleVersion: 1,
         });
-
-        // ─── Compute final organizationId for the return payload ────────
-        // If a studentCode was provided AND a matching student was found,
-        // the parent's orgId is updated to the student's orgId. Otherwise
-        // the parent has no org yet (empty string) — they'll link a student
-        // later via /auth/parent-link which sets the org via the link flow.
-        // Returning organizationId here lets the client save it immediately
-        // instead of leaving it null (which previously caused GoRouter to
-        // redirect parents away from /auth/parent-link into a redirect loop).
-        let finalOrganizationId = '';
-
-        // If studentCode provided, create parent_link + update parent's org to match student's org
-        if (data.studentCode) {
-          const studentSnapshot = await db.collection('users')
-            .where('studentCode', '==', data.studentCode)
-            .limit(1)
-            .get();
-
-          if (!studentSnapshot.empty) {
-            const studentDoc = studentSnapshot.docs[0];
-            if (studentDoc) {
-              const studentOrgId = studentDoc.data()['organizationId'] as string;
-              finalOrganizationId = studentOrgId;
-
-              // Update parent's org to match student's org
-              await db.collection('users').doc(authUser.uid).update({
-                organizationId: studentOrgId,
-              });
-
-              await auth.setCustomUserClaims(authUser.uid, {
-                role: 'parent',
-                organizationId: studentOrgId,
-                tenantId: '',  // P1-5: will be set when parent links to student's org
-                roleVersion: 2,
-              });
-
-              // Create parent_link
-              await db.collection('parent_links').doc(`${authUser.uid}_${studentDoc.id}`).set({
-                parentId: authUser.uid,
-                studentId: studentDoc.id,
-                organizationId: studentOrgId,
-                status: 'pending',
-                createdAt: FieldValue.serverTimestamp(),
-              });
-            }
-          }
-        }
 
         return {
           success: true,
           uid: authUser.uid,
-          organizationId: finalOrganizationId,
+          // organizationId is intentionally empty here — the client routes the
+          // parent to /auth/parent-link, and linkParent populates it + re-mints
+          // claims. Returning '' (not null) keeps Hive/GoRouter type checks happy.
+          organizationId: '',
           role: 'parent',
         };
       } catch (error: unknown) {
+        // Rollback Auth + user doc to prevent orphans.
         if (authUser) {
           try { await auth.deleteUser(authUser.uid); } catch {}
+          try { await db.collection('users').doc(authUser.uid).delete(); } catch {}
         }
         const msg = error instanceof Error ? error.message : String(error);
         console.error('registerParent failed:', msg);
-        throw new HttpsError('internal', `Parent registration failed: ${msg}`);
+        throw new HttpsError('internal', 'Parent registration failed. Please try again.');
       }
     });
   },

@@ -59,18 +59,19 @@ export const onUserCreated = functions
       });
 
       if (!userDoc.exists) {
-        // Log at warning level — this may indicate a race condition
-        // where the auth trigger fires before the client writes the user doc,
-        // OR it may indicate the client's .set() was blocked by security rules.
+        // User doc may not exist yet if the auth trigger fired before the
+        // client/CF wrote the Firestore doc, or if the write was blocked by
+        // rules and the account was rolled back. Don't send a welcome email
+        // for a potentially orphaned account.
         Sentry.captureMessage(
-          `onUserCreated: users/${uid} does NOT exist in Firestore — auth account may be orphaned`,
+          `onUserCreated: users/${uid} does NOT exist in Firestore — skipping welcome email. ` +
+          `Auth account may be orphaned or the doc write is still in flight.`,
           { level: 'warning' },
         );
+        return null;
       }
 
-      const role = userDoc.exists
-        ? (userDoc.data()?.['role'] as string | undefined) ?? 'teacher'
-        : 'teacher';
+      const role = (userDoc.data()?.['role'] as string | undefined) ?? 'unknown';
 
       const result = await queueEmail({
         type: 'welcome',

@@ -11,24 +11,38 @@
  *   invite-code redemption was structurally broken in production.
  *
  * What this function does:
- *   1. Accepts an invite code + new-user profile from an UNAUTHENTICATED caller.
+ *   1. Accepts an invite code + new-user profile (unauthenticated).
  *   2. Looks up the code in invite_codes (Admin SDK bypasses rules).
- *   3. Validates: code exists, status='active', not expired, not at usage limit.
+ *   3. Validates: code exists, type in ['teacher','student'], isUsed=false,
+ *      not expired, useCount < maxUses.
  *   4. Creates the Firebase Auth account (email/password).
- *   5. Creates the users/{uid} doc with role + organizationId from the invite.
+ *   5. Creates the users/{uid} doc with role derived from invite type +
+ *      organizationId from the invite.
  *   6. Sets custom claims (role, organizationId, scopeAccessLevel).
- *   7. Atomically flips the invite to 'redeemed' with redeemedBy + redeemedAt.
+ *   7. Atomically flips the invite: isUsed, useCount++, usedBy, usedAt.
+ *
+ * Schema (CANONICAL — matches invite_code_service.dart creation):
+ *   type: 'teacher' | 'student'
+ *   isUsed: bool
+ *   useCount: int
+ *   maxUses: int
+ *   expiresAt: timestamp | null
+ *   organizationId: string
+ *   createdBy: string
  *
  * Atomicity:
- *   If any step after Auth account creation fails, the Auth account is DELETED
- *   and the invite is left in its original state. This closes A9 (orphaned
- *   Auth accounts) for the teacher-invite path.
+ *   If any step after Auth account creation fails, the Auth account AND the
+ *   user doc are DELETED and the invite is left in its original state.
+ *   This closes A9 (orphaned Auth accounts + orphaned user docs).
  *
  * Security:
  *   - Caller is unauthenticated (by design — onboarding flow).
- *   - Invite code must be active, unexpired, under usage limit.
- *   - Role is taken from the invite, NOT from the caller.
- *   - OrganizationId is taken from the invite.
+ *   - App Check is enforced (this is an authenticated-alternative path;
+ *     legitimate callers have an App Check token from their device even
+ *     though they don't have a Firebase Auth session yet).
+ *   - Role is derived from invite.type (never from caller input).
+ *   - organizationId is taken from the invite.
+ *   - Invite-minted roles cannot include super_admin or owner.
  */
 
 import { onCall, CallableRequest, HttpsError } from 'firebase-functions/v2/https';
@@ -53,7 +67,7 @@ interface RedeemInviteCodeData {
 export const redeemInviteCode = onCall(
   {
     secrets: ['SENTRY_DSN'],
-    enforceAppCheck: true,  // C-01 PATCH: App Check now enforced
+    enforceAppCheck: true,
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 30,
@@ -96,32 +110,34 @@ export const redeemInviteCode = onCall(
 
       const inviteDoc = inviteSnapshot.docs[0];
       if (!inviteDoc) {
-        throw new HttpsError('not-found', 'Invite code not found (no snapshot).');
+        throw new HttpsError('not-found', 'Invite code not found.');
       }
       const inviteData = inviteDoc.data();
       const inviteId = inviteDoc.id;
 
-      // ─── Validate invite state ─────────────────────────────────────────
-      if (inviteData.status !== 'active') {
-        throw new HttpsError('failed-precondition', `Invite code is ${inviteData.status}, not active.`);
+      // ─── Validate invite state (CANONICAL schema) ──────────────────────
+      // Schema matches lib/core/services/invite_code_service.dart:
+      //   type: 'teacher' | 'student'
+      //   isUsed: bool
+      //   useCount: int
+      //   maxUses: int
+      //   expiresAt: timestamp | null
+      //   organizationId: string
+      const inviteType = inviteData['type'] as string;
+      if (inviteType !== 'teacher' && inviteType !== 'student') {
+        throw new HttpsError(
+          'failed-precondition',
+          `This invite code is for '${inviteType || 'unknown'}', not a redeemable type.`,
+        );
       }
 
-      const expiresAt = inviteData.expiresAt;
-      if (expiresAt && expiresAt.toMillis() < Date.now()) {
-        throw new HttpsError('failed-precondition', 'Invite code has expired.');
-      }
+      // Derive role from invite type (canonical: type → role mapping).
+      const role: string = inviteType; // 'teacher' or 'student' at creation time
 
-      const maxUses = inviteData.maxUses ?? 1;
-      const currentUses = inviteData.usesCount ?? 0;
-      if (currentUses >= maxUses) {
-        throw new HttpsError('failed-precondition', 'Invite code has reached its usage limit.');
-      }
-
-      const role = inviteData.role as string;
       if (!VALID_ROLES.includes(role as KlasivoRole)) {
         throw new HttpsError(
           'failed-precondition',
-          `Invite code has invalid role '${role}'. Contact the administrator who issued this invite.`,
+          `Invite code has invalid type '${role}'. Contact the administrator who issued this invite.`,
         );
       }
 
@@ -134,19 +150,48 @@ export const redeemInviteCode = onCall(
         );
       }
 
-      const organizationId = inviteData.organizationId as string;
-      if (!organizationId || typeof organizationId !== 'string') {
+      // Canonical field: isUsed (bool)
+      if (inviteData['isUsed'] === true) {
+        throw new HttpsError(
+          'failed-precondition',
+          'This invite code has already been used.',
+        );
+      }
+
+      // Canonical field: expiresAt
+      const expiresAt = inviteData['expiresAt'];
+      if (expiresAt && (expiresAt as { toMillis: () => number }).toMillis() < Date.now()) {
+        throw new HttpsError('failed-precondition', 'Invite code has expired.');
+      }
+
+      // Canonical fields: useCount / maxUses
+      const useCount = (inviteData['useCount'] as number) ?? 0;
+      const maxUses = (inviteData['maxUses'] as number) ?? 1;
+      if (useCount >= maxUses) {
+        throw new HttpsError('failed-precondition', 'Invite code has reached its usage limit.');
+      }
+
+      const organizationId = inviteData['organizationId'] as string;
+      if (!organizationId || typeof organizationId !== 'string' || organizationId.length === 0) {
         throw new HttpsError(
           'failed-precondition',
           'Invite code has no organizationId. Contact the administrator who issued this invite.',
         );
       }
 
-      // ─── Create Auth account ───────────────────────────────────────────
+      // ─── Abuse control: prevent duplicate emails ──────────────────────
+      try {
+        await admin.auth().getUserByEmail(email.trim().toLowerCase());
+        throw new HttpsError('already-exists', 'An account with this email already exists.');
+      } catch (e: unknown) {
+        if (e instanceof HttpsError && e.code === 'already-exists') throw e;
+      }
+
+      // ─── Create Auth account + Firestore doc + claims ─────────────────
       let createdUid: string | null = null;
       try {
         const userRecord = await admin.auth().createUser({
-          email,
+          email: email.trim().toLowerCase(),
           password,
           displayName: fullName.trim(),
           phoneNumber: phone || undefined,
@@ -156,23 +201,20 @@ export const redeemInviteCode = onCall(
 
         // ─── Create users/{uid} Firestore doc ──────────────────────────
         const userData: Record<string, unknown> = {
-          uid: createdUid,
-          email,
+          email: email.trim().toLowerCase(),
           fullName: fullName.trim(),
           role,
           organizationId,
+          tenantId: organizationId,
           authProvider: 'password',
-          status: 'active',
+          isActive: true,
+          createdBy: 'redeemInviteCode',
+          invitedBy: inviteData['createdBy'] ?? null,
+          inviteCodeId: inviteId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          createdBy: 'redeemInviteCode',
-          invitedBy: inviteData.createdBy ?? null,
-          inviteCodeId: inviteId,
-          // Scope fields from invite (if present)
+          roleVersion: 1,
         };
-        if (inviteData.campusId) userData['campusIds'] = [inviteData.campusId];
-        if (inviteData.stageId) userData['stageIds'] = [inviteData.stageId];
-        if (inviteData.classIds) userData['classIds'] = inviteData.classIds;
         if (phone) userData['phone'] = phone;
 
         await db.collection('users').doc(createdUid).set(userData);
@@ -181,9 +223,10 @@ export const redeemInviteCode = onCall(
         const customClaims = buildCustomClaims(role, organizationId);
         await admin.auth().setCustomUserClaims(createdUid, customClaims);
 
-        // ─── Atomically flip invite to redeemed ─────────────────────────
+        // ─── Atomically flip invite (CANONICAL fields) ──────────────────
         // Use Firestore transaction to prevent race conditions where two
         // users redeem the same single-use code simultaneously.
+        // Mirrors registerTeacher.ts:224-256.
         await db.runTransaction(async (tx) => {
           const freshInviteRef = db.collection('invite_codes').doc(inviteId);
           const freshSnap = await tx.get(freshInviteRef);
@@ -191,45 +234,56 @@ export const redeemInviteCode = onCall(
             throw new HttpsError('not-found', 'Invite code disappeared during redemption.');
           }
           const freshData = freshSnap.data()!;
-          if (freshData.status !== 'active') {
-            throw new HttpsError('failed-precondition', `Invite code is ${freshData.status}, not active.`);
+          if (freshData['isUsed'] === true) {
+            throw new HttpsError(
+              'failed-precondition',
+              'Invite code was just used by someone else. Please try again.',
+            );
           }
-          const freshUses = freshData.usesCount ?? 0;
-          const freshMax = freshData.maxUses ?? 1;
-          if (freshUses >= freshMax) {
-            throw new HttpsError('failed-precondition', 'Invite code reached usage limit during redemption.');
+          const freshUseCount = (freshData['useCount'] as number) ?? 0;
+          const freshMaxUses = (freshData['maxUses'] as number) ?? 1;
+          if (freshUseCount >= freshMaxUses) {
+            throw new HttpsError(
+              'failed-precondition',
+              'Invite code has reached its usage limit during redemption.',
+            );
           }
 
-          const newUses = freshUses + 1;
-          const newStatus = newUses >= freshMax ? 'redeemed' : 'active';
+          const newUseCount = freshUseCount + 1;
           tx.update(freshInviteRef, {
-            status: newStatus,
-            usesCount: newUses,
-            redeemedBy: admin.firestore.FieldValue.arrayUnion(createdUid),
-            redeemedAt: admin.firestore.FieldValue.arrayUnion(admin.firestore.FieldValue.serverTimestamp()),
-            lastRedeemedAt: admin.firestore.FieldValue.serverTimestamp(),
+            isUsed: newUseCount >= freshMaxUses,
+            useCount: newUseCount,
+            usedBy: admin.firestore.FieldValue.arrayUnion(createdUid),
+            usedAt: admin.firestore.FieldValue.arrayUnion(admin.firestore.FieldValue.serverTimestamp()),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
         });
 
         // ─── Audit log ─────────────────────────────────────────────────
-        await db.collection('audit_logs').add({
-          organizationId,
-          performedBy: createdUid,
-          performedByRole: role,
-          performedByOrgId: organizationId,
-          userId: createdUid,
-          action: 'redeem_invite_code',
-          targetType: 'invite_code',
-          targetId: inviteId,
-          metadata: {
-            role,
-            email,
-            inviteCodeId: inviteId,
-            invitedBy: inviteData.createdBy ?? null,
-          },
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        try {
+          await db.collection('audit_logs').add({
+            organizationId,
+            performedBy: createdUid,
+            performedByRole: role,
+            performedByOrgId: organizationId,
+            userId: createdUid,
+            action: 'redeem_invite_code',
+            targetType: 'invite_code',
+            targetId: inviteId,
+            metadata: {
+              role,
+              email: email.trim().toLowerCase(),
+              inviteCodeId: inviteId,
+              invitedBy: inviteData['createdBy'] ?? null,
+            },
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            serverVerified: true,
+          });
+        } catch (auditErr) {
+          // Non-critical: audit failure must not undo a successful redemption.
+          const m = auditErr instanceof Error ? auditErr.message : String(auditErr);
+          console.warn(`[redeemInviteCode] Audit log failed (non-critical): ${m}`);
+        }
 
         return {
           success: true,
@@ -238,9 +292,7 @@ export const redeemInviteCode = onCall(
           organizationId,
         };
       } catch (err) {
-        // ─── A9 PATCH: Rollback orphaned Auth account on any failure ────
-        // If we created an Auth account but the Firestore write or claim
-        // minting failed, DELETE the Auth account to prevent orphans.
+        // ─── A9 PATCH: Rollback orphaned Auth account + user doc ───────
         if (createdUid) {
           try {
             await admin.auth().deleteUser(createdUid);
@@ -256,16 +308,20 @@ export const redeemInviteCode = onCall(
               'fatal',
             );
           }
+          // Also delete the Firestore user doc to prevent orphans.
+          try {
+            await db.collection('users').doc(createdUid).delete();
+          } catch (docDeleteErr) {
+            const m = docDeleteErr instanceof Error ? docDeleteErr.message : String(docDeleteErr);
+            console.error(`[redeemInviteCode] Failed to roll back user doc ${createdUid}: ${m}`);
+          }
         }
 
-        // Re-flip invite if it was flipped (best-effort — transaction should
-        // have already rolled back, but be defensive)
-        if (err instanceof HttpsError && err.code === 'aborted') {
-          // Transaction rolled back — invite state is unchanged.
-        }
-
+        // Transaction self-reverts on abort — invite state is unchanged.
+        // Re-throw HttpsError as-is; wrap everything else.
+        if (err instanceof HttpsError) throw err;
         Sentry.captureException(err, { tags: { step: 'redeem_invite_code' } });
-        throw err;
+        throw new HttpsError('internal', 'Invite redemption failed. Please try again.');
       }
     }); // withIsolatedScope
   },

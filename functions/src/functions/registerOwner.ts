@@ -142,17 +142,17 @@ export const registerOwner = onCall(
           organizationId: orgId,
         };
       } catch (error: unknown) {
-        // Rollback: delete Auth account if created
+        // Rollback: delete Auth account + user doc + org + audit log if created.
         if (authUser) {
           try { await auth.deleteUser(authUser.uid); } catch {}
+          try { await db.collection('users').doc(authUser.uid).delete(); } catch {}
         }
-        // Rollback: delete org if created
         if (orgId) {
           try { await db.collection('organizations').doc(orgId).delete(); } catch {}
         }
         const msg = error instanceof Error ? error.message : String(error);
         console.error('registerOwner failed:', msg);
-        throw new HttpsError('internal', `Registration failed: ${msg}`);
+        throw new HttpsError('internal', 'Registration failed. Please try again.');
       }
     });
   },

@@ -77,6 +77,11 @@ export { registerOwner } from './functions/registerOwner';
 export { registerParent } from './functions/registerParent';
 export { registerTeacher } from './functions/registerTeacher';
 
+// N3 FIX: Parent-child linking. After registration a parent has organizationId:''
+// and empty-org claims. The client cannot complete the link (rules block the parent
+// from writing its own org, status, or claims). linkParent does it server-side.
+export { linkParent } from './functions/linkParent';
+
 // ─── RBAC Functions (v2 — migrated from v1) ───────────────────
 export { assignRole } from './functions/assignRole';
 export { assignScope } from './functions/assignScope';

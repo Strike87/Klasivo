@@ -283,7 +283,7 @@ export const registerTeacher = onCall(
           email: data.email.trim().toLowerCase(),
         };
       } catch (error: unknown) {
-        // A9 PATCH: Rollback orphaned Auth account on any failure.
+        // A9 PATCH: Rollback orphaned Auth account + user doc on any failure.
         if (authUser) {
           try {
             await auth.deleteUser(authUser.uid);
@@ -293,10 +293,11 @@ export const registerTeacher = onCall(
           } catch (deleteErr) {
             console.error(
               `CRITICAL: Failed to roll back orphaned Auth account ${authUser.uid}. ` +
-                `Manual cleanup required in Firebase Console → Authentication → Users.`,
+              `Manual cleanup required in Firebase Console → Authentication → Users.`,
               deleteErr,
             );
           }
+          try { await db.collection('users').doc(authUser.uid).delete(); } catch {}
         }
 
         const msg = error instanceof Error ? error.message : String(error);
@@ -304,7 +305,7 @@ export const registerTeacher = onCall(
 
         // Re-throw HttpsError as-is; wrap everything else.
         if (error instanceof HttpsError) throw error;
-        throw new HttpsError('internal', `Registration failed: ${msg}`);
+        throw new HttpsError('internal', 'Registration failed. Please try again.');
       }
     });
   },
