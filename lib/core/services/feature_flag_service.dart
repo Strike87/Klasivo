@@ -178,6 +178,17 @@ class FeatureFlagService {
     FeatureFlags.publicApi: _FlagDefault(enabled: false),
     FeatureFlags.ltiIntegration: _FlagDefault(enabled: false),
     FeatureFlags.campusManagement: _FlagDefault(enabled: false),
+
+    // Sprint 1+2 — LiveKit live classes (off by default — backend
+    // (generateLiveKitToken/onLiveKitRoomEvents Cloud Functions) and
+    // Firestore rules are deployed, but the /live-classes route is newly
+    // wired and unproven in production. Flip per-org via the admin
+    // feature flags screen once verified, rather than changing this
+    // code-level default.)
+    FeatureFlags.livekit: _FlagDefault(enabled: false),
+    FeatureFlags.liveClasses: _FlagDefault(enabled: false),
+    FeatureFlags.scheduledClasses: _FlagDefault(enabled: false),
+    FeatureFlags.sessionRecordings: _FlagDefault(enabled: false),
   };
 }
 

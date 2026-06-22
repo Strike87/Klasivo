@@ -32,6 +32,7 @@ import 'features/dashboard/owner_dashboard.dart';
 import 'features/dashboard/teacher_dashboard.dart';
 import 'features/dashboard/student_dashboard.dart';
 import 'features/classes/pages/class_list_screen.dart';
+import 'features/livekit/pages/live_class_lobby_screen.dart';
 import 'features/classes/pages/class_form_screen.dart';
 import 'features/students/pages/student_list_screen.dart';
 import 'features/students/pages/student_form_screen.dart';
@@ -683,6 +684,21 @@ final routerProvider = Provider<GoRouter>((ref) {
           }
         }
 
+        // Live classes (LiveKit) require the livekit flag. Off by default
+        // — see feature_flag_service.dart _defaults. This is a nested route
+        // inside the Academic branch (/academic/live-classes), not its own
+        // bottom-nav tab. Reached only via the "Live Classes" button on the
+        // class list screen, which is itself hidden unless this same flag
+        // is enabled — so in practice this redirect is a defense-in-depth
+        // backstop against someone navigating to the URL directly while
+        // the flag is off.
+        if (state.matchedLocation.startsWith('/academic/live-classes')) {
+          final flagService = ref.read(featureFlagServiceProvider);
+          if (!flagService.isEnabled(FeatureFlags.livekit)) {
+            return '/dashboard';
+          }
+        }
+
         if (KlasivoRole.managementRoles.contains(userRole) &&
             isOnDashboard) {
           return null;
@@ -816,6 +832,32 @@ final routerProvider = Provider<GoRouter>((ref) {
                         },
                       ),
                     ],
+                  ),
+
+                  // Live Classes (LiveKit) — gated by FeatureFlags.livekit,
+                  // see the redirect guard above. Reached via the "Live
+                  // Classes" icon button on ClassListScreen, which is itself
+                  // hidden unless this same flag is enabled.
+                  GoRoute(
+                    path: 'live-classes',
+                    builder: (context, state) {
+                      final box = Hive.box(AppConstants.authBox);
+                      final orgId = box.get('organizationId') as String? ?? '';
+                      final userId = box.get('userId') as String? ?? '';
+                      final displayName =
+                          box.get('userName') as String? ?? 'User';
+                      final userRole = box.get('userRole') as String? ?? '';
+                      final isTeacher =
+                          userRole == AppConstants.roleTeacher ||
+                              userRole == AppConstants.roleOwner;
+
+                      return LiveClassLobbyScreen(
+                        orgId: orgId,
+                        userId: userId,
+                        displayName: displayName,
+                        isTeacher: isTeacher,
+                      );
+                    },
                   ),
                 ],
               ),

@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/stage_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/feature_flag_provider.dart';
+import '../../../core/services/feature_flag_service.dart' show FeatureFlags;
 import '../../../widgets/common_widgets.dart';
 import '../../../widgets/klasivo_card.dart';
 import '../../../widgets/klasivo_modal.dart';
@@ -38,6 +40,18 @@ class ClassListScreen extends ConsumerWidget {
           _isStageScoped ? 'Classes - $stageName' : 'All Classes',
         ),
         centerTitle: true,
+        actions: [
+          // Sprint 1+2: Live Classes (LiveKit) entry point. Hidden entirely
+          // unless the org has FeatureFlags.livekit enabled (off by default
+          // — see feature_flag_service.dart _defaults). This is currently
+          // the only navigation path into /academic/live-classes.
+          if (ref.watch(featureFlagEnabledProvider(FeatureFlags.livekit)))
+            IconButton(
+              icon: const Icon(Icons.videocam_outlined),
+              tooltip: 'Live Classes',
+              onPressed: () => context.push('/academic/live-classes'),
+            ),
+        ],
       ),
       body: classes.isEmpty
           ? EmptyState(

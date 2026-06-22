@@ -1,0 +1,121 @@
+diff --git a/lib/core/services/feature_flag_service.dart b/lib/core/services/feature_flag_service.dart
+index f8455a6..3d7ed67 100755
+--- a/lib/core/services/feature_flag_service.dart
++++ b/lib/core/services/feature_flag_service.dart
+@@ -178,6 +178,17 @@ class FeatureFlagService {
+     FeatureFlags.publicApi: _FlagDefault(enabled: false),
+     FeatureFlags.ltiIntegration: _FlagDefault(enabled: false),
+     FeatureFlags.campusManagement: _FlagDefault(enabled: false),
++
++    // Sprint 1+2 — LiveKit live classes (off by default — backend
++    // (generateLiveKitToken/onLiveKitRoomEvents Cloud Functions) and
++    // Firestore rules are deployed, but the /live-classes route is newly
++    // wired and unproven in production. Flip per-org via the admin
++    // feature flags screen once verified, rather than changing this
++    // code-level default.)
++    FeatureFlags.livekit: _FlagDefault(enabled: false),
++    FeatureFlags.liveClasses: _FlagDefault(enabled: false),
++    FeatureFlags.scheduledClasses: _FlagDefault(enabled: false),
++    FeatureFlags.sessionRecordings: _FlagDefault(enabled: false),
+   };
+ }
+ 
+diff --git a/lib/features/classes/pages/class_list_screen.dart b/lib/features/classes/pages/class_list_screen.dart
+index 27f5fcd..510ff76 100755
+--- a/lib/features/classes/pages/class_list_screen.dart
++++ b/lib/features/classes/pages/class_list_screen.dart
+@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
+ import '../../../providers/class_provider.dart';
+ import '../../../providers/stage_provider.dart';
+ import '../../../providers/auth_provider.dart';
++import '../../../providers/feature_flag_provider.dart';
++import '../../../core/services/feature_flag_service.dart' show FeatureFlags;
+ import '../../../widgets/common_widgets.dart';
+ import '../../../widgets/klasivo_card.dart';
+ import '../../../widgets/klasivo_modal.dart';
+@@ -38,6 +40,18 @@ class ClassListScreen extends ConsumerWidget {
+           _isStageScoped ? 'Classes - $stageName' : 'All Classes',
+         ),
+         centerTitle: true,
++        actions: [
++          // Sprint 1+2: Live Classes (LiveKit) entry point. Hidden entirely
++          // unless the org has FeatureFlags.livekit enabled (off by default
++          // — see feature_flag_service.dart _defaults). This is currently
++          // the only navigation path into /academic/live-classes.
++          if (ref.watch(featureFlagEnabledProvider(FeatureFlags.livekit)))
++            IconButton(
++              icon: const Icon(Icons.videocam_outlined),
++              tooltip: 'Live Classes',
++              onPressed: () => context.push('/academic/live-classes'),
++            ),
++        ],
+       ),
+       body: classes.isEmpty
+           ? EmptyState(
+diff --git a/lib/main.dart b/lib/main.dart
+index afe70c3..4390909 100755
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -32,6 +32,7 @@ import 'features/dashboard/owner_dashboard.dart';
+ import 'features/dashboard/teacher_dashboard.dart';
+ import 'features/dashboard/student_dashboard.dart';
+ import 'features/classes/pages/class_list_screen.dart';
++import 'features/livekit/pages/live_class_lobby_screen.dart';
+ import 'features/classes/pages/class_form_screen.dart';
+ import 'features/students/pages/student_list_screen.dart';
+ import 'features/students/pages/student_form_screen.dart';
+@@ -683,6 +684,21 @@ final routerProvider = Provider<GoRouter>((ref) {
+           }
+         }
+ 
++        // Live classes (LiveKit) require the livekit flag. Off by default
++        // — see feature_flag_service.dart _defaults. This is a nested route
++        // inside the Academic branch (/academic/live-classes), not its own
++        // bottom-nav tab. Reached only via the "Live Classes" button on the
++        // class list screen, which is itself hidden unless this same flag
++        // is enabled — so in practice this redirect is a defense-in-depth
++        // backstop against someone navigating to the URL directly while
++        // the flag is off.
++        if (state.matchedLocation.startsWith('/academic/live-classes')) {
++          final flagService = ref.read(featureFlagServiceProvider);
++          if (!flagService.isEnabled(FeatureFlags.livekit)) {
++            return '/dashboard';
++          }
++        }
++
+         if (KlasivoRole.managementRoles.contains(userRole) &&
+             isOnDashboard) {
+           return null;
+@@ -817,6 +833,32 @@ final routerProvider = Provider<GoRouter>((ref) {
+                       ),
+                     ],
+                   ),
++
++                  // Live Classes (LiveKit) — gated by FeatureFlags.livekit,
++                  // see the redirect guard above. Reached via the "Live
++                  // Classes" icon button on ClassListScreen, which is itself
++                  // hidden unless this same flag is enabled.
++                  GoRoute(
++                    path: 'live-classes',
++                    builder: (context, state) {
++                      final box = Hive.box(AppConstants.authBox);
++                      final orgId = box.get('organizationId') as String? ?? '';
++                      final userId = box.get('userId') as String? ?? '';
++                      final displayName =
++                          box.get('userName') as String? ?? 'User';
++                      final userRole = box.get('userRole') as String? ?? '';
++                      final isTeacher =
++                          userRole == AppConstants.roleTeacher ||
++                              userRole == AppConstants.roleOwner;
++
++                      return LiveClassLobbyScreen(
++                        orgId: orgId,
++                        userId: userId,
++                        displayName: displayName,
++                        isTeacher: isTeacher,
++                      );
++                    },
++                  ),
+                 ],
+               ),
+ 
