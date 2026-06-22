@@ -241,10 +241,14 @@ service cloud.firestore {
          (isInSameOrg() && isStaffExcludingObserver()));
       allow create: if isAuth() && request.auth.uid == userId &&
         // New user doc must NOT self-assign a privileged role.
-        // Allowed roles on self-create: student, parent, teacher (pending approval).
+        // Allowed roles on self-create: student, parent only.
+        // Teacher registration is now exclusively via the redeemInviteCode CF
+        // (which uses Admin SDK, bypassing these rules). Allowing client-side
+        // 'teacher' self-create was dead attack surface that bypassed the
+        // invite-gated teacher onboarding flow.
         // owner/admin/super_admin/*_manager/*_supervisor must come from
         // a Cloud Function (registerOwner writes 'owner' via Admin SDK).
-        request.resource.data.role in ['student', 'parent', 'teacher'] &&
+        request.resource.data.role in ['student', 'parent'] &&
         // organizationId may be empty on first create (registerOwner Step 2)
         // but must be a string. Owner-side Cloud Function will populate it.
         request.resource.data.organizationId is string;
