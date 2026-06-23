@@ -9,6 +9,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initSentry, withIsolatedScope } from '../config/sentry';
+import { verifyOrgBoundary } from '../utils/rbac';
 
 export const gradeSubmission = onCall(
   {
@@ -46,16 +47,23 @@ export const gradeSubmission = onCall(
         throw new HttpsError('not-found', 'Submission not found.');
       }
 
-      const subData = subDoc.data()!;
+            const subData = subDoc.data()!;
       const studentId = subData.studentId as string;
 
       // Verify caller is the student who owns this submission OR staff
       const callerUid = request.auth.uid;
       const callerRole = (request.auth.token.role as string) || '';
+      const callerOrgId = (request.auth.token.organizationId as string) || '';
       const isStaff = ['super_admin', 'owner', 'admin', 'teacher', 'assistant_teacher'].includes(callerRole);
 
       if (callerUid !== studentId && !isStaff) {
         throw new HttpsError('permission-denied', 'Can only grade your own submission.');
+      }
+
+      // Verify org boundary — prevent cross-tenant grading
+      const submissionOrgId = (subData.organizationId as string) || '';
+      if (!verifyOrgBoundary(callerOrgId, submissionOrgId, callerRole)) {
+        throw new HttpsError('permission-denied', 'Cross-org grading not allowed.');
       }
 
       // Get questions

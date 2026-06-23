@@ -184,7 +184,10 @@ void main() {
       );
     });
 
-    test('client sends {email, password, fullName, phone?, studentCode?}', () {
+        test('client sends {email, password, fullName, phone?} (no studentCode)', () {
+      // N2 fix (commit 8bd55dc): the studentCode parameter was dead input —
+      // the CF ignored it and linking happens separately via linkParent CF.
+      // The client must NOT send studentCode at registration time.
       final callIdx = authServiceSrc.indexOf("httpsCallable('registerParent')");
       expect(callIdx, greaterThanOrEqualTo(0));
       final callBlock = authServiceSrc.substring(callIdx, callIdx + 600);
@@ -193,15 +196,30 @@ void main() {
       expect(callBlock, contains("'password'"));
       expect(callBlock, contains("'fullName'"));
       expect(callBlock, contains("'phone'"));
-      expect(callBlock, contains("'studentCode'"));
+      // studentCode must NOT be sent at registration — linking is post-reg
+      expect(
+        callBlock,
+        isNot(contains("'studentCode'")),
+        reason: 'Client must not send studentCode at registration. Linking '
+            'happens separately via the linkParent CF after registration. '
+            'See commit 8bd55dc (N1/N2 fix).',
+      );
     });
 
-    test('CF accepts {email, password, fullName, phone?, studentCode?}', () {
+        test('CF accepts {email, password, fullName, phone?} (no studentCode)', () {
+      // N2 fix (commit 8bd55dc): studentCode was removed from the CF
+      // interface. Linking is now a separate post-registration step handled
+      // by the linkParent CF.
       expect(cfSrc, contains('email: string'));
       expect(cfSrc, contains('password: string'));
       expect(cfSrc, contains('fullName: string'));
       expect(cfSrc, contains('phone?'));
-      expect(cfSrc, contains('studentCode?'));
+      expect(
+        cfSrc,
+        isNot(contains('studentCode?')),
+        reason: 'CF must not accept studentCode — linking happens separately '
+            'via linkParent CF. See commit 8bd55dc.',
+      );
     });
 
     test('CF returns {success, uid}', () {
@@ -245,13 +263,30 @@ void main() {
               'parent registration. See commit 3fbf855.');
     });
 
-    test('CF links parent to student when studentCode is provided', () {
-      // This is the parent→student linking feature. If a future refactor
-      // drops it, parents will register but never link to their child.
-      expect(cfSrc, contains('studentCode'),
-          reason: 'CF must accept studentCode');
-      expect(cfSrc, contains('parent_links'),
-          reason: 'CF must create a parent_links document when studentCode is provided');
+           test('linking is handled by linkParent CF (not registerParent)', () {
+      // N1/N2/N3 fix (commit 8bd55dc): parent-child linking moved out of
+      // registerParent entirely. registerParent just creates the auth
+      // account + user doc with empty orgId; the linkParent CF handles
+      // the parent_links doc + claims re-mint + org population.
+      //
+      // Verify registerParent does NOT touch parent_links.
+      expect(
+        cfSrc,
+        isNot(contains('parent_links')),
+        reason: 'registerParent must not write parent_links — that role '
+            'belongs to the linkParent CF. Mixing them creates non-atomic '
+            'link state.',
+      );
+
+      // Verify the linkParent CF exists and writes parent_links.
+      final linkParentSrc =
+          _readProjectFile('functions/src/functions/linkParent.ts');
+      expect(linkParentSrc, contains('parent_links'),
+          reason: 'linkParent CF must write parent_links documents');
+      expect(linkParentSrc, contains("status: 'approved'"),
+          reason: 'linkParent CF must flip link status to approved');
+      expect(linkParentSrc, contains('setCustomUserClaims'),
+          reason: 'linkParent CF must re-mint parent claims with real orgId');
     });
   });
 
@@ -394,17 +429,27 @@ void main() {
       rulesSrc = _readProjectFile('firestore.rules');
     });
 
-    test('B1. /users/{uid} self-create allows exactly {student, parent, teacher}', () {
+           test('B1. /users/{uid} self-create allows exactly {student, parent}', () {
       // Regression for ebfa4e1: rules were tightened to forbid owner/admin
-      // self-create. If someone widens this list, owner registration could
+      // self-create.
+      // L5 (commit 654b65d): tightened further to drop 'teacher' — teacher
+      // registration is now exclusively via the redeemInviteCode CF.
+      // If someone widens this list, owner/teacher registration could
       // silently start working via direct client write again — undoing the
-      // security design that requires owners to come from a CF.
+      // security design that requires CFs.
       expect(
         rulesSrc,
-        contains("['student', 'parent', 'teacher']"),
-        reason: '/users/{uid} create must only allow student/parent/teacher. '
-            'owner/admin/super_admin must come from a Cloud Function. '
-            'See commit ebfa4e1.',
+        contains("['student', 'parent']"),
+        reason: '/users/{uid} create must only allow student/parent. '
+            'owner/admin/super_admin/teacher must come from a Cloud Function. '
+            'See commits ebfa4e1 and 654b65d.',
+      );
+      // Also assert 'teacher' is NOT in the array (catches accidental re-add)
+      expect(
+        rulesSrc,
+        isNot(contains("['student', 'parent', 'teacher']")),
+        reason: 'Teacher self-create must remain forbidden — teachers come '
+            'from the redeemInviteCode CF only.',
       );
     });
 

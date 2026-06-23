@@ -1163,12 +1163,17 @@ class AuthService {
   ///   5. Returns { uid }
   ///
   /// After the CF succeeds, this method signs the user in.
+   /// Registers a parent via the registerParent Cloud Function.
+  ///
+  /// The parent's organizationId starts empty ('') and is populated later
+  /// by the linkParent CF when the parent redeems an 8-character linking
+  /// code at /auth/parent-link. Do NOT add a studentCode parameter here —
+  /// linking is a separate post-registration step (see parent_link_service).
   Future<Map<String, dynamic>> registerParentViaCF({
     required String email,
     required String password,
     required String fullName,
     String? phone,
-    String? studentCode,
   }) async {
     try {
       final result = await FirebaseFunctions.instance
@@ -1178,7 +1183,6 @@ class AuthService {
         'password': password,
         'fullName': fullName,
         'phone': phone,
-        'studentCode': studentCode,
       });
 
       final data = result.data as Map<String, dynamic>;
