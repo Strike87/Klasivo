@@ -19,6 +19,7 @@ class QuestionService {
     try {
       final data = <String, dynamic>{
         'examId': examId,
+        'organizationId': organizationId,   // ← NEW
         'questionType': AppConstants.questionTypeMultipleChoice,
         'questionText': questionText,
         'options': options,
@@ -52,6 +53,7 @@ class QuestionService {
     try {
       final data = <String, dynamic>{
         'examId': examId,
+        'organizationId': organizationId,   // ← NEW
         'questionType': AppConstants.questionTypeTrueFalse,
         'questionText': questionText,
         'options': ['True', 'False'],
@@ -85,6 +87,7 @@ class QuestionService {
     try {
       final data = <String, dynamic>{
         'examId': examId,
+        'organizationId': organizationId,   // ← NEW
         'questionType': AppConstants.questionTypeShortAnswer,
         'questionText': questionText,
         'options': [],

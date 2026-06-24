@@ -661,6 +661,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
 
           await widget.questionService.addMultipleChoiceQuestion(
             examId: widget.examId,
+            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
             questionText: _questionController.text.trim(),
             options: options,
             correctAnswer: correctAnswerText,
@@ -671,6 +672,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
             AppConstants.questionTypeTrueFalse) {
           await widget.questionService.addTrueFalseQuestion(
             examId: widget.examId,
+            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
             questionText: _questionController.text.trim(),
             correctAnswer: _tfCorrectAnswer!,
             marks: int.parse(_marksController.text.trim()),
@@ -679,6 +681,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
         } else {
           await widget.questionService.addShortAnswerQuestion(
             examId: widget.examId,
+            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
             questionText: _questionController.text.trim(),
             correctAnswer:
                 _correctAnswerController.text.trim(),
