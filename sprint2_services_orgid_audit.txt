@@ -1,0 +1,64 @@
+==============================================================================
+ORGANIZATION-ID AUDIT — lib/core/services/*.dart
+==============================================================================
+Files scanned         : 76
+add*/create* methods  : 38
+  PASS  (sets orgId)  : 33
+  EXEMPT              : 5
+  WARN  (review)      : 0
+  FAIL  (missing)     : 0
+
+==============================================================================
+PASS — Sets organizationId explicitly
+==============================================================================
+  lib/core/services/academic_year_service.dart:16  createAcademicYear()
+  lib/core/services/announcement_service.dart:19  createAnnouncement()
+  lib/core/services/assignment_service.dart:20  createAssignment()
+  lib/core/services/calendar_event_service.dart:21  createEvent()
+  lib/core/services/class_service.dart:17  createClass()
+  lib/core/services/class_service.dart:254  createClassesBatch()
+  lib/core/services/exam_instance_service.dart:20  createExamInstance()
+  lib/core/services/exam_service.dart:23  createExam()
+  lib/core/services/exam_template_service.dart:18  createTemplate()
+  lib/core/services/exam_template_service.dart:109  createExamFromTemplate()
+  lib/core/services/excel_import_service.dart:146  createOne()
+  lib/core/services/grade_service.dart:11  createGrade()
+  lib/core/services/gradebook_service.dart:15  createCategory()
+  lib/core/services/gradebook_service.dart:101  createEntry()
+  lib/core/services/group_member_service.dart:16  addMemberToGroup()
+  lib/core/services/group_service.dart:13  createGroup()
+  lib/core/services/invite_code_service.dart:35  createTeacherInviteCode()
+  lib/core/services/invite_code_service.dart:108  createStudentInviteCode()
+  lib/core/services/lesson_plan_service.dart:25  createLessonPlan()
+  lib/core/services/lesson_service.dart:26  createLesson()
+  lib/core/services/material_service.dart:28  createMaterial()
+  lib/core/services/messaging_service.dart:22  createConversation()
+  lib/core/services/notification_service.dart:356  createNotification()
+  lib/core/services/notification_service.dart:396  createBulkNotifications()
+  lib/core/services/question_bank_service.dart:30  addQuestionToBank()
+  lib/core/services/question_service.dart:19  addMultipleChoiceQuestion()
+  lib/core/services/question_service.dart:54  addTrueFalseQuestion()
+  lib/core/services/question_service.dart:89  addShortAnswerQuestion()
+  lib/core/services/resource_service.dart:26  createResource()
+  lib/core/services/stage_service.dart:14  createStage()
+  lib/core/services/stage_service.dart:173  createStagesBatch()
+  lib/core/services/subject_service.dart:14  createSubject()
+  lib/core/services/unit_service.dart:22  createUnit()
+
+==============================================================================
+EXEMPT — No Firestore write / global collection / delegation
+==============================================================================
+  lib/core/services/firebase_service.dart:72  addDocument()  — generic Firestore wrapper — caller is responsible for setting organizationId on the data map
+  lib/core/services/organization_service.dart:19  createOrganization()  — writes to a known global/system collection
+  lib/core/services/performance_trace_service.dart:170  createStartupPhaseTrace()  — no Firestore write in body (read-only or pure logic)
+  lib/core/services/sentry_service.dart:1231  addBreadcrumb()  — delegates to another service method (no direct Firestore write)
+  lib/core/services/student_service.dart:70  addStudent()  — delegates to another service method (no direct Firestore write)
+
+==============================================================================
+SUMMARY
+==============================================================================
+  Total methods audited : 38
+  PASS                  : 33
+  EXEMPT                : 5
+  WARN                  : 0
+  FAIL                  : 0

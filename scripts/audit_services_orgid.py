@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""
+Audit lib/core/services/*.dart for add*/create* methods that perform Firestore
+writes WITHOUT setting organizationId on the data map.
+
+Exemptions (counted as PASS):
+  - Method has no Firestore write (add/set/update/create) inside its body
+  - Method body explicitly references 'organizationId' as a map key
+  - Method body references 'organizationId' as a named argument to a helper
+  - Method body calls another service method (delegation) — we trust the callee
+  - Method targets a known global/system collection (users, organizations,
+    inviteCodes, contactSubmissions, auditLogs[if logwriter injects it], etc.)
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Set, Tuple
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+ROOT = Path("/home/z/my-project")
+SERVICES_DIR = ROOT / "lib" / "core" / "services"
+
+# Collections that are inherently global (not org-scoped). Writes to these
+# are exempt from the organizationId requirement.
+GLOBAL_COLLECTION_HINTS = {
+    "usersCollection",
+    "organizationsCollection",
+    "inviteCodesCollection",
+    "contactSubmissionsCollection",
+    "staffApplicationsCollection",
+    "passwordResetsCollection",
+    "otpCollection",
+    "globalAnnouncementsCollection",
+    "systemFlagsCollection",
+    "featureFlagsCollection",
+    "parentLinksCollection",   # parent↔student links are global (cross-org lookup)
+    "auditLogsCollection",     # audit log writer injects orgId server-side via CF
+    "emailLogsCollection",     # server-side only
+    "violationsCollection",    # written by CF trigger, not client
+    "rolesCollection",         # system-defined roles
+    "permissionsCollection",   # system-defined permissions
+}
+
+# Regex for Firestore write operations
+FIRESTORE_WRITE_RE = re.compile(
+    r"""\.\s*(?:
+        add\s*\(\s*\{|
+        add\s*\(|
+        set\s*\(\s*\{|
+        set\s*\(\s*[a-zA-Z_]|
+        set\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*,|
+        update\s*\(\s*\{|
+        update\s*\(\s*[a-zA-Z_]|
+        create\s*\(
+    )""",
+    re.VERBOSE,
+)
+
+# Regex for add*/create* method declarations
+METHOD_DECL_RE = re.compile(
+    r"""
+    ^\s*
+    (?:Future<[^>]*>\s+|Stream<[^>]*>\s+|void\s+|[A-Za-z_][A-Za-z0-9_<>,\s\?]*\s+)
+    (add[A-Z_][A-Za-z0-9_]*|create[A-Z_][A-Za-z0-9_]*)
+    \s*\(
+    """,
+    re.MULTILINE | re.VERBOSE,
+)
+
+# Regex for the 'organizationId' map key (covers 'organizationId':, "organizationId":,
+# organizationId: as a named arg)
+ORGID_KEY_RE = re.compile(
+    r"""['"]organizationId['"]\s*:|organizationId\s*:""",
+    re.MULTILINE,
+)
+
+# Regex for explicit no-op markers (e.g., // EXEMPT: orgId-injected-by-cf)
+EXEMPT_MARKER_RE = re.compile(
+    r"""//\s*EXEMPT[:\s]\s*(orgId-injected-by-cf|global-collection|org-less|delegated-write|no-firestore-write)""",
+    re.IGNORECASE,
+)
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MethodFinding:
+    file: str
+    line: int
+    method_name: str
+    has_firestore_write: bool
+    has_orgid_key: bool
+    has_exempt_marker: bool
+    references_global_collection: bool
+    delegates_to_service: bool
+    is_generic_wrapper: bool
+    body_preview: str
+    verdict: str  # PASS, EXEMPT, FAIL, WARN
+    reason: str = ""
+
+
+@dataclass
+class FileAudit:
+    file: str
+    methods: List[MethodFinding] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def find_method_body(src: str, decl_match: re.Match) -> Tuple[str, int, int]:
+    """Return (body_text, body_start_line, body_end_line) for the method
+    whose declaration begins at decl_match.start(). Body is delimited by
+    the first balanced `{` ... `}` after the parameter list."""
+    # Find the opening brace after the parameter list
+    i = decl_match.end()
+    n = len(src)
+    depth_paren = 0
+    # First close the parameter list
+    while i < n:
+        c = src[i]
+        if c == "(":
+            depth_paren += 1
+        elif c == ")":
+            if depth_paren == 0:
+                # Found end of params
+                i += 1
+                break
+            depth_paren -= 1
+        i += 1
+    # Skip whitespace + optional `async`/`async*`/`sync*` until `{`
+    while i < n:
+        c = src[i]
+        if c.isspace() or c.isalpha() or c == "*":
+            i += 1
+            continue
+        if c == "{":
+            break
+        if c == "=":
+            # Expression-bodied — treat the next `;` as end
+            j = src.find(";", i)
+            if j == -1:
+                return ("", decl_match.start(), decl_match.end())
+            body = src[decl_match.start() : j]
+            return (body, 0, 0)
+        # If we hit `;` we have an abstract method declaration
+        if c == ";":
+            return ("", decl_match.start(), i)
+        i += 1
+    if i >= n:
+        return ("", decl_match.start(), decl_match.end())
+    # Now match braces
+    depth = 1
+    start = i + 1
+    i = start
+    while i < n and depth > 0:
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        elif c == "'" or c == '"':
+            # Skip string contents
+            quote = c
+            i += 1
+            while i < n and src[i] != quote:
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                i += 1
+        elif c == "//":
+            # Skip line comment
+            while i < n and src[i] != "\n":
+                i += 1
+        elif c == "/*":
+            end = src.find("*/", i + 2)
+            i = end + 2 if end != -1 else n
+        i += 1
+    body = src[start:i]
+    return (body, src.count("\n", 0, start) + 1, src.count("\n", 0, i) + 1)
+
+
+def line_of(src: str, offset: int) -> int:
+    return src.count("\n", 0, offset) + 1
+
+
+# ---------------------------------------------------------------------------
+
+
+def audit_file(path: Path) -> FileAudit:
+    src = path.read_text(encoding="utf-8", errors="replace")
+    fa = FileAudit(file=str(path.relative_to(ROOT)))
+    for m in METHOD_DECL_RE.finditer(src):
+        body, start_ln, end_ln = find_method_body(src, m)
+        if not body:
+            continue
+        name = m.group(1)
+        has_write = bool(FIRESTORE_WRITE_RE.search(body))
+        has_orgid = bool(ORGID_KEY_RE.search(body))
+        has_exempt = bool(EXEMPT_MARKER_RE.search(body))
+        # Check global collection references in the body
+        refs_global = any(hint in body for hint in GLOBAL_COLLECTION_HINTS)
+        # Delegation: body calls another add*/create* service method
+        delegates = bool(
+            re.search(r"\b(?:add|create)[A-Z][A-Za-z0-9_]*\s*\(", body)
+        ) and not has_write
+
+        # Generic wrapper detection: method signature takes a pre-built
+        # Map<String, dynamic> data parameter — caller is responsible for
+        # setting organizationId on the map before passing it in.
+        # Look at the full match text (signature + first 80 chars of body)
+        sig_text = src[m.start() : m.start() + 400]
+        is_generic_wrapper = bool(
+            re.search(
+                r"Map\s*<\s*String\s*,\s*dynamic\s*>\s*data\s*[,)\)]",
+                sig_text,
+            )
+        )
+
+        if has_exempt:
+            verdict = "EXEMPT"
+            reason = "explicit EXEMPT marker in body"
+        elif not has_write:
+            if delegates:
+                verdict = "EXEMPT"
+                reason = "delegates to another service method (no direct Firestore write)"
+            else:
+                verdict = "EXEMPT"
+                reason = "no Firestore write in body (read-only or pure logic)"
+        elif has_orgid:
+            verdict = "PASS"
+            reason = "explicitly sets 'organizationId' on data map"
+        elif is_generic_wrapper:
+            verdict = "EXEMPT"
+            reason = "generic Firestore wrapper — caller is responsible for setting organizationId on the data map"
+        elif refs_global:
+            verdict = "EXEMPT"
+            reason = "writes to a known global/system collection"
+        elif delegates:
+            verdict = "WARN"
+            reason = "performs Firestore write AND delegates — partial delegation, manual review needed"
+        else:
+            verdict = "FAIL"
+            reason = "Firestore write detected without explicit organizationId key"
+
+        # Build a short body preview for the report
+        preview = " ".join(body.split())[:160]
+        fa.methods.append(
+            MethodFinding(
+                file=fa.file,
+                line=start_ln,
+                method_name=name,
+                has_firestore_write=has_write,
+                has_orgid_key=has_orgid,
+                has_exempt_marker=has_exempt,
+                references_global_collection=refs_global,
+                delegates_to_service=delegates,
+                is_generic_wrapper=is_generic_wrapper,
+                body_preview=preview,
+                verdict=verdict,
+                reason=reason,
+            )
+        )
+    return fa
+
+
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    if not SERVICES_DIR.exists():
+        print(f"ERROR: services dir not found: {SERVICES_DIR}", file=sys.stderr)
+        return 2
+
+    files = sorted(SERVICES_DIR.rglob("*.dart"))
+    files = [f for f in files if not f.name.endswith(".g.dart")]
+
+    all_findings: List[MethodFinding] = []
+    for f in files:
+        fa = audit_file(f)
+        all_findings.extend(fa.methods)
+
+    # Tally
+    counts = {"PASS": 0, "EXEMPT": 0, "WARN": 0, "FAIL": 0}
+    for f in all_findings:
+        counts[f.verdict] = counts.get(f.verdict, 0) + 1
+
+    # Print report
+    print("=" * 78)
+    print("ORGANIZATION-ID AUDIT — lib/core/services/*.dart")
+    print("=" * 78)
+    print(f"Files scanned         : {len(files)}")
+    print(f"add*/create* methods  : {len(all_findings)}")
+    print(f"  PASS  (sets orgId)  : {counts['PASS']}")
+    print(f"  EXEMPT              : {counts['EXEMPT']}")
+    print(f"  WARN  (review)      : {counts['WARN']}")
+    print(f"  FAIL  (missing)     : {counts['FAIL']}")
+    print()
+
+    # FAILs first
+    fails = [f for f in all_findings if f.verdict == "FAIL"]
+    if fails:
+        print("=" * 78)
+        print("FAIL — Firestore write WITHOUT organizationId")
+        print("=" * 78)
+        for f in fails:
+            print(f"\n  {f.file}:{f.line}  {f.method_name}()")
+            print(f"    reason: {f.reason}")
+            print(f"    body  : {f.body_preview}")
+        print()
+
+    # WARNs
+    warns = [f for f in all_findings if f.verdict == "WARN"]
+    if warns:
+        print("=" * 78)
+        print("WARN — Manual review recommended")
+        print("=" * 78)
+        for f in warns:
+            print(f"\n  {f.file}:{f.line}  {f.method_name}()")
+            print(f"    reason: {f.reason}")
+            print(f"    body  : {f.body_preview}")
+        print()
+
+    # PASS summary (compact)
+    passes = [f for f in all_findings if f.verdict == "PASS"]
+    if passes:
+        print("=" * 78)
+        print("PASS — Sets organizationId explicitly")
+        print("=" * 78)
+        for f in passes:
+            print(f"  {f.file}:{f.line}  {f.method_name}()")
+
+    # EXEMPT summary (compact)
+    exempts = [f for f in all_findings if f.verdict == "EXEMPT"]
+    if exempts:
+        print()
+        print("=" * 78)
+        print("EXEMPT — No Firestore write / global collection / delegation")
+        print("=" * 78)
+        for f in exempts:
+            print(f"  {f.file}:{f.line}  {f.method_name}()  — {f.reason}")
+
+    print()
+    print("=" * 78)
+    print("SUMMARY")
+    print("=" * 78)
+    print(f"  Total methods audited : {len(all_findings)}")
+    print(f"  PASS                  : {counts['PASS']}")
+    print(f"  EXEMPT                : {counts['EXEMPT']}")
+    print(f"  WARN                  : {counts['WARN']}")
+    print(f"  FAIL                  : {counts['FAIL']}")
+    return 0 if counts["FAIL"] == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
