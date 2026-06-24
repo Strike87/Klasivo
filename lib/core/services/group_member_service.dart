@@ -5,7 +5,12 @@ class GroupMemberService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Add a single student to a group
+  ///
+  /// [organizationId] is REQUIRED — Firestore rules enforce
+  /// `isIncomingSameOrg()` on create, which needs `organizationId` on the
+  /// incoming document. Without it the write is silently denied.
   Future<void> addMemberToGroup({
+    required String organizationId,
     required String groupId,
     required String studentId,
   }) async {
@@ -23,6 +28,7 @@ class GroupMemberService {
       await _firestore
           .collection(AppConstants.groupMembersCollection)
           .add({
+        'organizationId': organizationId,
         'groupId': groupId,
         'studentId': studentId,
         'addedAt': FieldValue.serverTimestamp(),
@@ -54,7 +60,12 @@ class GroupMemberService {
   }
 
   /// Set all members for a group (replaces existing members)
+  ///
+  /// [organizationId] is REQUIRED — Firestore rules enforce
+  /// `isIncomingSameOrg()` on each batched set, which needs `organizationId`
+  /// on every incoming document.
   Future<void> setGroupMembers({
+    required String organizationId,
     required String groupId,
     required List<String> studentIds,
   }) async {
@@ -76,6 +87,7 @@ class GroupMemberService {
             .collection(AppConstants.groupMembersCollection)
             .doc();
         batch.set(docRef, {
+          'organizationId': organizationId,
           'groupId': groupId,
           'studentId': studentId,
           'addedAt': FieldValue.serverTimestamp(),
