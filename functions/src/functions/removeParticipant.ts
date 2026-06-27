@@ -27,9 +27,10 @@ const LIVEKIT_API_SECRET = defineSecret('LIVEKIT_API_SECRET');
 
 // ─── Types ────────────────────────────────────────────────────
 interface RemoveParticipantRequest {
-  roomName: string;
   participantIdentity: string;
   roomId: string;
+  // roomName is NO LONGER accepted from the client — it is derived
+  // from the Firestore room doc to prevent cross-room manipulation.
 }
 
 const db = admin.firestore();
@@ -70,10 +71,10 @@ export const removeParticipant = onCall(
       throw new HttpsError('permission-denied', 'Only staff can remove participants.');
     }
 
-    const { roomName, participantIdentity, roomId } = request.data ?? {};
+    const { participantIdentity, roomId } = request.data ?? {};
 
-    if (!roomName || !participantIdentity || !roomId) {
-      throw new HttpsError('invalid-argument', 'roomName, participantIdentity, and roomId are required.');
+    if (!participantIdentity || !roomId) {
+      throw new HttpsError('invalid-argument', 'participantIdentity and roomId are required.');
     }
 
     // ── Verify caller is in the same org as the room (D5 PATCH — fail-closed) ──
@@ -92,6 +93,13 @@ export const removeParticipant = onCall(
         'permission-denied',
         'You can only remove participants from rooms in your organization.',
       );
+    }
+
+    // Derive roomName from the Firestore doc (trusted source), not the client.
+    // Mirrors generateLiveKitToken.ts:91 which reads roomData['name'].
+    const roomName = roomDoc.data()?.['name'] as string;
+    if (!roomName) {
+      throw new HttpsError('failed-precondition', 'Room document is missing a name field.');
     }
 
     scope.setTag('room', roomName);

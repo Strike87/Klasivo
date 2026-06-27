@@ -86,9 +86,13 @@ class ExamSecurityService {
       try {
         final data = await Clipboard.getData(Clipboard.kTextPlain);
         if (data?.text != null && data!.text!.isNotEmpty) {
+          // Log the event only — do NOT log clipboard content.
+          // The clipboard may contain passwords, 2FA codes, or personal
+          // messages copied before the exam; writing them to violations
+          // would be a PII leak readable by staff.
           _onViolationDetected?.call(
             'clipboard_activity',
-            'Clipboard contains text: "${data.text!.substring(0, data.text!.length > 50 ? 50 : data.text!.length)}..."',
+            'Clipboard activity detected — clipboard cleared.',
           );
           // Clear clipboard to prevent pasting
           await Clipboard.setData(const ClipboardData(text: ''));

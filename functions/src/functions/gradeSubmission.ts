@@ -1,9 +1,17 @@
 /**
- * gradeSubmission — P1-3: Server-side exam grading
+ * gradeSubmission — Server-side auto-grading for objective exams
  *
- * Called after student submits. Reads all answers, compares to correct answers,
- * calculates score/percentage, updates submission with grading fields.
- * Student client CANNOT write these fields (blocked by studentSafeSubmissionUpdate).
+ * Called by staff or triggered on submission. Reads all answers, compares
+ * to correct answers, calculates score/percentage, updates submission with
+ * grading fields. Student client CANNOT write these fields (blocked by
+ * studentSafeSubmissionUpdate).
+ *
+ * Security:
+ *   - Staff-only (students cannot trigger their own grading)
+ *   - Server-side deadline check (exam window must be open or closed)
+ *   - Idempotency: rejects re-grading if a teacher has already manually
+ *     graded the submission (status=='reviewed' or manuallyGraded==true)
+ *   - Org boundary verification (prevent cross-tenant grading)
  */
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -50,20 +58,49 @@ export const gradeSubmission = onCall(
             const subData = subDoc.data()!;
       const studentId = subData.studentId as string;
 
-      // Verify caller is the student who owns this submission OR staff
+      // ─── Caller must be staff (students cannot trigger their own grading) ──
       const callerUid = request.auth.uid;
       const callerRole = (request.auth.token.role as string) || '';
       const callerOrgId = (request.auth.token.organizationId as string) || '';
       const isStaff = ['super_admin', 'owner', 'admin', 'teacher', 'assistant_teacher'].includes(callerRole);
 
-      if (callerUid !== studentId && !isStaff) {
-        throw new HttpsError('permission-denied', 'Can only grade your own submission.');
+      if (!isStaff) {
+        throw new HttpsError('permission-denied', 'Only staff can grade submissions.');
       }
 
-      // Verify org boundary — prevent cross-tenant grading
+      // ─── Verify org boundary — prevent cross-tenant grading ─────────────
       const submissionOrgId = (subData.organizationId as string) || '';
       if (!verifyOrgBoundary(callerOrgId, submissionOrgId, callerRole)) {
         throw new HttpsError('permission-denied', 'Cross-org grading not allowed.');
+      }
+
+      // ─── Idempotency: reject re-grading if teacher has manually graded ────
+      const submissionStatus = (subData.status as string) || '';
+      const manuallyGraded = (subData.manuallyGraded as boolean) || false;
+      if (manuallyGraded || submissionStatus === 'reviewed') {
+        throw new HttpsError(
+          'failed-precondition',
+          'This submission was manually graded and cannot be auto-graded.',
+        );
+      }
+
+      // ─── Server-side deadline check (exam window must have opened) ──────
+      const examDoc = await db.collection('exams').doc(examId).get();
+      if (!examDoc.exists) {
+        throw new HttpsError('not-found', 'Exam not found.');
+      }
+      const examData = examDoc.data()!;
+      const endTime = examData['endTime'] as { toDate: () => Date } | null;
+      const startTime = examData['startTime'] as { toDate: () => Date } | null;
+      const now = Date.now();
+
+      // Allow grading if exam has started (or has no start time). Reject if
+      // the exam hasn't opened yet — prevents pre-grading before the window.
+      if (startTime && startTime.toDate().getTime() > now) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Exam has not started yet. Cannot grade before the exam window opens.',
+        );
       }
 
       // Get questions
