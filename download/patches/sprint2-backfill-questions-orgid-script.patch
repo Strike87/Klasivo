@@ -1,0 +1,96 @@
+diff --git a/scripts/backfill_questions_orgid.js b/scripts/backfill_questions_orgid.js
+new file mode 100755
+index 0000000..188006b
+--- /dev/null
++++ b/scripts/backfill_questions_orgid.js
+@@ -0,0 +1,90 @@
++/**
++ * Backfill: set organizationId on existing question docs.
++ *
++ * Existing question docs were created WITHOUT an organizationId field,
++ * which causes [cloud_firestore/permission-denied] on every read because
++ * the Firestore rule requires isInSameOrg() (which requires the field).
++ *
++ * This script:
++ *   1. Reads all question docs where organizationId is missing/null/empty
++ *   2. For each, reads its parent exam doc to get the exam's organizationId
++ *   3. Writes organizationId back onto the question doc
++ *
++ * Run with:  node scripts/backfill_questions_orgid.js
++ *
++ * Requires: firebase-admin installed (cd functions && npm install)
++ *           and GOOGLE_APPLICATION_CREDENTIALS env var pointing to a
++ *           service account JSON with Firestore read/write perms.
++ */
++const admin = require('firebase-admin');
++
++admin.initializeApp({
++  credential: admin.credential.applicationDefault(),
++});
++
++const db = admin.firestore();
++
++async function backfill() {
++  console.log('Scanning questions collection for docs missing organizationId...');
++
++  const snapshot = await db.collection('questions').get();
++  console.log(`Total question docs: ${snapshot.size}`);
++
++  let fixed = 0;
++  let skipped = 0;
++  let failed = 0;
++
++  // Cache exam org IDs to avoid repeated reads
++  const examOrgCache = new Map();
++
++  for (const doc of snapshot.docs) {
++    const data = doc.data();
++    const existingOrg = data.organizationId;
++
++    if (typeof existingOrg === 'string' && existingOrg.length > 0) {
++      skipped++;
++      continue;
++    }
++
++    const examId = data.examId;
++    if (!examId) {
++      console.warn(`  ✗ ${doc.id}: no examId field — cannot determine org, skipping`);
++      failed++;
++      continue;
++    }
++
++    let orgId = examOrgCache.get(examId);
++    if (orgId === undefined) {
++      const examDoc = await db.collection('exams').doc(examId).get();
++      if (!examDoc.exists) {
++        console.warn(`  ✗ ${doc.id}: exam ${examId} not found — skipping`);
++        examOrgCache.set(examId, null);  // cache the miss
++        failed++;
++        continue;
++      }
++      orgId = examDoc.data().organizationId || null;
++      examOrgCache.set(examId, orgId);
++    }
++
++    if (!orgId) {
++      console.warn(`  ✗ ${doc.id}: exam ${examId} has no organizationId — skipping`);
++      failed++;
++      continue;
++    }
++
++    await doc.ref.update({ organizationId: orgId });
++    console.log(`  ✓ ${doc.id}: organizationId=${orgId}`);
++    fixed++;
++  }
++
++  console.log('\n--- Summary ---');
++  console.log(`Fixed:    ${fixed}`);
++  console.log(`Skipped:  ${skipped} (already had organizationId)`);
++  console.log(`Failed:   ${failed}`);
++  process.exit(failed > 0 ? 1 : 0);
++}
++
++backfill().catch((err) => {
++  console.error('Backfill failed:', err);
++  process.exit(1);
++});

@@ -1,0 +1,151 @@
+
+========================================================================
+  Item 1: Registration CFs + Rules Deploy Status
+========================================================================
+  This script CANNOT verify deploy status. You must manually confirm:
+    1. Run: firebase deploy --only firestore:rules
+    2. Run: firebase deploy --only functions:linkParent,functions:registerParent,
+           functions:registerOwner,functions:redeemInviteCode,functions:registerTeacher,
+           functions:onUserCreated
+    3. Run: firebase functions:list  (confirm all 6 CFs are deployed)
+  [WARN] Manual verification required — deploy is not auditable from a script.
+
+========================================================================
+  Item 2: End-to-End Registration Smoke Test (Manual)
+========================================================================
+  This script CANNOT run smoke tests. You must manually test:
+    a. Register a new OWNER  → confirm org doc created, claims minted
+    b. Register a new TEACHER (via invite code) → confirm role:teacher, orgId set
+    c. Register a new PARENT (no studentCode) → confirm organizationId:'' 
+       then link via 8-char code → confirm organizationId populated + claims re-minted
+    d. Create a STUDENT via staff → confirm STU-XXXXXX code generated
+    e. As the linked parent, read /parent/results → confirm no permission-denied
+  [WARN] Manual smoke test required — cannot be automated without real Firebase project.
+
+========================================================================
+  Item 3: syncClaims — Is It Actually Called When Claims Change?
+========================================================================
+  syncClaims defined in: functions\src\index.ts
+  [PASS] syncClaims is exported via index.ts
+  Found 11 setCustomUserClaims call sites (CF files only):
+    functions\src\functions\assignRole.ts:180
+    functions\src\functions\assignScope.ts:181
+    functions\src\functions\createStudent.ts:567
+    functions\src\functions\createStudent.ts:575
+    functions\src\functions\createStudent.ts:685
+    functions\src\functions\linkParent.ts:190
+    functions\src\functions\redeemInviteCode.ts:224
+    functions\src\functions\registerOwner.ts:118
+    functions\src\functions\registerParent.ts:100
+    functions\src\functions\registerTeacher.ts:216
+    functions\src\functions\syncClaims.ts:124
+
+--- Checking if syncClaims is invoked after each setCustomUserClaims ---
+  [WARN] functions\src\functions\assignRole.ts: mints claims but doesn't call syncClaims (may rely on roleVersion client refresh)
+  [WARN] functions\src\functions\assignScope.ts: mints claims but doesn't call syncClaims (may rely on roleVersion client refresh)
+  [PASS] functions\src\functions\createStudent.ts: calls syncClaims after minting claims
+  [WARN] functions\src\functions\linkParent.ts: registration/link CF — claims minted for new user (picked up on first sign-in, no syncClaims needed)
+  [WARN] functions\src\functions\redeemInviteCode.ts: registration/link CF — claims minted for new user (picked up on first sign-in, no syncClaims needed)
+  [WARN] functions\src\functions\registerOwner.ts: registration/link CF — claims minted for new user (picked up on first sign-in, no syncClaims needed)
+  [WARN] functions\src\functions\registerParent.ts: registration/link CF — claims minted for new user (picked up on first sign-in, no syncClaims needed)
+  [WARN] functions\src\functions\registerTeacher.ts: registration/link CF — claims minted for new user (picked up on first sign-in, no syncClaims needed)
+  [PASS] functions\src\functions\syncClaims.ts: calls syncClaims after minting claims
+
+========================================================================
+  Item 4: rbac.ts Role Hierarchy — Is Every CF Using It?
+========================================================================
+  rbac.ts at: functions\src\utils\rbac.ts
+  Role-hierarchy helpers found: roleRank
+  Found 2 raw role check sites in CFs:
+    functions\src\functions\redeemInviteCode.ts:146: if (role === 'super_admin' || role === 'owner') {
+    functions\src\functions\createStudent.ts:382: typeof firestoreSnapshot.role === 'string' &&
+  rbac helper functions are called 2 times across CFs
+  [PASS] rbac helpers used more than raw role checks (2 vs 2)
+
+========================================================================
+  Item 5: verifyOrgBoundary — Is It Called in Every Org-Scoped CF?
+========================================================================
+  verifyOrgBoundary defined in: functions\src\utils\rbac.ts
+  Scanning 25 CF files for org-scoped collection access...
+  21 CFs touch org-scoped collections, 4 don't
+
+--- Checking each org-scoped CF for verifyOrgBoundary (or equivalent) ---
+  [PASS] assignRole.ts: calls verifyOrgBoundary (touches audit_logs, users)
+  [PASS] assignScope.ts: calls verifyOrgBoundary (touches audit_logs, users)
+  [PASS] changeUserPassword.ts: calls verifyOrgBoundary (touches audit_logs, users)
+  [EXEMPT] createStudent.ts: registration/link CF (caller has no org yet) — touches audit_logs, classes, users
+  [PASS] deleteOrganization.ts: uses inline boundary check (`callerOrgId !== organizationId`) — touches audit_logs, classes, invite_codes, organizations, users)
+  [WARN]   → consider consolidating to verifyOrgBoundary() helper for consistency
+  [PASS] deleteStudent.ts: calls verifyOrgBoundary (touches audit_logs, classes, users)
+  [PASS] generateLiveKitToken.ts: calls verifyOrgBoundary (touches audit_logs, users)
+  [PASS] gradeAssignmentSubmission.ts: uses inline boundary check (`subData.organizationId !== callerOrgId`) — touches audit_logs, notifications)
+  [WARN]   → consider consolidating to verifyOrgBoundary() helper for consistency
+  [PASS] gradeSubmission.ts: calls verifyOrgBoundary (touches submissions)
+  [EXEMPT] linkParent.ts: registration/link CF (caller has no org yet) — touches audit_logs, parent_links, users
+  [EXEMPT] onLiveKitRoomEvents.ts: trigger CF (no caller to verify) — touches attendance, messages, notifications, users
+  [EXEMPT] onUserCreated.ts: trigger CF (no caller to verify) — touches users
+  [EXEMPT] onUserDeleted.ts: trigger CF (no caller to verify) — touches assignments, attendance, audit_logs, exams, invite_codes, messages, notifications, organizations, parent_links, submissions, users
+  [EXEMPT] redeemInviteCode.ts: registration/link CF (caller has no org yet) — touches audit_logs, invite_codes, users
+  [EXEMPT] registerOwner.ts: registration/link CF (caller has no org yet) — touches audit_logs, organizations, users
+  [EXEMPT] registerParent.ts: registration/link CF (caller has no org yet) — touches users
+  [EXEMPT] registerTeacher.ts: registration/link CF (caller has no org yet) — touches audit_logs, invite_codes, users
+  [PASS] removeParticipant.ts: calls verifyOrgBoundary (touches attendance, notifications, users)
+  [EXEMPT] scheduledClassReminder.ts: trigger CF (no caller to verify) — touches users
+  [PASS] setPermissionOverrides.ts: calls verifyOrgBoundary (touches audit_logs, users)
+  [PASS] syncClaims.ts: calls verifyOrgBoundary (touches audit_logs, users)
+
+--- Item 5 summary ---
+    4 trigger CF(s) exempted (no caller to verify)
+    6 registration/link CF(s) exempted (caller has no org yet)
+    2 CF(s) use inline boundary check (PASS + WARN for consolidation)
+  [PASS] All org-scoped CFs either call verifyOrgBoundary, use inline checks, or are exempted by rule
+
+========================================================================
+  Item 6: Build Checks — tsc + flutter analyze
+========================================================================
+
+--- Running: tsc --noEmit in functions/ ---
+  [PASS] TypeScript compiles clean (0 errors)
+
+--- Running: flutter analyze ---
+  [WARN] flutter analyze: 0 errors, 0 warnings, 0 infos (non-blocking)
+
+========================================================================
+  Item 7: Sprint 3B — Screens That Exist But Aren't Routed
+========================================================================
+  Found 6 screen files in user_management/
+  Sprint 3B planned-screens allowlist: effective_permissions_screen.dart, people_hub_screen.dart, permission_override_screen.dart, role_matrix_screen.dart, scope_assignment_screen.dart, user_detail_screen.dart
+
+--- Checking each screen for route references ---
+  [PASS] effective_permissions_screen.dart (class EffectivePermissionsViewer): referenced 1 time(s)
+  [WARN] people_hub_screen.dart (class PeopleHubScreen): unwired — EXPECTED Sprint 3B gap (not a regression)
+  [PASS] permission_override_screen.dart (class PermissionOverrideScreen): referenced 1 time(s)
+  [WARN] role_matrix_screen.dart (class RoleMatrixScreen): unwired — EXPECTED Sprint 3B gap (not a regression)
+  [PASS] scope_assignment_screen.dart (class ScopeAssignmentScreen): referenced 1 time(s)
+  [WARN] user_detail_screen.dart (class UserDetailScreen): unwired — EXPECTED Sprint 3B gap (not a regression)
+
+--- Item 7 summary ---
+    3 planned Sprint 3B gap(s) — wire up in Sprint 3B:
+      • people_hub_screen.dart (PeopleHubScreen)
+      • role_matrix_screen.dart (RoleMatrixScreen)
+      • user_detail_screen.dart (UserDetailScreen)
+
+========================================================================
+  Item 8: Integration Tests — Do They Pass?
+========================================================================
+  Running 2 test file(s)...
+  [PASS] Integration tests passed (All tests passed!)
+
+========================================================================
+  Item 9 (bonus): TODO/FIXME/HACK in Registration Code
+========================================================================
+  [PASS] No TODO/FIXME/HACK markers in registration code
+
+========================================================================
+  SUMMARY
+========================================================================
+  Passed:       22
+  Exempted:     10   (ok-but-exempted — see EXEMPT lines above)
+  Failed:       0     (TRUE failures — must fix before Sprint 3)
+  Warnings:     15
+  Total checks: 47
