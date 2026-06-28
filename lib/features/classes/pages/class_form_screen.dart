@@ -70,7 +70,10 @@ class _ClassFormScreenState extends ConsumerState<ClassFormScreen> {
 
     try {
       final classService = ref.read(classServiceProvider);
-      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+      final orgId = ref.read(currentOrganizationIdProvider);
+      if (orgId == null || orgId.isEmpty) {
+        throw StateError('Organization context missing. Please re-login and retry.');
+      }
       final userId = ref.read(userIdProvider) ?? '';
       final capacity = int.tryParse(_capacityController.text.trim()) ?? 0;
 

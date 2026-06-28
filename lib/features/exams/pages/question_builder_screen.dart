@@ -595,6 +595,16 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
     setState(() => _isLoading = true);
 
     try {
+      // Fail-fast on missing org: writing a question with organizationId:''
+      // silently breaks downstream org-boundary checks (grading, reads,
+      // the Sprint 2 org-id backfill). Resolve once and throw early.
+      final organizationId = ref.read(currentOrganizationIdProvider);
+      if (organizationId == null || organizationId.isEmpty) {
+        throw StateError(
+          'Cannot save question: no active organization. Please re-login and retry.',
+        );
+      }
+
       final nextOrder = widget.questions.length;
 
       if (widget.existingQuestion != null) {
@@ -662,7 +672,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
 
           await widget.questionService.addMultipleChoiceQuestion(
             examId: widget.examId,
-            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
+            organizationId: organizationId,
             questionText: _questionController.text.trim(),
             options: options,
             correctAnswer: correctAnswerText,
@@ -673,7 +683,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
             AppConstants.questionTypeTrueFalse) {
           await widget.questionService.addTrueFalseQuestion(
             examId: widget.examId,
-            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
+            organizationId: organizationId,
             questionText: _questionController.text.trim(),
             correctAnswer: _tfCorrectAnswer!,
             marks: int.parse(_marksController.text.trim()),
@@ -682,7 +692,7 @@ class _QuestionFormSheetState extends ConsumerState<_QuestionFormSheet> {
         } else {
           await widget.questionService.addShortAnswerQuestion(
             examId: widget.examId,
-            organizationId: ref.read(currentOrganizationIdProvider) ?? '',   // ← NEW
+            organizationId: organizationId,
             questionText: _questionController.text.trim(),
             correctAnswer:
                 _correctAnswerController.text.trim(),

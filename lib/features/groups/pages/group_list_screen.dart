@@ -117,7 +117,10 @@ class GroupListScreen extends ConsumerWidget {
                   onPressed: () async {
                     if (nameController.text.trim().isEmpty) return;
                     try {
-                      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+                      final orgId = ref.read(currentOrganizationIdProvider);
+                      if (orgId == null || orgId.isEmpty) {
+                        throw StateError('Organization context missing. Please re-login and retry.');
+                      }
                       await ref.read(groupServiceProvider).createGroup(
                             organizationId: orgId,
                             classId: classId,

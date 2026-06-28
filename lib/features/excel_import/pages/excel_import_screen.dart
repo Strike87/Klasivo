@@ -103,7 +103,10 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
     setState(() => _isImporting = true);
     try {
       final teacherId = ref.read(userIdProvider) ?? '';
-      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+      final orgId = ref.read(currentOrganizationIdProvider);
+      if (orgId == null || orgId.isEmpty) {
+        throw StateError('Organization context missing. Please re-login and retry.');
+      }
       final classes = ref.read(classesProvider);
       final classData = classes.firstWhere(
         (c) => c.id == widget.classId,

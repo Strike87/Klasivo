@@ -116,7 +116,10 @@ class GradeListScreen extends ConsumerWidget {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+                final orgId = ref.read(currentOrganizationIdProvider);
+                if (orgId == null || orgId.isEmpty) {
+                  throw StateError('Organization context missing. Please re-login and retry.');
+                }
                 await ref.read(gradeServiceProvider).createGrade(
                       stageId: stageId,
                       name: nameController.text.trim(),

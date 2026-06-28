@@ -124,13 +124,20 @@ class AssignmentService {
               .get();
           final studentIds = studentsSnapshot.docs.map((d) => d.id).toList();
 
-          if (studentIds.isNotEmpty) {
+          if (studentIds.isNotEmpty && orgId != null && orgId.isNotEmpty) {
             await NotificationService.notifyAssignmentPublished(
-              organizationId: orgId ?? '',
+              organizationId: orgId,
               assignmentId: assignmentId,
               assignmentTitle: title,
               studentIds: studentIds,
             );
+          } else if (orgId == null || orgId.isEmpty) {
+            // Assignment was created with empty organizationId (should not happen
+            // after the fail-fast fix in assignment_form_screen.dart, but guard
+            // against legacy data). Skip notification — sending one with empty
+            // org would fail org-boundary rules on delivery.
+            print('[AssignmentService] Skipping notification for ${assignmentId}: '
+                'assignment has no organizationId.');
           }
         }
       }

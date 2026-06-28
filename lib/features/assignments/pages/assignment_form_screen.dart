@@ -152,7 +152,10 @@ class _AssignmentFormScreenState extends ConsumerState<AssignmentFormScreen> {
 
     try {
       final assignmentService = ref.read(assignmentServiceProvider);
-      final orgId = ref.read(currentOrganizationIdProvider) ?? '';
+      final orgId = ref.read(currentOrganizationIdProvider);
+      if (orgId == null || orgId.isEmpty) {
+        throw StateError('Organization context missing. Please re-login and retry.');
+      }
       final teacherId = ref.read(userIdProvider) ?? '';
 
       if (widget.isEditing) {

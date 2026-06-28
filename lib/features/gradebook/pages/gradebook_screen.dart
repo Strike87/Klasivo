@@ -860,8 +860,10 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
                           }
                           setState(() => _isLoading = true);
                           try {
-                            final orgId =
-                                ref.read(currentOrganizationIdProvider) ?? '';
+                            final orgId = ref.read(currentOrganizationIdProvider);
+                            if (orgId == null || orgId.isEmpty) {
+                              throw StateError('Organization context missing. Please re-login and retry.');
+                            }
                             final service =
                                 ref.read(gradebookServiceProvider);
 
@@ -1205,8 +1207,10 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
 
                             setState(() => _isLoading = true);
                             try {
-                              final orgId =
-                                  ref.read(currentOrganizationIdProvider) ?? '';
+                              final orgId = ref.read(currentOrganizationIdProvider);
+                              if (orgId == null || orgId.isEmpty) {
+                                throw StateError('Organization context missing. Please re-login and retry.');
+                              }
                               final service =
                                   ref.read(gradebookServiceProvider);
 
@@ -1457,8 +1461,10 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
 
                           setState(() => _isLoading = true);
                           try {
-                            final orgId =
-                                ref.read(currentOrganizationIdProvider) ?? '';
+                            final orgId = ref.read(currentOrganizationIdProvider);
+                            if (orgId == null || orgId.isEmpty) {
+                              throw StateError('Organization context missing. Please re-login and retry.');
+                            }
                             await ref
                                 .read(gradebookServiceProvider)
                                 .createEntry(
