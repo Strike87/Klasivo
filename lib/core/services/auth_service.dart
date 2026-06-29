@@ -1470,179 +1470,55 @@ createUserDocSpan.status = const SpanStatus.ok();
       bool hasCompletedSetup = true;
 
       if (role == AppConstants.roleOwner) {
-        // Create user doc FIRST with placeholder orgId so isTeacherOrOwner() resolves
+        // Delegate to server-side CF — the client cannot write role:'owner'
+        // (rules block it) or create orgs (allow create: if false). The CF
+        // handles org creation, user doc, claims, and audit in one atomic
+        // server-side transaction via Admin SDK.
         Sentry.addBreadcrumb(Breadcrumb(
           category: 'registration',
-          message: 'STEP_2_USER_DOC_CREATE_START',
-        ));
-
-        final createUserDocSpan = transaction.startChild('create_user_doc');
-
-        try {
-          await SentryFirestoreHelper.docSet(
-            collection: AppConstants.usersCollection,
-            docId: user.uid,
-            data: {
-              'organizationId': '', // Placeholder — updated below
-              'role': AppConstants.roleOwner,
-              'authProvider': AuthProviders.google,
-              'fullName': fullName,
-              'email': email,
-              'photoUrl': user.photoURL,
-              'phoneNumber': null,
-              'isActive': true,
-              'isEmailVerified': isEmailVerified,
-              'hasCompletedSetup': false,
-              'createdAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
-            },
-            flow: flowName,
-            step: 'STEP_2_USER_DOC_CREATE',
-          );
-
-          // Read-back verification: confirm the document actually exists
-          final verifyDoc = await _firestore
-              .collection(AppConstants.usersCollection)
-              .doc(user.uid)
-              .get();
-          if (!verifyDoc.exists) {
-            await Sentry.captureMessage(
-              'STEP_2 USER DOC SET SUCCEEDED BUT READ-BACK FAILED — doc users/${user.uid} does not exist',
-              level: SentryLevel.error,
-            );
-          }
-
-          KlasivoSentry.docIdAudit.logUserCreation(
-            flow: flowName,
-            collection: AppConstants.usersCollection,
-            docIdStrategy: 'uid',
-            actualDocId: user.uid,
-            authUid: user.uid,
-          );
-
-          createUserDocSpan.status = const SpanStatus.ok();
-        } catch (e, st) {
-          createUserDocSpan.status = const SpanStatus.internalError();
-          rethrow;
-        } finally {
-          await createUserDocSpan.finish();
-        }
-
-        Sentry.addBreadcrumb(Breadcrumb(
-          category: 'registration',
-          message: 'STEP_2_USER_DOC_CREATE_SUCCESS',
+          message: 'REGISTER_OWNER_GOOGLE_CF_START',
           data: {'uid': user.uid},
         ));
 
-        // Now create the organization — rules can verify user is an owner
-        Sentry.addBreadcrumb(Breadcrumb(
-          category: 'registration',
-          message: 'STEP_3_ORG_CREATE_START',
-        ));
-
-        final createOrgSpan = transaction.startChild('create_organization');
-        final orgService = OrganizationService();
-
         try {
-          organizationId = await orgService.createOrganization(
-            ownerId: user.uid,
-            name: "$fullName's Workspace",
-          );
-          createOrgSpan.status = const SpanStatus.ok();
-        } catch (e, st) {
-          createOrgSpan.status = const SpanStatus.internalError();
-          await Sentry.captureException(
-            e,
-            stackTrace: st,
-            withScope: (scope) {
-              scope.setTag('collection', 'organizations');
-              scope.setTag('operation', 'create');
-              scope.setTag('ownerId', user.uid);
-              scope.setTag('flow', flowName);
-              scope.setTag('step', 'STEP_3_ORG_CREATE');
-            },
-          );
-          rethrow;
-        } finally {
-          await createOrgSpan.finish();
-        }
+          final cfResult = await FirebaseFunctions.instance
+              .httpsCallable('registerOwnerWithGoogle')
+              .call<Map<String, dynamic>>({
+            'organizationName': "$fullName's Workspace",
+          });
 
-        Sentry.addBreadcrumb(Breadcrumb(
-          category: 'registration',
-          message: 'STEP_3_ORG_CREATE_SUCCESS',
-          data: {'orgId': organizationId},
-        ));
-
-        // Patch the user doc with the real organizationId
-        Sentry.addBreadcrumb(Breadcrumb(
-          category: 'registration',
-          message: 'STEP_4_USER_PATCH_START',
-        ));
-
-        final patchSpan = transaction.startChild('update_user_doc');
-        try {
-          await SentryFirestoreHelper.docUpdate(
-            collection: AppConstants.usersCollection,
-            docId: user.uid,
-            data: {
-              'organizationId': organizationId,
-              'updatedAt': FieldValue.serverTimestamp(),
-            },
-            flow: flowName,
-            step: 'STEP_4_USER_PATCH',
-          );
-          patchSpan.status = const SpanStatus.ok();
-        } catch (e, st) {
-          patchSpan.status = const SpanStatus.internalError();
-          rethrow;
-        } finally {
-          await patchSpan.finish();
-        }
-
-        Sentry.addBreadcrumb(Breadcrumb(
-          category: 'registration',
-          message: 'STEP_4_USER_PATCH_SUCCESS',
-          data: {'uid': user.uid, 'organizationId': organizationId},
-        ));
-        await FirebaseCrashlytics.instance.setCustomKey('registration_state', 'STEP_4_USER_PATCH_SUCCESS_google');
-        await FirebaseCrashlytics.instance.setCustomKey('orgId', organizationId ?? '');
-
-        // ── Step 4b: Final read-back verification of COMPLETE user doc ────
-        final finalCheck = await _firestore
-            .collection(AppConstants.usersCollection)
-            .doc(user.uid)
-            .get();
-        if (!finalCheck.exists) {
-          await Sentry.captureMessage(
-            'STEP_4b FINAL READ-BACK FAILED (Google) — users/${user.uid} does NOT exist after patch',
-            level: SentryLevel.error,
-          );
-          FirebaseCrashlytics.instance.recordError(
-            'FINAL_READBACK_FAILED: users/${user.uid} missing after Step 4 patch (Google)',
-            StackTrace.current,
-            reason: 'google_owner_registration final verification',
-          );
-        } else {
-          final finalOrgId = finalCheck.data()?['organizationId'] as String? ?? '';
-          Sentry.addBreadcrumb(Breadcrumb(
-            category: 'registration',
-            message: 'STEP_4b_FINAL_READBACK_VERIFIED',
-            data: {
-              'uid': user.uid,
-              'docExists': true,
-              'organizationId': finalOrgId,
-              'organizationIdMatches': finalOrgId == organizationId,
-            },
-          ));
-          if (finalOrgId != organizationId) {
-            await Sentry.captureMessage(
-              'STEP_4b ORG_ID_MISMATCH (Google) — expected=$organizationId actual=$finalOrgId',
-              level: SentryLevel.error,
+          final data = cfResult.data;
+          if (data == null || data['success'] != true) {
+            throw Exception(
+              (data?['error'] as String?) ??
+              'Google owner registration failed.',
             );
           }
-        }
 
-        hasCompletedSetup = false; // Needs to name workspace
+          organizationId = data['organizationId'] as String? ?? '';
+          hasCompletedSetup = false;
+
+          Sentry.addBreadcrumb(Breadcrumb(
+            category: 'registration',
+            message: 'REGISTER_OWNER_GOOGLE_CF_SUCCESS',
+            data: {
+              'uid': user.uid,
+              'organizationId': organizationId,
+            },
+          ));
+        } on FirebaseFunctionsException catch (e, st) {
+          await KlasivoObservability.reportError(
+            e,
+            st,
+            reason: 'registerOwnerWithGoogle CF failed',
+            tags: {
+              'flow': 'google_owner_registration',
+              'uid': user.uid,
+              'code': e.code,
+            },
+          );
+          throw Exception(e.message ?? 'Google owner registration failed.');
+        }
       } else if (role == AppConstants.roleParent) {
         organizationId = null; // Set when parent links a child
         hasCompletedSetup = false; // Needs to link child

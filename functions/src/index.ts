@@ -58,6 +58,7 @@ export { sendTeacherInvitation } from './functions/sendTeacherInvitation';
 export { sendSchoolAnnouncement } from './functions/sendSchoolAnnouncement';
 export { generateLiveKitToken } from './functions/generateLiveKitToken';
 export { removeParticipant } from './functions/removeParticipant';
+export { registerOwnerWithGoogle } from './functions/registerOwnerWithGoogle';
 
 // ─── Student Management Functions (v2) ────────────────────────
 export { createStudent } from './functions/createStudent';
